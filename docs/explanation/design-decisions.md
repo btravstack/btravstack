@@ -127,8 +127,10 @@ contribute equally. On the drain path the phase alone answers false. The latch
 is load-bearing on exactly one path — the uncaught one, where the handler
 flips it while the phase is still `"serving"`, a window no HTTP round trip
 fits inside. That is why `ready()` is exposed at all: it is the synchronous
-read of the predicate `/readyz` answers from, and what an embedder wires into a
-health endpoint of its own with `probes: false`.
+read of the lifecycle predicate, and what an embedder wires into a health
+endpoint of its own with `probes: false`. The kernel's `/readyz` also consults
+cached dependency checks that explicitly opt into readiness; those can recover,
+while the lifecycle latch cannot. See [Probes](/reference/core/probes).
 
 ## `runMain` sets `process.exitCode`, never calls `process.exit()`
 

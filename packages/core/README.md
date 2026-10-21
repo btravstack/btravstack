@@ -166,6 +166,12 @@ ports hidden. Application starters use it alongside their own runtime exports.
 - **Probes from the state machine.** `GET /livez` and `GET /readyz` on
   `PROBE_PORT` (default `9000`) and `PROBE_HOST` (default `0.0.0.0`, so a
   kubelet `httpGet` probe reaches them), up before the graph is built.
+  A `HealthCheck` can opt into gating `/readyz` with `readiness: true`
+  (1000 ms cache) or `readiness: { intervalMs: 5000 }`. Concurrent probes and
+  `/healthz` share that check's cache; ordinary checks only affect `/healthz`.
+  Failed checks can recover without a restart; drain and crash readiness
+  remain latched. `RunningApp.ready()` reads only the lifecycle.
+  See [probes](https://btravstack.github.io/btravstack/reference/core/probes).
 - **Configuration from the environment, typed.** The kernel provides
   [`@btravstack/config`](../config)'s `Env` port to every graph it boots; a
   bad value is a `ConfigInvalid` naming every fault at once, and exit `78`.

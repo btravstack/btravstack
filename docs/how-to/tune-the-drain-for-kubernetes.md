@@ -158,12 +158,13 @@ readinessProbe:
 
 There is no separate startup probe by design: `/livez` answers `200` from
 `building` onward, so a slow-building graph is covered by `/readyz` alone.
-Readiness is a one-way latch — once a drain or an uncaught exception forces it
+Lifecycle readiness is a one-way latch — once a drain or an uncaught exception forces it
 `false`, it never returns to `true`.
 
 With `probes: false` — because the runtime already owns a port you want to
-reuse, say — `app.ready()` is the same predicate `/readyz` answers from,
-readable synchronously:
+reuse, say — `app.ready()` reads the lifecycle predicate synchronously.
+The kernel's `/readyz` additionally evaluates opted-in dependency checks; this
+custom endpoint reports only lifecycle readiness:
 
 ```ts
 const app = start(OrderApi, { probes: false });

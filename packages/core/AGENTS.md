@@ -117,6 +117,18 @@ a holder once `Module.scoped` hands it a context. Until then `/healthz` reports
 healthy with no components, which is the honest answer while building. The
 surface is `docs/reference/core/probes.md` and `src/health.ts`.
 
+`health-monitor.ts` creates a cache per application and per opted-in check.
+`readiness: true` selects 1000 ms; `{ intervalMs }` selects a positive finite
+interval. Invalid intervals report unhealthy without calling the dependency.
+Expiry starts when the bounded report settles, so overlapping requests share
+one in-flight evaluation and timeouts can be retried after expiry. `/healthz`
+shares these caches and still evaluates every ordinary check on every request.
+`runHealthChecks` itself remains uncached. No background timer needs teardown.
+`readiness.spec.ts` guards recovery, rate bounds, concurrent probes and drain
+races. The probe rechecks the lifecycle after awaiting dependencies: a healthy
+answer must not revive a draining application. `RunningApp.ready()` remains
+the synchronous lifecycle predicate, independent of dependency checks.
+
 ## Load-bearing runtime invariants (tests must guard these)
 
 The nine from the design, each with the test that guards it, plus the ones that
@@ -281,8 +293,8 @@ Beyond the nine:
   provider fails during construction"_ and _"preserves a construction error
   when acquired resources release in time"_.
 
-- **Readiness is a one-way latch.** Forced false by the drain and by an uncaught
-  exception, never reset. `invariants.spec.ts` → _"readiness never returns to
+- **Lifecycle readiness is a one-way latch.** Dependency checks may recover;
+  the lifecycle, forced false by the drain or an uncaught exception, never resets. `invariants.spec.ts` → _"readiness never returns to
   200 once forced false"_. The `forcedUnready` term of `ready()` is load-bearing
   on **exactly one** path — see Internal design — and is guarded solely by _"an
   uncaught exception forces readiness false while the phase is still serving"_.
@@ -375,23 +387,23 @@ Beyond the nine:
   response unwritten. `health.spec.ts` → _"reports a component whose check
   defects as unhealthy, instead of losing the report"_ and _"contains a check
   that throws synchronously, instead of letting it escape the fold"_.
-- **No `Result` is produced and left unexamined — with exactly three audited
+- **No `Result` is produced and left unexamined — with three audited categories of
   exceptions, each carrying its reason inline.** `AsyncResult<T, never>` empties
   the **error** channel only; a `Defect` can still be there, and a `Serving`
   written by a third party is where one comes from. `drain.spec.ts`'s four
   _"propagates a Defect from …"_ tests guard the drain;
   `start.spec.ts` guards the stopped channel's Defect through to shutdown;
   `packages/testing/src/boot-fixture.spec.ts` → _"fails the test on a shutdown
-  defect, and only on a defect"_ the fixture. The three
-  survivors are `start.ts`'s `void server.close()` (our own `fromSafePromise`
+  defect, and only on a defect"_ the fixture. These
+  exceptions are `start.ts`'s `void server.close()` (our own `fromSafePromise`
   over `server.close(cb)`, so no third-party code can defect inside it — and it
   must not be awaited: the socket is `unref`'d and `close` waits out live
   keep-alive connections, which would delay or strand the exit report),
   `drain.ts`'s losing race branch (once the timeout has decided the report,
   `exited` has settled and a late defect has no consumer left), and
-  `probes.ts`'s `void args.health()` (`runHealthChecks` recovers every failure
-  and defect into the report, so the `.map` writing the response always
-  runs — see the `/healthz` invariant above). None can
+  `probes.ts`'s response-writing health and readiness evaluations
+  (`runHealthChecks` recovers every failure and defect into the report, so the
+  `.map` writing the response always runs — see the `/healthz` invariant above). None can
   float: an `AsyncResult` never rejects. `unthrown/no-unhandled-result` cannot
   catch this class — it is deliberately syntactic, and an `await` inside a
   larger expression is not a bare expression statement — so review is the only
