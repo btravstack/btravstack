@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/di",
-  "version": "0.44.1",
+  "version": "0.45.0",
   "description": "A module-based dependency-injection container for TypeScript: ports as the vocabulary an application defines, providers bound at one edge, and modules that declare their imports and exports",
   "keywords": [
     "container",
