@@ -253,7 +253,11 @@ export type DeepReadonly<T> = T extends Immutable
   : T extends z.core.$brand<infer B>
     ? (T extends ReadonlyArray<infer Element>
         ? ReadonlyArray<DeepReadonly<Element>> & {
-            readonly [K in Extract<keyof T, `${number}`> | "length"]: DeepReadonly<T[K]>;
+            readonly [
+              K in keyof T as K extends Exclude<keyof unknown[], "length"> | typeof z.core.$brand
+                ? never
+                : K
+            ]: DeepReadonly<T[K]>;
           }
         : {
             readonly [K in keyof T as K extends typeof z.core.$brand ? never : K]: DeepReadonly<
@@ -263,12 +267,18 @@ export type DeepReadonly<T> = T extends Immutable
         z.core.$brand<B>
     : T extends readonly unknown[]
       ? ReadonlySequence<T>
-      : { readonly [K in keyof T]: DeepReadonly<T[K]> };
+      : T extends object
+        ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+        : T;
 
 type ReadonlySequence<T extends readonly unknown[]> = "0" extends keyof T
   ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
   : number extends T["length"]
-    ? ReadonlyArray<DeepReadonly<T[number]>>
+    ? Exclude<keyof T, keyof unknown[]> extends never
+      ? ReadonlyArray<DeepReadonly<T[number]>>
+      : ReadonlyArray<DeepReadonly<T[number]>> & {
+          readonly [K in keyof T as K extends keyof unknown[] ? never : K]: DeepReadonly<T[K]>;
+        }
     : { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
 /**

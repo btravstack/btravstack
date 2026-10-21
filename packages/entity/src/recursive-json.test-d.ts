@@ -85,3 +85,49 @@ test("branded tuples retain positional types", () => {
   expectTypeOf<Pair[0]>().toEqualTypeOf<string>();
   expectTypeOf<Pair[1]>().toEqualTypeOf<number>();
 });
+
+test("unknown creation fields accept null and undefined", () => {
+  class Opaque extends Entity("Opaque")({ data: Entity.field(z.unknown(), { unbranded: true }) }) {}
+  Opaque.factory({})({ data: null });
+  Opaque.factory({})({ data: undefined });
+});
+
+test("optional branded tuple slots stay optional", () => {
+  const Args = z.custom<[string?]>().brand("Args");
+  class Invocation extends Entity("Invocation")({
+    args: Entity.field(Args, { unbranded: true }),
+  }) {}
+  const parsed = Args.parse([]);
+  Invocation.factory({})({ args: parsed });
+});
+
+test("custom arrays keep their domain members", () => {
+  class Labels extends Array<string> {
+    readonly category = "labels";
+    summary(): string {
+      return this.join(",");
+    }
+  }
+  class Labelled extends Entity("Labelled")({
+    labels: Entity.field(z.instanceof(Labels), { unbranded: true }),
+  }) {}
+  const labelled = Labelled.make({ labels: new Labels() }).getOrThrow();
+  const category: "labels" = labelled.labels.category;
+  const summary: string = labelled.labels.summary();
+  const optional = null as unknown as DeepReadonly<Labels & { metadata?: { tags: string[] } }>;
+  // @ts-expect-error custom array members are also deeply readonly
+  optional.metadata?.tags.push("changed");
+  const branded = null as unknown as DeepReadonly<Labels & z.core.$brand<"Labels">>;
+  const brandedCategory: "labels" = branded.category;
+  const brandedSummary: string = branded.summary();
+  void brandedCategory;
+  void brandedSummary;
+  void category;
+  void summary;
+});
+
+test("branded tuple bounds match native branded tuples", () => {
+  type Native = readonly [string, number] & z.core.$brand<"Pair">;
+  type Frozen = DeepReadonly<[string, number] & z.core.$brand<"Pair">>;
+  expectTypeOf<Frozen[2]>().toEqualTypeOf<Native[2]>();
+});
