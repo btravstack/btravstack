@@ -170,3 +170,7 @@ check uses its public `isConnected()`, absent in the former beta.7 floor.
 The worker and contract keep the same catalog train. Its standard-schema
 dependency requires unthrown `^5.11.0`, which is this package's peer floor too;
 the isolated strict-peer consumer install verifies both together.
+
+`InvalidAmqpSubscription` names configuration refusals; `SubscriptionHandlers`
+is the exported contract-typed handler record, so consumers can name it without
+rebuilding upstream parameter inference. Both appear in the reference export index.

@@ -227,5 +227,7 @@ It keeps private infrastructure hidden and business exports explicit.
 `amqpSubscription(name, { contract, settings, inject?, sync })` consumes
 best-effort facts beside an HTTP runtime, with one exclusive ephemeral queue
 per replica. It reports failures and broker health and closes with the scope.
+`InvalidAmqpSubscription` names a refused configuration;
+`SubscriptionHandlers<C, E>` types the contract's handler record.
 See [the subscription reference](https://btravstack.github.io/btravstack/reference/amqp-worker#broadcast-subscriptions-beside-another-runtime)
 for the typed contract, settings port and delivery guarantees.

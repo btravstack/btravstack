@@ -29,3 +29,8 @@ replicas. Pass its manager port to both the login and session authenticator;
 credentials stay server-side. `protectedResource()` publishes Protected Resource Metadata (RFC 9728)
 for one resource, `protectedResourcePerHost()` for one per served host. See [the HTTP reference](https://btravstack.github.io/btravstack/reference/http-server)
 for request units, security, configuration and shutdown behavior.
+
+Application authenticators can return `AuthenticatorUnavailable` when a
+dependency cannot decide. It stops the authentication walk and every HTTP
+answerer returns `503`, reporting the scheme through `Observers`. See
+[authentication dependency outages](https://btravstack.github.io/btravstack/reference/http-server#authentication-dependency-outages).
