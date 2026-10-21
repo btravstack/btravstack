@@ -132,13 +132,17 @@ const overStalledStore = async (
   const server = createServer((socket) => held.push(socket));
   await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
   const { port } = server.address() as { readonly port: number };
-  await scopedS3(
-    { socketTimeoutMs: 200 },
-    { STORAGE_S3_ENDPOINT: `http://127.0.0.1:${port}`, ...extra },
-    use,
-  );
-  for (const socket of held) socket.destroy();
-  await new Promise((closed) => server.close(closed));
+  try {
+    await scopedS3(
+      { socketTimeoutMs: 200 },
+      { STORAGE_S3_ENDPOINT: `http://127.0.0.1:${port}`, ...extra },
+      use,
+    );
+  } finally {
+    // A failing test rejects `scopedS3`; the listener still closes.
+    for (const socket of held) socket.destroy();
+    await new Promise((closed) => server.close(closed));
+  }
 };
 
 /** A document a spec can store without restating bytes every time. */

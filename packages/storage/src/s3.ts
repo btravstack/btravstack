@@ -74,7 +74,7 @@ class StorageConfig extends Port("StorageConfig")<{
 
 /**
  * The socket pools' options, each pinning its variable. Every default is the
- * AWS SDK's own, but the stream pool's timeouts, which default to the shared ones.
+ * AWS SDK's own, except the stream pool's timeouts, which default to the shared ones.
  */
 export type S3StorageOptions = {
   /**

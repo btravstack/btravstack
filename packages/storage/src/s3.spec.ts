@@ -1430,26 +1430,33 @@ describe("s3Storage, with every stream socket held", { timeout: 60_000 }, () => 
   }) => {
     // GIVEN a store that never answers, 200 ms for the short calls and 1000 ms
     // for the stream pool
-    // WHEN an object is streamed and another headed
+    // WHEN an object is streamed and another headed, the stream looked at
+    // the moment the head is answered
     const stream = stalledStreams.getStream("a.bin");
-    const head = stalledStreams.head("b.bin");
+    const headed = await stalledStreams.head("b.bin");
+    const streamWhenHeaded = await Promise.race([
+      stream.then(() => "answered"),
+      setTimeout(0, "open"),
+    ]);
+    const streamed = await stream;
 
-    // THEN the short call was closed after its own 200 ms
-    await expect(head).toBeErrWith(
-      expect.objectContaining({
+    // THEN the short call was closed after its own 200 ms while the stream
+    // was still open, and the stream after the stream pool's 1000 ms
+    expect({
+      head: headed.isErr() ? headed.error : headed.tag,
+      streamWhenHeaded,
+      stream: streamed.isErr() ? streamed.error : streamed.tag,
+    }).toEqual({
+      head: expect.objectContaining({
         operation: "head",
         reason: expect.stringContaining("after 200 ms of inactivity"),
       }),
-    );
-    // AND the stream was still open then
-    expect(await Promise.race([stream.then(() => "answered"), setTimeout(0, "open")])).toBe("open");
-    // AND it was closed after the stream pool's 1000 ms
-    await expect(stream).toBeErrWith(
-      expect.objectContaining({
+      streamWhenHeaded: "open",
+      stream: expect.objectContaining({
         operation: "getStream",
         reason: expect.stringContaining("after 1000 ms of inactivity"),
       }),
-    );
+    });
   });
 
   it("gives streamed writes the stream pool's own request timeout", async ({
