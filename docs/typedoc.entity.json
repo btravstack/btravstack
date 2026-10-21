@@ -50,6 +50,7 @@
     "OutputOf",
     "PatchOf",
     "PlainOf",
+    "ReadonlySequence",
     "RecordOf",
     "RootInstance",
     "ReservedFieldName",
