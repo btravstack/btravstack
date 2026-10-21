@@ -38,6 +38,7 @@ const packages: readonly string[] = [
   "cache",
   "mailer",
   "storage",
+  "keys",
   "prisma",
   "outbox",
   "http-server",

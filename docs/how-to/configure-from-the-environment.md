@@ -267,11 +267,16 @@ composition root.
 | `OAUTH_CLIENT_ID`                     | required                | `oauthClient()` — this service's client; pinned by `clientId`                                                                                                                                                                       |
 | `OAUTH_CLIENT_SECRET`                 | required                | `oauthClient()` — its secret, from a Kubernetes Secret; pinned by `clientSecret`                                                                                                                                                    |
 | `STORAGE_S3_*`                        | see the page            | [`storage()` over S3](/reference/storage)                                                                                                                                                                                           |
+| `KEYS_KMS_REGION`                     | required                | [`kmsKeys()`](/reference/keys) — the AWS region of the owners' KMS keys                                                                                                                                                             |
+| `KEYS_KMS_ALIAS_PREFIX`               | required                | `kmsKeys()` — an owner's KMS key is the alias of this prefix and the owner                                                                                                                                                          |
+| `KEYS_KMS_ENDPOINT`                   | AWS's own               | `kmsKeys()` — an emulator or a VPC endpoint, a `Config.url` field; pinned by `endpoint`                                                                                                                                             |
+| `KEYS_CACHE_TTL_MS`                   | `300000`                | `kmsKeys()` — how long an unwrapped root key is kept, `0` none; pinned by `cacheTtlMs`                                                                                                                                              |
+| `KEYS_KMS_PENDING_WINDOW_DAYS`        | `30`                    | `kmsKeys()` — the days an erasure can be cancelled, `7` to `30`; pinned by `pendingWindowDays`                                                                                                                                      |
 
 **A variable carries its starter's prefix**, so two starters in one process
 cannot collide — an HTTP deployment that also publishes to AMQP and reads a
 database composes three of them. `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`, `OUTBOX_`, `OAUTH_`,
-`STORAGE_S3_` are the namespaces; the exceptions are names the ecosystem already owns and
+`STORAGE_S3_`, `KEYS_` are the namespaces; the exceptions are names the ecosystem already owns and
 that a platform injects for you (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`,
 `SMTP_URL`, `LOG_LEVEL`), where a prefix would break the convention rather than
 protect it. The kernel's own are unprefixed because there is exactly one

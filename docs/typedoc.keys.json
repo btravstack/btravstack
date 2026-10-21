@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/keys",
+  "entryPoints": ["../packages/keys/src/index.ts", "../packages/keys/src/kms.ts"],
+  "tsconfig": "../packages/keys/tsconfig.json",
+  "out": "api/keys"
+}

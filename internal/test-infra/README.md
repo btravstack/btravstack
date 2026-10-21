@@ -14,6 +14,7 @@ rather than one per workspace.
 | `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                                                      |
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                                                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                                                          |
+| `localstack/localstack:4.4.0`      | `packages/keys`, its KMS alone                                                                              |
 | `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                                                  |
 | `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against, and `packages/oauth-client`'s token issuer |
 | `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                                                              |
@@ -58,6 +59,9 @@ finer than "a server of my own":
 - **A key prefix per test** in object storage too, inside one bucket: a bucket
   per test would be a create-and-delete round trip bought for an isolation a
   UUID prefix already gives for nothing.
+- **A key per test** in the KMS emulator: each test creates a KMS key under a
+  UUID alias, the boundary the adapter itself has (one key per owner), and
+  never deletes it unless deletion is what it tests.
 
 ## The `orders` database has two roles
 

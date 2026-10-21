@@ -141,6 +141,7 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "Upload a file", link: "/how-to/upload-a-file" },
           { text: "Stream a file through the process", link: "/how-to/stream-a-file" },
+          { text: "Keep envelope keys per owner", link: "/how-to/keep-envelope-keys-per-owner" },
           { text: "Test an application", link: "/how-to/test-an-application" },
           { text: "Test a Temporal worker", link: "/how-to/test-a-temporal-worker" },
           { text: "Swap an adapter for tests", link: "/how-to/swap-an-adapter" },
@@ -236,6 +237,7 @@ const GUIDE_SIDEBAR = [
           { text: "@btravstack/cache", link: "/reference/cache" },
           { text: "@btravstack/mailer", link: "/reference/mailer" },
           { text: "@btravstack/storage", link: "/reference/storage" },
+          { text: "@btravstack/keys", link: "/reference/keys" },
           { text: "@btravstack/prisma", link: "/reference/prisma" },
           { text: "@btravstack/outbox", link: "/reference/outbox" },
         ],
@@ -534,6 +536,7 @@ export default defineConfig({
             { text: "@btravstack/cache", link: "/api/cache/" },
             { text: "@btravstack/mailer", link: "/api/mailer/" },
             { text: "@btravstack/storage", link: "/api/storage/" },
+            { text: "@btravstack/keys", link: "/api/keys/" },
             { text: "@btravstack/prisma", link: "/api/prisma/" },
             { text: "@btravstack/outbox", link: "/api/outbox/" },
             { text: "@btravstack/testing", link: "/api/testing/" },

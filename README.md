@@ -287,6 +287,7 @@ deployments.
 | [`@btravstack/cache`](./packages/cache)                     | A `Cache` port with an in-memory adapter and a Redis one, reporting every call through `Observers`.                                                                                                                 |
 | [`@btravstack/mailer`](./packages/mailer)                   | A `Mailer` port with a recording adapter and an SMTP one, reporting every send through `Observers`.                                                                                                                 |
 | [`@btravstack/storage`](./packages/storage)                 | A `Storage` port with an in-memory adapter and an S3-compatible one with presigned reads and uploads (upload URLs can be reused until expiry).                                                                      |
+| [`@btravstack/keys`](./packages/keys)                       | An `EnvelopeKeys` port: a root key per owner, wrapped by an AWS KMS key of that owner, cached for a TTL, erased with one key deletion, and an HKDF key per purpose.                                                 |
 
 ## Examples
 
