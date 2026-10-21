@@ -1,5 +1,13 @@
 # @btravstack/keys
 
+## 0.45.1
+
+### Patch Changes
+
+- @btravstack/config@0.45.1
+  - @btravstack/core@0.45.1
+  - @btravstack/di@0.45.1
+
 ## 0.45.0
 
 ### Minor Changes

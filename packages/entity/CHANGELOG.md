@@ -1,5 +1,11 @@
 # @btravstack/entity
 
+## 0.45.1
+
+### Patch Changes
+
+- 9bedd95: Accept frozen recursive JSON in entity creation inputs without TS2589, preserving Zod brands and deeply readonly containers.
+
 ## 0.45.0
 
 No changes in this release.
