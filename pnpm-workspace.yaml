@@ -209,8 +209,9 @@ overrides:
   # fixed version), as unthrown does — `vitepress build` is verified against it.
   # This also drags esbuild up past GHSA-67mh-4wv8-2f99. Scoped to vitepress
   # because an override rewrites PEER ranges too: unscoped, it turned vitest
-  # 5's `vite` peer (`^6.4.0 || ^7 || ^8`) into exactly 6.4.3.
-  "vitepress>vite@<6.4.3": "6.4.3"
+  # 5's `vite` peer (`^6.4.0 || ^7 || ^8`) into exactly 6.4.3. GHSA-587h-7wmj-h5pm
+  # (launch-editor, bundled by vite's dev server) then lifted it to 6.4.4.
+  "vitepress>vite@<6.4.4": "6.4.4"
   # GHSA-3f6p-5ww8-9rcr: mysql2 lets a hostile server downgrade authentication to
   # `mysql_clear_password`, which sends the password in plaintext. It used to
   # reach us through the Prisma 7 CLI bundling a driver per datasource; on
@@ -267,9 +268,15 @@ overrides:
   "sharp@<0.35.5": "0.35.5"
   # GHSA-68fv-2mgg-jv7q: source-map-js. Via vite > postcss, dev and test only.
   "source-map-js@>=1.0.0 <1.2.2": "1.2.2"
-  # GHSA-r7fv-28h4-cvq7: markdown-it smartquotes quadratic complexity. Via
-  # markdownlint-cli2, which parses this repository's own Markdown.
-  "markdown-it@>=15.0.0 <15.0.2": "15.0.2"
+  # GHSA-r7fv-28h4-cvq7: markdown-it smartquotes quadratic complexity, and
+  # GHSA-gfr2-rv44-r23c: quadratic rendering of a multi-line link reference
+  # definition. Via markdownlint-cli2, which parses this repository's own
+  # Markdown, and typedoc, which renders its TSDoc.
+  "markdown-it@>=15.0.0 <15.0.3": "15.0.3"
+  "markdown-it@>=14.1.0 <14.3.3": "14.3.3"
+  # GHSA-587h-7wmj-h5pm: launch-editor's existence check bypass on Windows. Via
+  # @changesets/cli, which opens an editor only when asked to.
+  "launch-editor@<2.14.2": "2.14.2"
 
 auditConfig:
   ignoreGhsas:
