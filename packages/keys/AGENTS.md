@@ -47,7 +47,10 @@ with its TSDoc; `docs/reference/keys.md` is the reader's page and
   twice is idempotent. The pending window is configuration, not an argument:
   the port takes no default behind it, and the window is a deployment's
   policy.
-- **The cache is per generation, for a TTL, single-flight.** Callers asking
+- **The cache is per generation, for a TTL, single-flight.** A generation is
+  its owner, its key id and its blob: provisioning one key id twice (a retried
+  onboarding) makes two roots, and keying on the id alone would answer the
+  first for the second. Callers asking
   while a generation is being unwrapped share that `AsyncResult`; only an
   `Ok` is kept. Expired entries are swept whenever a new one is kept, so the
   map holds the generations used within one TTL. `erase` forgets the owner's

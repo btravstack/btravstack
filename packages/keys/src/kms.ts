@@ -264,7 +264,12 @@ const kmsEnvelopeKeys = (
 
   return {
     rootKey: (generation) => {
-      const entry = JSON.stringify([generation.owner, generation.keyId]);
+      // The blob too: provisioning one key id twice makes two generations, never one.
+      const entry = JSON.stringify([
+        generation.owner,
+        generation.keyId,
+        Buffer.from(generation.wrapped).toString("base64"),
+      ]);
       const hit = cached.get(entry);
       if (hit !== undefined && clock.now() < hit.expiresAt) return OkAsync(hit.root);
       cached.delete(entry);

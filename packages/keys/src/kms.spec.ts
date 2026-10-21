@@ -199,6 +199,37 @@ describe("kmsKeys", () => {
       ).toBeOkWith({ same: true, unwraps: 1 });
     });
 
+    it("should keep two generations provisioned under one key id apart", async ({
+      keys,
+      env,
+      owner,
+    }) => {
+      // GIVEN one key id provisioned twice, as a retried onboarding would
+      const { owner: id } = await owner();
+
+      // WHEN both are unwrapped in one graph
+      const signatures = await keys({ env }, (ctx) => {
+        const service = ctx.get(EnvelopeKeys);
+        const signed = (generation: KeyGeneration) =>
+          service
+            .rootKey(generation)
+            .flatMap((root) => deriveKey(root, PURPOSE, SIGNING))
+            .flatMap(signature);
+        return service
+          .provision(id, "k1")
+          .flatMap((first) =>
+            service
+              .provision(id, "k1")
+              .flatMap((second) =>
+                signed(first).flatMap((a) => signed(second).map((b) => a === b)),
+              ),
+          );
+      });
+
+      // THEN each answers its own root, not the one cached first
+      expect(signatures).toBeOkWith(false);
+    });
+
     it("should answer erased when the owner's key is disabled", async ({ keys, env, owner }) => {
       // GIVEN a generation whose owner's key is then disabled
       const subject = await owner();
