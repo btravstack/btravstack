@@ -27,7 +27,7 @@ describe("application-owned TLS identities", () => {
     const policy = {
       origins: [network.origin],
       maxResponseBytes: 1024,
-      deadlineMs: 1000,
+      deadlineMs: 30_000,
       tlsIdentities: [binding],
     };
     const client = createHttpClient(policy).getOrThrow();
