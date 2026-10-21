@@ -273,13 +273,15 @@ export type DeepReadonly<T> = T extends Immutable
 
 type ReadonlySequence<T extends readonly unknown[]> = "0" extends keyof T
   ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-  : number extends T["length"]
-    ? Exclude<keyof T, keyof unknown[]> extends never
-      ? ReadonlyArray<DeepReadonly<T[number]>>
-      : ReadonlyArray<DeepReadonly<T[number]>> & {
-          readonly [K in keyof T as K extends keyof unknown[] ? never : K]: DeepReadonly<T[K]>;
-        }
-    : { readonly [K in keyof T]: DeepReadonly<T[K]> };
+  : T extends readonly [...unknown[], unknown]
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : number extends T["length"]
+      ? Exclude<keyof T, keyof unknown[]> extends never
+        ? ReadonlyArray<DeepReadonly<T[number]>>
+        : ReadonlyArray<DeepReadonly<T[number]>> & {
+            readonly [K in keyof T as K extends keyof unknown[] ? never : K]: DeepReadonly<T[K]>;
+          }
+      : { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
 /**
  * What `inspect` returns: a stored row's data, and the rules it breaks.

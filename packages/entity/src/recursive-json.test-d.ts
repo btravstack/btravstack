@@ -131,3 +131,22 @@ test("branded tuple bounds match native branded tuples", () => {
   type Frozen = DeepReadonly<[string, number] & z.core.$brand<"Pair">>;
   expectTypeOf<Frozen[2]>().toEqualTypeOf<Native[2]>();
 });
+
+test("leading rest tuples keep their required trailing element", () => {
+  type Tail = DeepReadonly<[...string[], number]>;
+  expectTypeOf<Tail>().toEqualTypeOf<readonly [...string[], number]>();
+  const valid: Tail = ["label", 1];
+  // @ts-expect-error a leading rest tuple still requires its final element
+  const empty: Tail = [];
+  // @ts-expect-error the required trailing element must keep its type
+  const wrongTail: Tail = ["label"];
+  class Trailing extends Entity("Trailing")({
+    values: Entity.field(z.custom<[...string[], number]>(), { unbranded: true }),
+  }) {}
+  Trailing.factory({})({ values: ["label", 1] });
+  // @ts-expect-error creation inputs retain the required trailing number
+  Trailing.factory({})({ values: [] });
+  void valid;
+  void empty;
+  void wrongTail;
+});
