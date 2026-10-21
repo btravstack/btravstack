@@ -154,6 +154,17 @@ and `docs/reference/storage.md` is the reader's page.
 - **Every pool default is the SDK's own**, stated rather than inherited, and
   `requestTimeoutMs` sets `throwOnRequestTimeout`: a bound that only logs a
   warning is not one.
+- **The stream pool's timeouts are its own, and default to the shared ones**
+  (#646). A short call should fail fast on a stalled store; a stream is paced
+  by the client at the other end, and a slow reader legitimately leaves the
+  store's socket idle, so one value forced a service to pick which of the two
+  to break. Each `stream*TimeoutMs` field reads `undefined` when unset and the
+  composition takes the shared value then: `Config` has no field whose default
+  is another field's. All three exist because the handler distinguishes them.
+  Under 6 s the handler arms the socket timeout at once and it bounds a body
+  read; from 6 s it arms it 3 s into the attempt and only while unanswered, so
+  it never cuts a paused read. A listener that never answers proves a `head`
+  closed after 200 ms while a stream waits out its 1000 ms.
 - **The memory adapter refuses to presign** rather than minting a `file://`
   URL. A fake URL is the worst kind of double: it passes locally and fails in
   the deployment for a reason no test could have shown. The arm exists in the

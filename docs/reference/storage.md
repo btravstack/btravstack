@@ -315,21 +315,25 @@ call the other.
 export const Streaming = storage({ adapter: s3Storage({ streamMaxSockets: 20 }) });
 ```
 
-| Variable                           | Option                | Required | Default     |
-| ---------------------------------- | --------------------- | -------- | ----------- |
-| `STORAGE_S3_ENDPOINT`              |                       | yes      | none        |
-| `STORAGE_S3_BUCKET`                |                       | yes      | none        |
-| `STORAGE_S3_ACCESS_KEY_ID`         |                       | yes      | none        |
-| `STORAGE_S3_SECRET_ACCESS_KEY`     |                       | yes      | none        |
-| `STORAGE_S3_REGION`                |                       | no       | `us-east-1` |
-| `STORAGE_S3_MAX_SOCKETS`           | `maxSockets`          | no       | `50`        |
-| `STORAGE_S3_STREAM_MAX_SOCKETS`    | `streamMaxSockets`    | no       | `50`        |
-| `STORAGE_S3_CONNECTION_TIMEOUT_MS` | `connectionTimeoutMs` | no       | `0`, none   |
-| `STORAGE_S3_SOCKET_TIMEOUT_MS`     | `socketTimeoutMs`     | no       | `0`, none   |
-| `STORAGE_S3_REQUEST_TIMEOUT_MS`    | `requestTimeoutMs`    | no       | `0`, none   |
+| Variable                                  | Option                      | Required | Default               |
+| ----------------------------------------- | --------------------------- | -------- | --------------------- |
+| `STORAGE_S3_ENDPOINT`                     |                             | yes      | none                  |
+| `STORAGE_S3_BUCKET`                       |                             | yes      | none                  |
+| `STORAGE_S3_ACCESS_KEY_ID`                |                             | yes      | none                  |
+| `STORAGE_S3_SECRET_ACCESS_KEY`            |                             | yes      | none                  |
+| `STORAGE_S3_REGION`                       |                             | no       | `us-east-1`           |
+| `STORAGE_S3_MAX_SOCKETS`                  | `maxSockets`                | no       | `50`                  |
+| `STORAGE_S3_STREAM_MAX_SOCKETS`           | `streamMaxSockets`          | no       | `50`                  |
+| `STORAGE_S3_CONNECTION_TIMEOUT_MS`        | `connectionTimeoutMs`       | no       | `0`, none             |
+| `STORAGE_S3_SOCKET_TIMEOUT_MS`            | `socketTimeoutMs`           | no       | `0`, none             |
+| `STORAGE_S3_REQUEST_TIMEOUT_MS`           | `requestTimeoutMs`          | no       | `0`, none             |
+| `STORAGE_S3_STREAM_CONNECTION_TIMEOUT_MS` | `streamConnectionTimeoutMs` | no       | `connectionTimeoutMs` |
+| `STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS`     | `streamSocketTimeoutMs`     | no       | `socketTimeoutMs`     |
+| `STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS`    | `streamRequestTimeoutMs`    | no       | `requestTimeoutMs`    |
 
 An option pins its variable. **Every default is the AWS SDK's own**: 50
-keep-alive sockets per pool, and no timeout. The timeouts apply to both pools.
+keep-alive sockets per pool, and no timeout. The three shared timeouts bound the
+short calls, and the streamed ones too unless the stream pool sets its own.
 Every request goes over its pool's sockets, a large body included: the SDK on
 its own sends one of 2 MiB or more, each part of a streamed write among them,
 on a connection of its own outside any pool.
@@ -345,11 +349,19 @@ on a connection of its own outside any pool.
   [Stream a file through the process](/how-to/stream-a-file#_4-size-the-stream-pool).
 - **`connectionTimeoutMs`** bounds how long an attempt waits for a socket, a
   free one from the pool or a new connection.
-- **`socketTimeoutMs`** is the SDK's idle-socket timeout.
+- **`socketTimeoutMs`** bounds how long an attempt's socket may stay idle.
+  Under 6 s the SDK arms it at once, so it also cuts a response body read
+  that paused; from 6 s it arms it 3 s into the attempt, only if the store has
+  not answered by then.
 - **`requestTimeoutMs`** bounds an attempt until the store starts answering,
   its request body included; past it the attempt fails, and the call as
   `StorageUnavailable`, where the SDK on its own only logs a warning. It never
   cuts a response being read.
+- **`streamConnectionTimeoutMs`**, **`streamSocketTimeoutMs`** and
+  **`streamRequestTimeoutMs`** are the same three for the stream pool alone,
+  so a short call can fail fast while a slow reader or a large part keeps a
+  longer bound. Which to set, and how long, is in
+  [Stream a file through the process](/how-to/stream-a-file#_4-size-the-stream-pool).
 
 **The timeouts are per attempt.** The SDK retries a timed-out attempt, three
 attempts by default, so a call can take about three times a timeout before it

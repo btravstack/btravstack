@@ -95,6 +95,7 @@ const scopedS3 = async (
   extra: {
     readonly STORAGE_S3_ENDPOINT?: string;
     readonly STORAGE_S3_STREAM_MAX_SOCKETS?: string;
+    readonly STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS?: string;
   },
   use: (service: StorageService) => Promise<void>,
 ): Promise<void> => {
@@ -117,6 +118,27 @@ const scopedS3 = async (
   // A fixture that swallowed a failing scope would leave the test green on
   // a client that never built.
   served.getOrThrow();
+};
+
+/**
+ * `s3Storage({ socketTimeoutMs: 200 })` over a real listener that takes every
+ * connection and sends nothing back, with `extra` beside its endpoint.
+ */
+const overStalledStore = async (
+  extra: { readonly STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS?: string },
+  use: (service: StorageService) => Promise<void>,
+): Promise<void> => {
+  const held: Socket[] = [];
+  const server = createServer((socket) => held.push(socket));
+  await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+  const { port } = server.address() as { readonly port: number };
+  await scopedS3(
+    { socketTimeoutMs: 200 },
+    { STORAGE_S3_ENDPOINT: `http://127.0.0.1:${port}`, ...extra },
+    use,
+  );
+  for (const socket of held) socket.destroy();
+  await new Promise((closed) => server.close(closed));
 };
 
 /** A document a spec can store without restating bytes every time. */
@@ -242,10 +264,15 @@ export type StorageFixtures = {
    * pool's read from `STORAGE_S3_STREAM_MAX_SOCKETS`.
    */
   readonly pooled: StorageService;
-  /** The S3 adapter whose calls must be answered within 1 ms, which none can. */
+  /** The S3 adapter whose short calls must be answered within 1 ms, which none can, and whose streams within a minute. */
   readonly hurried: StorageService;
   /** The S3 adapter over a store that accepts connections and never answers, with only `socketTimeoutMs: 200` set. */
   readonly stalled: StorageService;
+  /**
+   * The same store, with `socketTimeoutMs: 200` for the short calls and the
+   * stream pool's own 1000 ms read from `STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS`.
+   */
+  readonly stalledStreams: StorageService;
   /** How many distinct `http.Agent`s have opened a connection since the test began. */
   readonly agents: () => number;
   /** The S3 adapter over an endpoint that is not listening — the failure every deployment eventually meets. */
@@ -326,22 +353,15 @@ export const it = test.extend<StorageFixtures>({
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   stalled: async ({}, use) => {
-    // A real listener that takes every connection and sends nothing back.
-    const held: Socket[] = [];
-    const server = createServer((socket) => held.push(socket));
-    await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
-    const { port } = server.address() as { readonly port: number };
-    await scopedS3(
-      { socketTimeoutMs: 200 },
-      { STORAGE_S3_ENDPOINT: `http://127.0.0.1:${port}` },
-      use,
-    );
-    for (const socket of held) socket.destroy();
-    await new Promise((closed) => server.close(closed));
+    await overStalledStore({}, use);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  stalledStreams: async ({}, use) => {
+    await overStalledStore({ STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS: "1000" }, use);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   hurried: async ({}, use) => {
-    await scopedS3({ requestTimeoutMs: 1 }, {}, use);
+    await scopedS3({ requestTimeoutMs: 1, streamRequestTimeoutMs: 60_000 }, {}, use);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   unreachable: async ({}, use) => {
