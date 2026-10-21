@@ -1,5 +1,19 @@
 # @btravstack/http-server
 
+## 0.46.0
+
+### Minor Changes
+
+- 4d91402: Model authentication dependency outages as AuthenticatorUnavailable and answer 503 across HTTP answerers. Add openApiDocumentRoute to publish a supplied OpenAPI document at an exact public path.
+
+### Patch Changes
+
+- Updated dependencies [660e817]
+  - @btravstack/core@0.46.0
+  - @btravstack/config@0.46.0
+  - @btravstack/contract@0.46.0
+  - @btravstack/di@0.46.0
+
 ## 0.45.1
 
 ### Patch Changes
