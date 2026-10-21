@@ -1,7 +1,7 @@
 import { allAsync, fromSafePromise } from "unthrown";
-import { describe, expect, it } from "vitest";
+import { describe, expect } from "vitest";
 
-import { signature } from "./__tests__/test-fixtures.js";
+import { it, signature } from "./__tests__/test-fixtures.js";
 import { InvalidKeyPurpose, deriveKey, type KeyPurpose } from "./derive.js";
 
 describe("deriveKey", () => {
