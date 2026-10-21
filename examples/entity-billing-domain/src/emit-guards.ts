@@ -182,3 +182,8 @@ export const forgedDecision: SubscriptionDecision = { state: {} as Subscription,
 declare const subscription: Subscription;
 // @ts-expect-error an aggregate has no `update`, and that survives declaration emit
 void subscription.update;
+
+const JsonPayload = z.json().brand("JsonPayload");
+export class JsonSource extends Entity("JsonSource")({ data: JsonPayload }) {}
+export class JsonTarget extends Entity("JsonTarget")({ data: JsonPayload }) {}
+export const transferJson = (source: JsonSource) => JsonTarget.factory({})({ data: source.data });

@@ -78,6 +78,24 @@ createNote({ id, label }); // Result<Note, InvalidEntity>
 That call is the fully-typed way in for such an entity — every caller field is
 named and type-checked, where `Note.make(data)` takes `unknown`.
 
+Creation inputs accept deeply readonly values, including an existing entity's
+frozen recursive JSON field. Brands remain required, and construction still
+validates the value through `make`.
+
+A branded variadic tuple with a required trailing element keeps its native
+creation-input type. TypeScript loses that constraint when rebuilding the branded
+array as readonly, so its frozen projection cannot be passed back as a typed
+creation input. This restriction also applies when that tuple is nested.
+
+```ts
+const Payload = z.json().brand("Payload");
+class Source extends Entity("Source")({ data: Payload }) {}
+class Target extends Entity("Target")({ data: Payload }) {}
+const source = Source.make({ data: { nested: [1, { enabled: true }] } }).getOrThrow();
+const createTarget = Target.factory({});
+createTarget({ data: source.data });
+```
+
 ## `SomeEntity.factoryAsync(generators)` → `(input) => AsyncResult<SomeEntity, InvalidEntity>` {#someentity-factoryasync-generators-input-asyncresult-someentity-invalidentity}
 
 The same for promise-returning generators — an id from a database sequence,
