@@ -1,5 +1,19 @@
 # @btravstack/core
 
+## 0.46.0
+
+### Minor Changes
+
+- 660e817: Allow health checks to opt into gating `/readyz` with `readiness: true` or a
+  configured cache interval. Concurrent readiness and health probes share each
+  opted-in check's evaluation, and a healthy refresh restores readiness without
+  restarting the process. Ordinary checks and liveness keep their existing behavior.
+
+### Patch Changes
+
+- @btravstack/config@0.46.0
+  - @btravstack/di@0.46.0
+
 ## 0.45.1
 
 ### Patch Changes

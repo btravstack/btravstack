@@ -1,5 +1,15 @@
 # @btravstack/keys
 
+## 0.46.0
+
+### Patch Changes
+
+- 4d91402: Use Node WebCrypto key types so Node consumers can derive and encrypt without the DOM library or casts.
+- Updated dependencies [660e817]
+  - @btravstack/core@0.46.0
+  - @btravstack/config@0.46.0
+  - @btravstack/di@0.46.0
+
 ## 0.45.1
 
 ### Patch Changes
