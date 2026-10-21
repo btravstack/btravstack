@@ -41,12 +41,14 @@
     "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@aws-sdk/client-kms": "catalog:",
     "@btravstack/contract": "workspace:^",
     "@btravstack/entity": "workspace:*",
     "@btravstack/example-order-graphql-api": "workspace:*",
     "@btravstack/graphql-server": "workspace:*",
     "@btravstack/http-client": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/keys": "workspace:*",
     "@btravstack/mcp-server": "workspace:*",
     "@btravstack/oauth-client": "workspace:*",
     "@btravstack/pothos": "workspace:*",

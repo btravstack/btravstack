@@ -8,6 +8,7 @@
   "type": "module",
   "exports": {
     "./containers": "./src/containers.ts",
+    "./localstack": "./src/localstack.ts",
     "./lock": "./src/lock.ts",
     "./mailpit": "./src/mailpit.ts",
     "./ory": "./src/ory.ts",

@@ -18,6 +18,7 @@
       "@btravstack/cache",
       "@btravstack/mailer",
       "@btravstack/storage",
+      "@btravstack/keys",
       "@btravstack/prisma",
       "@btravstack/outbox",
       "@btravstack/oauth-client",

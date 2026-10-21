@@ -21,7 +21,7 @@ its page:
 | **Domain modelling**                           | `entity`                                                               | When the application benefits from validated domain entities and aggregate decisions.            |
 | **The kernel and its plumbing**                | `core`, `di`, `config`, `contract`                                     | Always — `core` boots the process, and the other three are what it boots.                        |
 | **Runtime servers**                            | `http-server`, `temporal-worker`, `amqp-worker`                        | One, and exactly one: a process boots a single runtime.                                          |
-| **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`, `outbox`                | When the application needs that capability. Each is independent of the others.                   |
+| **Capability ports**, a contract plus adapters | `observability`, `cache`, `mailer`, `storage`, `keys`, `outbox`        | When the application needs that capability. Each is independent of the others.                   |
 | **HTTP answerers**                             | `orpc-server`, `htmx-server`, `graphql-server`, `mcp-server`, `pothos` | Add the protocols this deployment serves; `pothos` builds a GraphQL schema over oRPC procedures. |
 | **Outbound clients**                           | `temporal-client`, `amqp-client`, `http-client`, `oauth-client`        | Bind a typed remote client to the application scope without its worker, or a token to call as.   |
 | **The harness**                                | `testing`                                                              | As a dev dependency, always.                                                                     |
@@ -47,6 +47,7 @@ packages, so an outbound caller does not install a worker.
 | `@btravstack/cache`           | A `Cache` port, an in-memory adapter and a Redis one, and one composition that reports every call through `Observers`. A miss is `Ok(undefined)`; keys are yours.                                                                          | [@btravstack/cache](/reference/cache)                                                                                                                                                            |
 | `@btravstack/mailer`          | A `Mailer` port, a recording adapter a spec asserts against and an SMTP one. `send` means accepted, not delivered; retries belong to your transport.                                                                                       | [@btravstack/mailer](/reference/mailer)                                                                                                                                                          |
 | `@btravstack/storage`         | A `Storage` port, an in-memory adapter and an S3-compatible one with presigned reads and uploads (upload URLs can be reused until expiry). A missing object is an ordinary answer, not a fault.                                            | [@btravstack/storage](/reference/storage)                                                                                                                                                        |
+| `@btravstack/keys`            | An `EnvelopeKeys` port: a root key per owner in generations, wrapped by an AWS KMS key of that owner, unwrapped in memory and cached for a TTL, erased with one key deletion, and an HKDF helper giving each purpose its own key.          | [@btravstack/keys](/reference/keys)                                                                                                                                                              |
 | `@btravstack/prisma`          | A Prisma client whose pool is the application scope's: `DATABASE_URL` through `Config`, the Postgres driver adapter, and a resourceful provider. The client type stays yours — it is generated from your schema.                           | [@btravstack/prisma](/reference/prisma)                                                                                                                                                          |
 | `@btravstack/outbox`          | The transactional outbox's relay: publishes committed facts in outbox order through a publisher you provide, with a per-tenant claim so replicas take turns rather than race for the same rows, a lag health check, and a Prisma 8 store.  | [@btravstack/outbox](/reference/outbox)                                                                                                                                                          |
 | `@btravstack/observability`   | The kernel's `Logger`, `Tracer` and `Meter` ports, implemented: a logger correlated with the ambient unit, a dependency-free JSON sink, pino behind one subpath and OpenTelemetry behind another, the kernel's events as lines.            | [@btravstack/observability](/reference/observability)                                                                                                                                            |
@@ -97,6 +98,7 @@ single copy.
 | `@btravstack/cache`           | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `redis` as an **optional** peer, behind the `/redis` subpath                                                                                                      |
 | `@btravstack/mailer`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `nodemailer` as an **optional** peer, behind the `/smtp` subpath                                                                                                  |
 | `@btravstack/storage`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` as **optional** peers, behind the `/s3` subpath                                                            |
+| `@btravstack/keys`            | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@aws-sdk/client-kms` as an **optional** peer, behind the `/kms` subpath                                                                                          |
 | `@btravstack/prisma`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@prisma/orm-postgres`                                                                                                                                                 |
 | `@btravstack/outbox`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@prisma/orm-postgres` as an **optional** peer, behind the `/prisma` subpath                                                                                      |
 | `@btravstack/contract`        | nothing required — and `zod` as an **optional** peer, behind the `/zod` subpath, so a client can take a contract without the server                                                                                                            |
@@ -194,6 +196,12 @@ pnpm add @btravstack/oauth-client @btravstack/core @btravstack/config @btravstac
   openid-client unthrown
 ```
 
+```sh [Envelope keys]
+pnpm add @btravstack/keys @btravstack/core @btravstack/config @btravstack/di unthrown
+# and, only for the /kms subpath:
+pnpm add @aws-sdk/client-kms
+```
+
 ```sh [Kernel only]
 pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 ```
@@ -268,6 +276,7 @@ stay an **optional peer** that a consumer who never imports it never installs.
 | `@btravstack/cache/redis`              | the Redis adapter                               | `redis`                                  |
 | `@btravstack/mailer/smtp`              | the SMTP adapter                                | `nodemailer`                             |
 | `@btravstack/storage/s3`               | the S3 adapter                                  | the two `@aws-sdk` packages              |
+| `@btravstack/keys/kms`                 | `kmsKeys`, the AWS KMS adapter                  | `@aws-sdk/client-kms`                    |
 | `@btravstack/prisma/rls`               | row-level security, pinned to the unit's tenant | —                                        |
 | `@btravstack/outbox/prisma`            | the Prisma 8 store                              | `@prisma/orm-postgres`                   |
 | `@btravstack/orpc-server/openapi`      | `openApiDocument`                               | included as required `orpc-server` peers |

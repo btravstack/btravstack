@@ -312,6 +312,27 @@ export const sharedRustFs = async (): Promise<StartedTestContainer> => {
 };
 
 /**
+ * The AWS KMS emulator `@btravstack/keys`'s adapter is tested against: LocalStack
+ * running KMS alone.
+ *
+ * Pinned to an exact release, the last line that starts without an account
+ * token. Every behaviour the adapter relies on was measured against it before
+ * the adapter was written: the encryption context enforced on `Decrypt`, and
+ * the exception KMS names for a disabled key, a key pending deletion, a
+ * missing alias and a ciphertext presented under another key.
+ *
+ * Tests separate by **alias**: each mints a KMS key of its own under a UUID
+ * alias, which needs no cleanup.
+ */
+export const sharedLocalStack = (): Promise<StartedTestContainer> =>
+  shared("localstack", () =>
+    new GenericContainer("localstack/localstack:4.4.0")
+      .withExposedPorts(4566)
+      .withEnvironment({ SERVICES: "kms" })
+      .withWaitStrategy(Wait.forLogMessage("Ready.")),
+  );
+
+/**
  * The Temporal server, backed by {@link sharedPostgres}.
  *
  * It reaches PostgreSQL by container IP on the default bridge rather than a

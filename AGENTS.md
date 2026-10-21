@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twenty-four published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty-five published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -45,7 +45,9 @@ adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
 `Meter` ports rather than declaring them, which is `core`'s job), `cache`
 `mailer` and `storage` (the three application-service ports of issue #62, on
 one shape — a port, a real adapter, an in-process adapter, and one
-composition function), `outbox` (the transactional outbox's relay — the poll
+composition function), `keys` (an `EnvelopeKeys` port of per-owner root keys
+wrapped by an AWS KMS key of each owner, behind a `/kms` subpath, and an HKDF
+helper giving each purpose its own key), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; `outboxRuntime()` also boots a standalone delivery process
 through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
@@ -55,7 +57,7 @@ and says what publishing means), and the three
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports,
-`outbox`, `http-client`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
+`keys`, `outbox`, `http-client`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
@@ -156,9 +158,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twenty-four packages move as one
+## Versioning: all twenty-five packages move as one
 
-The twenty-four published packages share **one version number**, enforced by a
+The twenty-five published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -874,6 +876,7 @@ copy with no gate is the copy that lies.
 | `@btravstack/cache`           | `packages/cache/AGENTS.md`                                                   | `/reference/cache`           |
 | `@btravstack/mailer`          | `packages/mailer/AGENTS.md`                                                  | `/reference/mailer`          |
 | `@btravstack/storage`         | `packages/storage/AGENTS.md`                                                 | `/reference/storage`         |
+| `@btravstack/keys`            | `packages/keys/AGENTS.md`                                                    | `/reference/keys`            |
 | `@btravstack/prisma`          | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`          |
 | `@btravstack/outbox`          | `packages/outbox/AGENTS.md`                                                  | `/reference/outbox`          |
 | `@btravstack/http-client`     | `packages/http-client/AGENTS.md`                                             | `/reference/http-client`     |
@@ -1091,7 +1094,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all twenty-four published packages — the published
+- `declarationMap: false` on all twenty-five published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
@@ -1440,15 +1443,17 @@ A sixth rule is about production code that tests keep honest:
    `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`, `GRAPHQL_DEVELOPER_TOOLS`, `GRAPHQL_MAX_TOKENS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
    `AMQP_CONNECT_TIMEOUT_MS`, `OUTBOX_POLL_MS`, `OUTBOX_MAX_LAG_MS`,
-   `OUTBOX_RETAIN_MS` and `OUTBOX_CONCURRENCY` are
+   `OUTBOX_RETAIN_MS`, `OUTBOX_CONCURRENCY`, `KEYS_KMS_ENDPOINT`,
+   `KEYS_CACHE_TTL_MS` and `KEYS_KMS_PENDING_WINDOW_DAYS` are
    fields beside `PORT`, `HOST`, `TEMPORAL_ADDRESS`, `AMQP_URL`,
-   `OUTBOX_TENANTS`, `OAUTH_ISSUER`, `OAUTH_CLIENT_ID` and
-   `OAUTH_CLIENT_SECRET`, each **pinned** by the matching option:
+   `OUTBOX_TENANTS`, `OAUTH_ISSUER`, `OAUTH_CLIENT_ID`,
+   `OAUTH_CLIENT_SECRET`, `KEYS_KMS_REGION` and `KEYS_KMS_ALIAS_PREFIX`, each
+   **pinned** by the matching option where it has one:
    the option is what a test or a settled decision fixes, the variable what a
    deployment sets, and `Config.pinned` decides between them per field.
 
    **A variable carries its starter's prefix** — `HTTP_`, `GRAPHQL_`, `TEMPORAL_`, `AMQP_`,
-   `STORAGE_S3_`, `OUTBOX_`, `OAUTH_` — because several starters share one process (an HTTP
+   `STORAGE_S3_`, `OUTBOX_`, `OAUTH_`, `KEYS_` — because several starters share one process (an HTTP
    deployment that publishes to AMQP and reads a database composes three), and
    a bare name like `BODY_LIMIT` is one the next starter would also want. The
    exceptions are names the **ecosystem** already owns and a platform injects
@@ -1472,7 +1477,7 @@ And a seventh, about the infrastructure a suite runs against:
    never by a server of its own.** A RabbitMQ suite gets a **vhost**, a
    Temporal suite a **namespace**, a database suite a **tenant**, an OpenID
    Connect suite an **identity** — or a **client**, where the caller is a
-   service — each minted
+   service — a KMS suite a **key** under an alias of its own, each minted
    in setup, each free, each finer than the thing it replaces. What a suite
    must NOT do is start a copy of the server: that is what made `pnpm test`
    intermittently red at turbo's default concurrency (issue #52), and it buys

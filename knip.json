@@ -46,6 +46,8 @@
         "@modelcontextprotocol/sdk",
         "@btravstack/http-client",
         "@btravstack/storage",
+        "@btravstack/keys",
+        "@aws-sdk/client-kms",
         "temporal-polyfill"
       ]
     },
