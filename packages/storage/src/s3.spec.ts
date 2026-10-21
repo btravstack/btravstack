@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { setTimeout } from "node:timers/promises";
 
 import { ListMultipartUploadsCommand, S3Client } from "@aws-sdk/client-s3";
 import { P, fromSafePromise } from "unthrown";
@@ -1406,6 +1407,70 @@ describe("s3Storage, with every stream socket held", { timeout: 60_000 }, () => 
     await expect(head).toBeErrWith(
       expect.objectContaining({ operation: "head", reason: expect.stringContaining("inactivity") }),
     );
+  });
+
+  it("closes a stalled stream after the shared socket timeout when the stream pool sets none", async ({
+    stalled,
+  }) => {
+    // GIVEN a store that never answers, and only the shared socket timeout set
+    // WHEN an object is streamed
+    const stream = stalled.getStream("a.bin");
+
+    // THEN the stream pool took the shared bound
+    await expect(stream).toBeErrWith(
+      expect.objectContaining({
+        operation: "getStream",
+        reason: expect.stringContaining("after 200 ms of inactivity"),
+      }),
+    );
+  });
+
+  it("closes a stalled short call after its timeout while a stream waits under the longer one", async ({
+    stalledStreams,
+  }) => {
+    // GIVEN a store that never answers, 200 ms for the short calls and 1000 ms
+    // for the stream pool
+    // WHEN an object is streamed and another headed, the stream looked at
+    // the moment the head is answered
+    const stream = stalledStreams.getStream("a.bin");
+    const headed = await stalledStreams.head("b.bin");
+    const streamWhenHeaded = await Promise.race([
+      stream.then(() => "answered"),
+      setTimeout(0, "open"),
+    ]);
+    const streamed = await stream;
+
+    // THEN the short call was closed after its own 200 ms while the stream
+    // was still open, and the stream after the stream pool's 1000 ms
+    expect({
+      head: headed.isErr() ? headed.error : headed.tag,
+      streamWhenHeaded,
+      stream: streamed.isErr() ? streamed.error : streamed.tag,
+    }).toEqual({
+      head: expect.objectContaining({
+        operation: "head",
+        reason: expect.stringContaining("after 200 ms of inactivity"),
+      }),
+      streamWhenHeaded: "open",
+      stream: expect.objectContaining({
+        operation: "getStream",
+        reason: expect.stringContaining("after 1000 ms of inactivity"),
+      }),
+    });
+  });
+
+  it("gives streamed writes the stream pool's own request timeout", async ({
+    hurried,
+    keyPrefix,
+  }) => {
+    // GIVEN 1 ms for a short call to be answered, and a minute for a stream's
+    // WHEN 8 MiB are streamed
+    const written = hurried.putStream(`${keyPrefix}slow.bin`, aStream(8 * MiB), {
+      contentType: "application/octet-stream",
+    });
+
+    // THEN the stream pool's bound held, not the short calls'
+    await expect(written).toBeOk();
   });
 
   it("fails a call past its request timeout, rather than only warning", async ({

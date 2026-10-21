@@ -17,7 +17,13 @@ import {
   type CompletedPart,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  Env,
+  type ConfigField,
+  type ConfigInvalid,
+  type EnvReading,
+} from "@btravstack/config";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import {
@@ -61,9 +67,15 @@ class StorageConfig extends Port("StorageConfig")<{
   readonly connectionTimeoutMs: number;
   readonly socketTimeoutMs: number;
   readonly requestTimeoutMs: number;
+  readonly streamConnectionTimeoutMs: number | undefined;
+  readonly streamSocketTimeoutMs: number | undefined;
+  readonly streamRequestTimeoutMs: number | undefined;
 }> {}
 
-/** The socket pools' options, each pinning its variable; every default is the AWS SDK's own. */
+/**
+ * The socket pools' options, each pinning its variable. Every default is the
+ * AWS SDK's own, except the stream pool's timeouts, which default to the shared ones.
+ */
 export type S3StorageOptions = {
   /**
    * Pins `STORAGE_S3_MAX_SOCKETS` (default `50`, the SDK's own): the
@@ -82,7 +94,12 @@ export type S3StorageOptions = {
    * attempt may wait for a socket, a free one or a new connection.
    */
   readonly connectionTimeoutMs?: number;
-  /** Pins `STORAGE_S3_SOCKET_TIMEOUT_MS` (default `0`, none): the SDK's idle-socket timeout. */
+  /**
+   * Pins `STORAGE_S3_SOCKET_TIMEOUT_MS` (default `0`, none): how long an
+   * attempt's socket may stay idle. Under 6 s it is armed at once, and bounds
+   * a response body read too; from 6 s the SDK arms it 3 s into the attempt,
+   * only if the store has not answered by then.
+   */
   readonly socketTimeoutMs?: number;
   /**
    * Pins `STORAGE_S3_REQUEST_TIMEOUT_MS` (default `0`, none): how long an
@@ -92,6 +109,23 @@ export type S3StorageOptions = {
    * attempts by default), so a call can take about three times as long.
    */
   readonly requestTimeoutMs?: number;
+  /**
+   * Pins `STORAGE_S3_STREAM_CONNECTION_TIMEOUT_MS` (default
+   * `connectionTimeoutMs`): the stream pool's own connection timeout.
+   */
+  readonly streamConnectionTimeoutMs?: number;
+  /**
+   * Pins `STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS` (default `socketTimeoutMs`):
+   * the stream pool's own socket timeout, so a reader that legitimately pauses
+   * is not cut by the bound a short call needs.
+   */
+  readonly streamSocketTimeoutMs?: number;
+  /**
+   * Pins `STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS` (default `requestTimeoutMs`):
+   * the stream pool's own request timeout, which for a streamed write bounds
+   * each part's attempt, its 8 MiB body included.
+   */
+  readonly streamRequestTimeoutMs?: number;
 };
 
 /** The AWS SDK's own socket pool size, stated rather than inherited, for each of the two pools. */
@@ -134,7 +168,38 @@ const s3Schema = (options: S3StorageOptions) =>
       options.requestTimeoutMs,
       Config.integer("STORAGE_S3_REQUEST_TIMEOUT_MS", { default: 0, min: 0 }),
     ),
+    streamConnectionTimeoutMs: Config.pinned(
+      options.streamConnectionTimeoutMs,
+      orShared(Config.integer("STORAGE_S3_STREAM_CONNECTION_TIMEOUT_MS", { min: 0 })),
+    ),
+    streamSocketTimeoutMs: Config.pinned(
+      options.streamSocketTimeoutMs,
+      orShared(Config.integer("STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS", { min: 0 })),
+    ),
+    streamRequestTimeoutMs: Config.pinned(
+      options.streamRequestTimeoutMs,
+      orShared(Config.integer("STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS", { min: 0 })),
+    ),
   });
+
+/**
+ * `field`, or `undefined` when its variable is unset, so the stream pool's
+ * timeout falls back to the shared one: `Config` has no field whose default is
+ * another field's value.
+ */
+const orShared = <V extends string>(
+  field: ConfigField<number, V>,
+): ConfigField<number | undefined, V, "optional"> => ({
+  variable: field.variable,
+  parse: (raw) => (raw === undefined ? Ok(undefined) : field.parse(raw)),
+  check: (value) => (value === undefined ? Ok(undefined) : (field.check?.(value) ?? Ok(value))),
+});
+
+/** One socket pool: how many sockets, and the three bounds on each attempt over them. */
+type Pool = Pick<
+  ServiceOf<StorageConfig>,
+  "maxSockets" | "connectionTimeoutMs" | "socketTimeoutMs" | "requestTimeoutMs"
+>;
 
 /**
  * `0` as the SDK's own absent value: handlers before 4.4 read `socketTimeout`
@@ -149,7 +214,7 @@ const unset = (ms: number): number | undefined => (ms === 0 ? undefined : ms);
  * fresh unpooled connection, which no `maxSockets` bounds and which keeps the
  * request, and the part it carries, alive until that connection has closed.
  */
-const s3Client = (config: ServiceOf<StorageConfig>, maxSockets: number): S3Client =>
+const s3Client = (config: ServiceOf<StorageConfig>, pool: Pool): S3Client =>
   new S3Client({
     endpoint: config.endpoint,
     region: config.region,
@@ -159,12 +224,12 @@ const s3Client = (config: ServiceOf<StorageConfig>, maxSockets: number): S3Clien
       secretAccessKey: config.secretAccessKey,
     },
     requestHandler: {
-      connectionTimeout: unset(config.connectionTimeoutMs),
-      socketTimeout: unset(config.socketTimeoutMs),
-      requestTimeout: unset(config.requestTimeoutMs),
+      connectionTimeout: unset(pool.connectionTimeoutMs),
+      socketTimeout: unset(pool.socketTimeoutMs),
+      requestTimeout: unset(pool.requestTimeoutMs),
       throwOnRequestTimeout: true,
-      httpAgent: new HttpAgent({ keepAlive: true, maxSockets }),
-      httpsAgent: new HttpsAgent({ keepAlive: true, maxSockets }),
+      httpAgent: new HttpAgent({ keepAlive: true, maxSockets: pool.maxSockets }),
+      httpsAgent: new HttpsAgent({ keepAlive: true, maxSockets: pool.maxSockets }),
     },
   });
 
@@ -726,10 +791,15 @@ export const s3Storage = (
         inject: { config: StorageConfig },
         acquire: ({ config }) =>
           Ok({
-            client: s3Client(config, config.maxSockets),
+            client: s3Client(config, config),
             bucket: config.bucket,
             streams: {
-              client: s3Client(config, config.streamMaxSockets),
+              client: s3Client(config, {
+                maxSockets: config.streamMaxSockets,
+                connectionTimeoutMs: config.streamConnectionTimeoutMs ?? config.connectionTimeoutMs,
+                socketTimeoutMs: config.streamSocketTimeoutMs ?? config.socketTimeoutMs,
+                requestTimeoutMs: config.streamRequestTimeoutMs ?? config.requestTimeoutMs,
+              }),
               maxSockets: config.streamMaxSockets,
             },
           }),
@@ -759,4 +829,7 @@ export type S3StorageEnv = EnvReading<
   | "STORAGE_S3_CONNECTION_TIMEOUT_MS"
   | "STORAGE_S3_SOCKET_TIMEOUT_MS"
   | "STORAGE_S3_REQUEST_TIMEOUT_MS"
+  | "STORAGE_S3_STREAM_CONNECTION_TIMEOUT_MS"
+  | "STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS"
+  | "STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS"
 >;

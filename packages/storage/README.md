@@ -107,21 +107,24 @@ export const InvoicesApp = Module("InvoicesApp")({
 
 ## Options
 
-| Option                                                      | Where                              | What it is                                                                    |
-| ----------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
-| `sha256` / `metadata`                                       | `put` / `putIfAbsent` and streams  | verify the write digest and atomically describe the object                    |
-| `checksum` / `metadata`                                     | `copy`                             | compute SHA-256 server side and replace the description                       |
-| `kmsKeyId`                                                  | writes, copy and `presignedUpload` | select per-object SSE-KMS; upload clients send both signed encryption headers |
-| `adapter`                                                   | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required                      |
-| `STORAGE_S3_ENDPOINT`                                       | environment, read by `s3Storage()` | the store's endpoint — required                                               |
-| `STORAGE_S3_BUCKET`                                         | environment                        | the bucket — required                                                         |
-| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | environment                        | the credentials — required                                                    |
-| `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                                           |
-| `STORAGE_S3_MAX_SOCKETS` / `maxSockets`                     | environment, or `s3Storage({...})` | sockets every call but the streamed ones shares — default `50`, the SDK's     |
-| `STORAGE_S3_STREAM_MAX_SOCKETS` / `streamMaxSockets`        | environment, or `s3Storage({...})` | the streamed calls' own pool, and their bound — default `50`                  |
-| `STORAGE_S3_CONNECTION_TIMEOUT_MS` / `connectionTimeoutMs`  | environment, or `s3Storage({...})` | how long an attempt waits for a socket — default `0`, none                    |
-| `STORAGE_S3_SOCKET_TIMEOUT_MS` / `socketTimeoutMs`          | environment, or `s3Storage({...})` | the SDK's idle-socket timeout — default `0`, none                             |
-| `STORAGE_S3_REQUEST_TIMEOUT_MS` / `requestTimeoutMs`        | environment, or `s3Storage({...})` | how long an attempt waits for the store to answer — default `0`, none         |
+| Option                                                                  | Where                              | What it is                                                                    |
+| ----------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
+| `sha256` / `metadata`                                                   | `put` / `putIfAbsent` and streams  | verify the write digest and atomically describe the object                    |
+| `checksum` / `metadata`                                                 | `copy`                             | compute SHA-256 server side and replace the description                       |
+| `kmsKeyId`                                                              | writes, copy and `presignedUpload` | select per-object SSE-KMS; upload clients send both signed encryption headers |
+| `adapter`                                                               | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required                      |
+| `STORAGE_S3_ENDPOINT`                                                   | environment, read by `s3Storage()` | the store's endpoint — required                                               |
+| `STORAGE_S3_BUCKET`                                                     | environment                        | the bucket — required                                                         |
+| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY`             | environment                        | the credentials — required                                                    |
+| `STORAGE_S3_REGION`                                                     | environment                        | default `us-east-1`                                                           |
+| `STORAGE_S3_MAX_SOCKETS` / `maxSockets`                                 | environment, or `s3Storage({...})` | sockets every call but the streamed ones shares — default `50`, the SDK's     |
+| `STORAGE_S3_STREAM_MAX_SOCKETS` / `streamMaxSockets`                    | environment, or `s3Storage({...})` | the streamed calls' own pool, and their bound — default `50`                  |
+| `STORAGE_S3_CONNECTION_TIMEOUT_MS` / `connectionTimeoutMs`              | environment, or `s3Storage({...})` | how long an attempt waits for a socket — default `0`, none                    |
+| `STORAGE_S3_SOCKET_TIMEOUT_MS` / `socketTimeoutMs`                      | environment, or `s3Storage({...})` | how long an attempt's socket may stay idle — default `0`, none                |
+| `STORAGE_S3_REQUEST_TIMEOUT_MS` / `requestTimeoutMs`                    | environment, or `s3Storage({...})` | how long an attempt waits for the store to answer — default `0`, none         |
+| `STORAGE_S3_STREAM_CONNECTION_TIMEOUT_MS` / `streamConnectionTimeoutMs` | environment, or `s3Storage({...})` | the stream pool's own connection timeout — default `connectionTimeoutMs`      |
+| `STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS` / `streamSocketTimeoutMs`         | environment, or `s3Storage({...})` | the stream pool's own socket timeout — default `socketTimeoutMs`              |
+| `STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS` / `streamRequestTimeoutMs`       | environment, or `s3Storage({...})` | the stream pool's own request timeout — default `requestTimeoutMs`            |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),

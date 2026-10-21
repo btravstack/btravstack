@@ -189,6 +189,43 @@ needs:
   the client hangs up. Set an idle or minimum-rate timeout at the proxy or
   load balancer in front of the service.
 
-`STORAGE_S3_CONNECTION_TIMEOUT_MS`, `STORAGE_S3_SOCKET_TIMEOUT_MS` and
-`STORAGE_S3_REQUEST_TIMEOUT_MS` bound the store's side of a call; their
-meaning is on [the reference page](/reference/storage#s3storage).
+**Each pool has its own timeouts**, because the two need opposite bounds: a
+short call should fail fast when the store stalls, so the service sheds and
+retries it, while a stream is paced by the client at the other end, and a slow
+reader legitimately leaves the store's socket idle. The short calls (`head`,
+`get`, `put`, `putIfAbsent`, `copy`, `delete`) take the shared three; the
+streamed ones take `STORAGE_S3_STREAM_*`, each falling back to its shared
+counterpart when unset. Every timeout is per attempt, and the SDK makes three,
+so a call can take about three times one before it answers.
+
+| Bound                                                                          | What it cuts                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `STORAGE_S3_CONNECTION_TIMEOUT_MS` / `STORAGE_S3_STREAM_CONNECTION_TIMEOUT_MS` | an attempt still without a connected socket: connecting, and on the short pool waiting for a free socket too; the stream pool never queues, so there it bounds connecting only                                                                                              |
+| `STORAGE_S3_REQUEST_TIMEOUT_MS` / `STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS`       | an attempt the store has not started answering, its request body included: a whole `put` or `copy`; a stream's time to first byte, or one 8 MiB part and the closing request of a streamed write. It never cuts a body being read                                           |
+| `STORAGE_S3_SOCKET_TIMEOUT_MS` / `STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS`         | an attempt whose socket sent and received nothing for that long. Under 6 s the SDK arms it at once, so it also cuts a body read that paused; from 6 s it arms it 3 s into the attempt, and only if the store has not answered, so it cuts a silent store, not a paused read |
+
+Size each pool for its own calls:
+
+- **The short pool**: a socket timeout of a few seconds, under 6 s so a stalled
+  `get` body is cut too, and a request timeout for the slowest short call you
+  accept: the largest `put` at the store's slowest bandwidth, and a `copy` of
+  the largest object, which a store may answer only once the copy is done.
+- **The stream pool's socket timeout**: 6 s or more, so a reader that pauses
+  is never cut by the store's side; it then bounds a store that stays silent
+  before answering, and a reader that stopped is the ingress's idle timeout to
+  cut. Under 6 s it must outlast the longest pause a legitimate reader makes.
+- **The stream pool's request timeout**: one 8 MiB part at the slowest
+  bandwidth to the store you accept, plus the store's latency; it also bounds a
+  download's time to first byte.
+- **The stream pool's connection timeout**: the shared one usually fits, since
+  connecting costs the same on both pools.
+
+```sh
+STORAGE_S3_SOCKET_TIMEOUT_MS=5000           # a stalled short call fails within 5 s per attempt
+STORAGE_S3_REQUEST_TIMEOUT_MS=30000         # the slowest put or copy accepted
+STORAGE_S3_STREAM_SOCKET_TIMEOUT_MS=60000   # the store may stay silent a minute; readers may pause
+STORAGE_S3_STREAM_REQUEST_TIMEOUT_MS=90000  # one 8 MiB part at about 1 Mbit/s
+```
+
+The options of the same names are on
+[the reference page](/reference/storage#s3storage).
