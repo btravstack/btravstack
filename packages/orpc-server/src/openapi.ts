@@ -7,6 +7,7 @@ import { fromSafePromise, type AsyncResult } from "unthrown";
 
 import { errorStatusesOf } from "./error-status.js";
 
+export { openApiDocumentRoute } from "./openapi-document-route.js";
 export { openApiRoutes, type OpenApiRoutesOptions } from "./openapi-routes.js";
 
 /**

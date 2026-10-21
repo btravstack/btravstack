@@ -47,7 +47,7 @@ adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
 one shape — a port, a real adapter, an in-process adapter, and one
 composition function), `keys` (an `EnvelopeKeys` port of per-owner root keys
 wrapped by an AWS KMS key of each owner, behind a `/kms` subpath, and an HKDF
-helper giving each purpose its own key), `outbox` (the transactional outbox's relay — the poll
+helper giving each purpose its own Node WebCrypto key), `outbox` (the transactional outbox's relay — the poll
 loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; `outboxRuntime()` also boots a standalone delivery process
 through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
@@ -209,7 +209,7 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    `@btravstack/http-server`'s `HttpHandler` is a **set port** of
    `{ prefix, handle }`, routed by longest matching prefix. Protocol packages
    contribute members: `@btravstack/orpc-server` supplies oRPC and opt-in
-   OpenAPI routes, `@btravstack/htmx-server` supplies escaped HTML fragments,
+   OpenAPI routes and an opt-in public document mount, `@btravstack/htmx-server` supplies escaped HTML fragments,
    `@btravstack/graphql-server` supplies Yoga over a caller-built schema, and
    `@btravstack/mcp-server` supplies a Model Context Protocol server built with
    the official SDK.
@@ -262,7 +262,8 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    an imported module's providers.
 
    **The auth seam is protocol-neutral.** `resolvePrincipal` is one walk every
-   answerer shares, and a protocol with no contract declares its requirements
+   answerer shares; a modeled `AuthenticatorUnavailable` short-circuits it and
+   answers `503`, observed with its scheme, while defects remain `500`, and a protocol with no contract declares its requirements
    as data on the route, gated by `RequiresGate` — so a GraphQL answerer
    inherits the seam rather than redesigning it. The surfaces are
    `packages/http-server/AGENTS.md` and `AUTH.md`; the worked browser consumer
@@ -296,8 +297,8 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    a browser connected to another — and none needs to, once every replica
    receives every fact. A subscription the HTTP process's graph holds as a
    resource (an exclusive queue per replica, bound to the fact's exchange)
-   feeds that process's own streams; the broker is the backplane, it is an
-   adapter rather than a second runtime, and `@btravstack/amqp-worker` is not
+   feeds that process's own streams; the broker is the backplane, `amqpSubscription` owns the ephemeral
+   subscription as a scoped resource with health and observations rather than a second runtime, and `@btravstack/amqp-worker` is not
    composed into the HTTP process to get it.
 
    Scheduling stands by Temporal Schedules. The floor that costs — a cluster

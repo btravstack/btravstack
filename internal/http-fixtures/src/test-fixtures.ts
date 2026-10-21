@@ -33,6 +33,7 @@ import {
   Observers,
   currentUnit,
   noObserver,
+  noObserverMember,
   type Attributes,
   type Operation,
   start,
@@ -2117,6 +2118,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
   Module.scoped(
     Module("HtmxAnswererFixture")({
       provides: [
+        noObserverMember,
         Provider(HttpConfig)({
           inject: {},
           value: {

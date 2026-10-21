@@ -1,11 +1,14 @@
 import type { IncomingMessage } from "node:http";
 
 import type { Requirements } from "@btravstack/contract";
+import type { Observers } from "@btravstack/core";
+import type { ServiceOf } from "@btravstack/di";
 import { P, type AsyncResult } from "unthrown";
 
 import {
   resolveScheme,
   type AuthenticatorService,
+  type AuthenticatorUnavailable,
   type Resolved,
   type Unauthenticated,
   type UnderScoped,
@@ -22,12 +25,14 @@ export const resolveRequestScheme = (
   requirements: Requirements,
   authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   request: IncomingMessage,
-): AsyncResult<Resolved, Unauthenticated | UnderScoped> => {
+  observers: ServiceOf<typeof Observers> = [],
+): AsyncResult<Resolved, Unauthenticated | UnderScoped | AuthenticatorUnavailable> => {
   delete (request as ScopedRequest)[REFUSED];
   const query = new URLSearchParams(URL.parse(request.url ?? "", "http://x")?.search);
-  return resolveScheme(requirements, authenticators, request.headers, query).mapErrCases(
+  return resolveScheme(requirements, authenticators, request.headers, query, observers).mapErrCases(
     (matcher) =>
       matcher
+        .with(P.tag("AuthenticatorUnavailable"), (error) => error)
         .with(P.tag("Unauthenticated"), (error) => error)
         .with(P.tag("UnderScoped"), (error) => {
           if (error.scopes !== undefined) (request as ScopedRequest)[REFUSED] = error.scopes;

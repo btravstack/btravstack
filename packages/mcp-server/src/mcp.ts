@@ -236,9 +236,11 @@ export const mcp = <
               requirements,
               authenticators,
               request,
+              observers,
             ).mapErrCases((matcher) =>
               matcher
                 .with(P.tag("Unauthenticated"), () => 401 as const)
+                .with(P.tag("AuthenticatorUnavailable"), () => 503 as const)
                 .with(P.tag("UnderScoped"), () => 403 as const),
             );
             if (result.isDefect()) {

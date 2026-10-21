@@ -489,6 +489,7 @@ const main = (): void => {
             module: "node16",
             moduleResolution: "node16",
             target: "es2023",
+            lib: ["ES2024"],
             strict: true,
             // What a consumer actually sets, and what every starter template
             // ships. Without it this gate reports a `type-fest` declaration

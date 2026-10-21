@@ -1648,3 +1648,7 @@ logout; process-local single-flight cannot satisfy it. An expired lease must
 not commit over a deletion. Credentials stay out of session principal data and
 observations. Existing stateless sessions retain their behavior; a cookie with
 a token reference requires the token-aware scheme.
+
+Authentication dependency outages are modeled by `AuthenticatorUnavailable`,
+short-circuit the shared walk, and answer `503` in every answerer. The request
+adapter reports the scheme to `Observers`; defects remain `500`. See `AUTH.md`.

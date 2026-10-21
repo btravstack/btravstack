@@ -71,12 +71,12 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "@amqp-contract/worker": "^3.0.0-beta.7",
+    "@amqp-contract/worker": "^3.0.0-beta.11",
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@opentelemetry/api": "^1",
-    "unthrown": "^5.7.0"
+    "unthrown": "^5.11.0"
   },
   "engines": {
     "node": ">=22.22"

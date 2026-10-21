@@ -128,3 +128,11 @@ Only annotated procedures pay for extra passes. Object and function operation
 `spec` overrides keep oRPC's own behavior. The RPC answerer retains its default
 map. A declaration needs `data` or `message` alongside `status` to satisfy
 oRPC's error-entry type without importing the server into a contract package.
+
+`openApiDocumentRoute({ path, document })` publishes a supplied document as a
+public `HttpHandler` member. Serialization happens once during construction,
+so the served bytes are a snapshot of that document. Only its exact path is
+served, including a query; descendants and a trailing slash are `404`. `HEAD`
+has GET's headers without its body; other methods answer `405` with `Allow`.
+Authentication's modeled outage is reported by the shared walk and is not
+reported a second time as an oRPC defect.

@@ -1,3 +1,5 @@
+import type { webcrypto } from "node:crypto";
+
 import { Port } from "@btravstack/di";
 import { TaggedError, type AsyncResult } from "unthrown";
 
@@ -54,7 +56,7 @@ export type EnvelopeKeysService = {
    */
   readonly rootKey: (
     generation: KeyGeneration,
-  ) => AsyncResult<CryptoKey, KeyErased | KeysUnavailable>;
+  ) => AsyncResult<webcrypto.CryptoKey, KeyErased | KeysUnavailable>;
 
   /**
    * A new generation under the owner's key, for the application to keep.

@@ -13,7 +13,7 @@
 
 ```sh
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@^3.0.0-beta.7 @opentelemetry/api
+  @amqp-contract/worker@^3.0.0-beta.11 @opentelemetry/api
 ```
 
 All six are peer dependencies — install them (`@opentelemetry/api` because
@@ -221,3 +221,13 @@ It keeps private infrastructure hidden and business exports explicit.
 ## License
 
 [MIT](./LICENSE) © Benoit TRAVERS
+
+## Broadcast subscriptions
+
+`amqpSubscription(name, { contract, settings, inject?, sync })` consumes
+best-effort facts beside an HTTP runtime, with one exclusive ephemeral queue
+per replica. It reports failures and broker health and closes with the scope.
+`InvalidAmqpSubscription` names a refused configuration;
+`SubscriptionHandlers<C, E>` types the contract's handler record.
+See [the subscription reference](https://btravstack.github.io/btravstack/reference/amqp-worker#broadcast-subscriptions-beside-another-runtime)
+for the typed contract, settings port and delivery guarantees.

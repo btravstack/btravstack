@@ -10,3 +10,6 @@ export type {
 } from "./amqp-runtime.js";
 export { AmqpHandler, AmqpMessage } from "./handler.js";
 export type { AmqpMessageOf, AmqpMessagePortOf, HandlerPortOf } from "./handler.js";
+
+export { amqpSubscription, InvalidAmqpSubscription } from "./subscription.js";
+export type { SubscriptionHandlers } from "./subscription.js";

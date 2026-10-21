@@ -34,23 +34,26 @@ import { NotificationsSlice } from "../../slices/notifications/module.js";
 
 `packages/amqp-worker/src/index.ts` exports exactly this:
 
-| Export                  | Kind  | What it is                                                                                                                                                                                                                        |
-| ----------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AmqpModule`            | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the handlers provider |
-| `AmqpModuleOptions`     | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                                       |
-| `AmqpHandlers`          | value | `AmqpHandlers(contract)` — the builder on the starter's own handlers port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per consumer/rpc           |
-| `HandlersPortOf<C>`     | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                                            |
-| `HandlersInstanceOf<C>` | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                                             |
-| `AmqpHandler`           | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, unit?, sync }`, and the piece is what `AmqpHandlers(contract)([...])` composes      |
-| `HandlerPortOf<C, K>`   | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                   |
-| `AmqpMessage`           | value | `AmqpMessage(contract)` — the port the delivery is **seeded** on, typed by that contract's own messages; a unit module names it in `needs` and injects it                                                                         |
-| `AmqpMessageOf<C>`      | type  | The union of every message `C` declares — what `AmqpMessage(C)` carries                                                                                                                                                           |
-| `AmqpMessagePortOf<C>`  | type  | `AmqpMessage(C)`'s port class, typed for `C`                                                                                                                                                                                      |
-| `AmqpOptions`           | type  | the starter's own options, which `AmqpModule` takes beside `handlers` and the module lists                                                                                                                                        |
-| `AmqpConnectionOptions` | type  | The connection tuning `TypedAmqpWorker.create` accepts — heartbeat, reconnect interval, `findServers`, TLS/socket options; reached by index, since the library does not export it by name                                         |
-| `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                         |
-| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too             |
-| `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                             |
+| Export                       | Kind  | What it is                                                                                                                                                                                                                        |
+| ---------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AmqpModule`                 | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, unit?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the handlers provider |
+| `amqpSubscription`           | value | `amqpSubscription(name, { contract, settings, inject?, sync })` — a scoped best-effort broadcast consumer beside the process runtime                                                                                              |
+| `InvalidAmqpSubscription`    | value | A modeled startup failure whose `subscription` field names an invalid subscription configuration                                                                                                                                  |
+| `SubscriptionHandlers<C, E>` | type  | The contract-typed subscription handlers, accepting synchronous work or `Result` / `AsyncResult` outcomes                                                                                                                         |
+| `AmqpModuleOptions`          | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                                       |
+| `AmqpHandlers`               | value | `AmqpHandlers(contract)` — the builder on the starter's own handlers port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per consumer/rpc           |
+| `HandlersPortOf<C>`          | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                                            |
+| `HandlersInstanceOf<C>`      | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                                             |
+| `AmqpHandler`                | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, unit?, sync }`, and the piece is what `AmqpHandlers(contract)([...])` composes      |
+| `HandlerPortOf<C, K>`        | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                   |
+| `AmqpMessage`                | value | `AmqpMessage(contract)` — the port the delivery is **seeded** on, typed by that contract's own messages; a unit module names it in `needs` and injects it                                                                         |
+| `AmqpMessageOf<C>`           | type  | The union of every message `C` declares — what `AmqpMessage(C)` carries                                                                                                                                                           |
+| `AmqpMessagePortOf<C>`       | type  | `AmqpMessage(C)`'s port class, typed for `C`                                                                                                                                                                                      |
+| `AmqpOptions`                | type  | the starter's own options, which `AmqpModule` takes beside `handlers` and the module lists                                                                                                                                        |
+| `AmqpConnectionOptions`      | type  | The connection tuning `TypedAmqpWorker.create` accepts — heartbeat, reconnect interval, `findServers`, TLS/socket options; reached by index, since the library does not export it by name                                         |
+| `AmqpRuntime`                | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                         |
+| `AmqpConfig`                 | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too             |
+| `AmqpInfo`                   | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                             |
 
 `HandlersPortOf<C>` / `HandlersInstanceOf<C>` / `HandlerPortOf<C, K>` are
 exported as **types only**, and only because declaration emit forces it: an
@@ -522,3 +525,65 @@ contract refused structurally.
 `AmqpModule` automatically exports publicly available `Logger` and `HealthChecks`
 ports, including whole-module re-exports and providers declared at the root.
 It keeps private infrastructure hidden and business exports explicit.
+
+## Broadcast subscriptions beside another runtime
+
+Subscriptions require `@amqp-contract/worker >=3.0.0-beta.11` for its public connectivity check, and `unthrown >=5.11.0` for that train's dependency closure.
+
+`amqpSubscription(name, { contract, settings, inject?, sync })` imports a
+scoped consumer resource without exporting a runtime. Compose it in an HTTP
+root's `imports` for per-replica cache eviction. The settings port supplies
+`url` and optionally `connectTimeoutMs` (default `5000`). `sync` receives the
+services named by `inject` and returns one typed handler per contract consumer.
+Handlers may return `void`, a synchronous `Result`, or an `AsyncResult`.
+
+```ts
+import { randomUUID } from "node:crypto";
+import { defineContract, defineEventConsumer, defineEventPublisher, defineExchange, defineMessage, defineQueue } from "@amqp-contract/contract";
+import { amqpSubscription } from "@btravstack/amqp-worker";
+import { Port } from "@btravstack/di";
+import { z } from "zod";
+
+class SubscriptionSettings extends Port("SubscriptionSettings")<{
+  readonly url: string;
+}> {}
+
+const changed = defineEventPublisher(
+  defineExchange("entitlements"),
+  defineMessage(z.object({ tenantId: z.string() })),
+  { routingKey: "entitlements.changed" },
+);
+const queue = defineQueue(`eviction-${randomUUID()}`, {
+  type: "classic", durable: false, exclusive: true, autoDelete: true,
+  retry: { mode: "none" }, onPoison: "drop",
+});
+const evictionContract = defineContract({
+  consumers: { changed: defineEventConsumer(changed, queue) },
+});
+
+declare const evict: (tenantId: string) => void;
+const eviction = amqpSubscription("entitlements", {
+  contract: evictionContract, settings: SubscriptionSettings,
+  sync: () => ({ changed: ({ input }) => evict(input.payload.tenantId) }),
+});
+```
+
+Provide `SubscriptionSettings` from deployment configuration, and import
+`eviction` into the HTTP root. Every replica names a different queue, so each
+receives every fact. Every consumed queue must be classic, exclusive,
+auto-delete and non-durable, with `retry: { mode: "none" }` and no dead letter.
+RPCs and empty subscriptions are refused at boot with
+`InvalidAmqpSubscription`, whose `subscription` field names the resource.
+
+Validated deliveries are acknowledged even when a handler refuses or defects.
+The `amqp` / `subscription` observation carries the subscription and consumer
+names and settles `error` for either failure. Poison payloads follow the
+contract's explicit `onPoison: "drop"` policy and broker diagnostics are
+observed. Loss is bounded by the application's cache TTL; durable work stays
+with `AmqpModule`.
+
+The resource closes its worker with the application scope, cancelling new
+deliveries and awaiting in-flight handlers before releasing its connection.
+The kernel's stop deadline bounds that wait. `amqp-subscription:<name>` is a
+health contribution reporting broker connectivity; it does not detect a
+server-cancelled consumer while the connection remains up.

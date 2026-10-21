@@ -16,7 +16,11 @@ import {
   type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
-import { schemeDeps, schemeServices } from "@btravstack/http-server/internal";
+import {
+  AuthenticatorUnavailable,
+  schemeDeps,
+  schemeServices,
+} from "@btravstack/http-server/internal";
 import { CookieSchemes, csrfOn } from "@btravstack/http-server/internal";
 import { HttpHandler } from "@btravstack/http-server/internal";
 import { HttpConfig } from "@btravstack/http-server/internal";
@@ -199,7 +203,8 @@ export const reportDefects = (
     if (
       !answered.defined &&
       (STATUS_OF[answered.code] ?? DEFAULT_ERROR_STATUS) >= 500 &&
-      !refusedStream(error)
+      !refusedStream(error) &&
+      !(answered.cause instanceof AuthenticatorUnavailable)
     )
       observe(observers, {
         component: "orpc",
@@ -320,7 +325,7 @@ export const orpc = (options: OrpcOptions = {}) => {
         // The request and the unit host both ride oRPC's initial context:
         // `principalMiddleware` reads the former, `unitScope` the latter.
         handle: (request, response, _signal, host) =>
-          rpc.handle(request, response, { prefix, context: { request, host } }),
+          rpc.handle(request, response, { prefix, context: { request, host, observers } }),
       };
     },
   });

@@ -1,3 +1,4 @@
+import { webcrypto } from "node:crypto";
 // What a LIBRARY consumer exports, compiled under `declaration: true` against
 // the published tarballs.
 //
@@ -19,6 +20,7 @@ import { Entity } from "@btravstack/entity";
 import { GraphqlModule, graphql } from "@btravstack/graphql-server";
 import { httpClient, HttpClient, type HttpPolicy } from "@btravstack/http-client";
 import { defineAuth } from "@btravstack/http-server";
+import { deriveKey, type EnvelopeKeysService, type KeyGeneration } from "@btravstack/keys";
 import { mcp } from "@btravstack/mcp-server";
 import { HttpModule, defineHttp } from "@btravstack/orpc-server";
 import {
@@ -32,7 +34,7 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { oc } from "@orpc/contract";
 import { createSchema } from "graphql-yoga";
-import { OkAsync } from "unthrown";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { z } from "zod";
 
 // 1. A port and the module that provides it — di's own emit guard's shape,
@@ -149,3 +151,30 @@ export const OutboundHttp = Module("ConsumerOutboundHttp")({
   ],
   exports: [HttpClient],
 });
+
+export const encryptPayload = (keys: EnvelopeKeysService, generation: KeyGeneration) =>
+  keys.rootKey(generation).flatMap((root) =>
+    deriveKey(
+      root,
+      { namespace: "consumer", purpose: "seal", version: 1 },
+      {
+        algorithm: { name: "AES-GCM", length: 256 },
+        usages: ["encrypt"],
+      },
+    ).flatMap((key) =>
+      fromSafePromise(
+        webcrypto.subtle.encrypt(
+          { name: "AES-GCM", iv: webcrypto.getRandomValues(new Uint8Array(12)) },
+          key,
+          new Uint8Array(1),
+        ),
+      ),
+    ),
+  );
+
+type ConsumerRootKey = Extract<
+  Awaited<ReturnType<EnvelopeKeysService["rootKey"]>>,
+  { tag: "Ok" }
+>["value"];
+type MustBeFalse<T extends false> = T;
+export type ConsumerRootKeyIsTyped = MustBeFalse<0 extends 1 & ConsumerRootKey ? true : false>;

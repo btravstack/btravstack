@@ -1,6 +1,8 @@
 import type { IncomingMessage } from "node:http";
 
 import type { Requirements } from "@btravstack/contract";
+import type { Observers } from "@btravstack/core";
+import type { ServiceOf } from "@btravstack/di";
 import {
   principalOf,
   resolveRequestScheme,
@@ -20,7 +22,10 @@ export const principalMiddleware =
     authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   ) =>
   async (options: {
-    readonly context: { readonly request: IncomingMessage };
+    readonly context: {
+      readonly request: IncomingMessage;
+      readonly observers?: ServiceOf<typeof Observers>;
+    };
     readonly next: (injected: {
       readonly context: { readonly principal: unknown; readonly resolved: Resolved };
     }) => Promise<unknown>;
@@ -29,6 +34,7 @@ export const principalMiddleware =
       requirements,
       authenticators,
       options.context.request,
+      options.context.observers,
     );
     if (resolved.isDefect()) {
       // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
@@ -38,7 +44,14 @@ export const principalMiddleware =
       // No message: oRPC serializes `message` to the client, and a refusal has
       // nothing a caller is entitled to.
       // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm
-      throw new ORPCError(resolved.error._tag === "UnderScoped" ? "FORBIDDEN" : "UNAUTHORIZED");
+      throw new ORPCError(
+        resolved.error._tag === "AuthenticatorUnavailable"
+          ? "SERVICE_UNAVAILABLE"
+          : resolved.error._tag === "UnderScoped"
+            ? "FORBIDDEN"
+            : "UNAUTHORIZED",
+        { cause: resolved.error },
+      );
     }
     return await options.next({
       context: {

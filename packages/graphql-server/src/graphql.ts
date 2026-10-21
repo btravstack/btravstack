@@ -251,7 +251,7 @@ export const graphql = <
               );
           }
         const authenticators = schemeServices(schemes, services);
-        const refuse: Plugin<{}, { refusalStatus?: 401 | 403 }> = {
+        const refuse: Plugin<{}, { refusalStatus?: 401 | 403 | 503 }> = {
           onRequest: ({ serverContext, fetchAPI, endResponse }) => {
             if (serverContext.refusalStatus !== undefined)
               endResponse(new fetchAPI.Response(null, { status: serverContext.refusalStatus }));
@@ -262,7 +262,7 @@ export const graphql = <
           incoming: IncomingMessage;
           unit: Readonly<Record<string, unknown>>;
           signal: AbortSignal;
-          refusalStatus?: 401 | 403;
+          refusalStatus?: 401 | 403 | 503;
         }>({
           schema: options.schema,
           graphqlEndpoint: prefix,
@@ -321,9 +321,11 @@ export const graphql = <
                 requirements,
                 authenticators,
                 request,
+                observers,
               ).mapErrCases((matcher) =>
                 matcher
                   .with(P.tag("Unauthenticated"), () => 401 as const)
+                  .with(P.tag("AuthenticatorUnavailable"), () => 503 as const)
                   .with(P.tag("UnderScoped"), () => 403 as const),
               );
               if (result.isDefect()) {

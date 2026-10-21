@@ -3,6 +3,7 @@ import { start } from "@btravstack/core";
 import { Observers, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import {
+  AuthenticatorUnavailable,
   HttpAuthenticator,
   Unauthenticated,
   granted,
@@ -21,6 +22,39 @@ import { fieldResult } from "./field.js";
 import { graphql } from "./graphql.js";
 
 describe("graphql answerer", () => {
+  it("answers 503 when authentication cannot reach its dependency", async ({ boot }) => {
+    // GIVEN an unavailable verifier at a protected GraphQL mount
+    const api = defineAuth({
+      authenticators: {
+        user: HttpAuthenticator<{}>()({
+          inject: {},
+          sync: () => () => ErrAsync(new AuthenticatorUnavailable()),
+        }),
+      },
+    });
+    const answerer = graphql(api, {
+      requires: [{ user: [] }],
+      schema: createSchema({ typeDefs: "type Query { hello: String }" }),
+    });
+    const info = (
+      await boot(
+        Module("UnavailableGraphql")({
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [answerer, ...answerer.authenticators],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+      ).runtimeInfo()
+    ).get();
+    // WHEN a query reaches authentication
+    const response = await fetch(`http://127.0.0.1:${info?.port}/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"query":"{ hello }"}',
+    });
+    // THEN it is an unavailable dependency response
+    expect(response.status).toBe(503);
+  });
+
   it("challenges a Bearer scope refusal through Yoga", async ({ boot, resourceCall }) => {
     // GIVEN a GraphQL mount requiring a scope the verified token lacks
     const api = defineAuth({

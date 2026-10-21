@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { Observers } from "@btravstack/core";
 import { Provider } from "@btravstack/di";
 import { principalOf, resolveRequestScheme, type Resolved } from "@btravstack/http-server/internal";
 import { HttpHandler, pathUnder, send } from "@btravstack/http-server/internal";
@@ -45,8 +46,13 @@ export type HtmxOptions = {
 export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";
   return Provider.member(HttpHandler)({
-    inject: { fragments: HtmxFragmentsPort, config: HttpConfig, unit: HttpUnit },
-    sync: ({ fragments, config, unit: units }) => ({
+    inject: {
+      fragments: HtmxFragmentsPort,
+      config: HttpConfig,
+      unit: HttpUnit,
+      observers: Observers,
+    },
+    sync: ({ fragments, config, unit: units, observers }) => ({
       prefix,
       handle: async (request, response, _signal, host) => {
         const matched = matchRoute(
@@ -68,11 +74,13 @@ export const htmx = (options: HtmxOptions = {}) => {
             route.requirements,
             fragments.authenticators,
             request,
+            observers,
           ).mapErrCases((matcher) =>
             matcher
               .with(P.tag("Unauthenticated"), (): Refusal => refusalOf(options.login, request.url))
               // Never sent to log in: a caller who IS logged in and lacks the
               // scope would come straight back to the same 403.
+              .with(P.tag("AuthenticatorUnavailable"), (): Refusal => ({ status: 503 }))
               .with(P.tag("UnderScoped"), (): Refusal => ({ status: 403 })),
           );
           if (resolved.isDefect()) {
@@ -204,7 +212,7 @@ const readBody = (request: IncomingMessage, limit: number): AsyncResult<string, 
   });
 
 /** A refused caller's answer: a bare status, or where to send one with no session. */
-type Refusal = { readonly status: 401 | 403 } | { readonly login: string };
+type Refusal = { readonly status: 401 | 403 | 503 } | { readonly login: string };
 
 const refusalOf = (login: `/${string}` | undefined, url: string | undefined): Refusal => {
   if (login === undefined) return { status: 401 };

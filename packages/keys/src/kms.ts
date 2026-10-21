@@ -1,3 +1,5 @@
+import { webcrypto } from "node:crypto";
+
 import {
   DecryptCommand,
   DescribeKeyCommand,
@@ -168,7 +170,7 @@ export const kmsKeys = (
   });
 
 type Observer = (operation: Operation) => Settle;
-type Unwrapping = AsyncResult<CryptoKey, KeyErased | KeysUnavailable>;
+type Unwrapping = AsyncResult<webcrypto.CryptoKey, KeyErased | KeysUnavailable>;
 
 /** The KMS errors that mean the generation will never be unwrapped again, and the reason each one gives. */
 const ERASED = new Map<unknown, KeyErased["reason"]>([
@@ -191,7 +193,7 @@ const kmsEnvelopeKeys = (
 ): EnvelopeKeysService => {
   const cached = new Map<
     string,
-    { readonly owner: string; readonly root: CryptoKey; readonly expiresAt: number }
+    { readonly owner: string; readonly root: webcrypto.CryptoKey; readonly expiresAt: number }
   >();
   const inFlight = new Map<string, Unwrapping>();
 
@@ -245,7 +247,7 @@ const kmsEnvelopeKeys = (
         // Always set by `Decrypt`; were it missing, `importKey` would reject, a defect.
         const plaintext = Plaintext as Uint8Array<ArrayBuffer>;
         return fromSafePromise(
-          crypto.subtle
+          webcrypto.subtle
             .importKey("raw", plaintext, "HKDF", false, ["deriveKey", "deriveBits"])
             .finally(() => plaintext.fill(0)),
         );
