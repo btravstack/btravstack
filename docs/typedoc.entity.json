@@ -50,6 +50,7 @@
     "OutputOf",
     "PatchOf",
     "PlainOf",
+    "ReadonlyBrandedArray",
     "ReadonlySequence",
     "RecordOf",
     "RootInstance",

@@ -82,6 +82,11 @@ Creation inputs accept deeply readonly values, including an existing entity's
 frozen recursive JSON field. Brands remain required, and construction still
 validates the value through `make`.
 
+A branded variadic tuple with a required trailing element keeps its native
+creation-input type. TypeScript loses that constraint when rebuilding the branded
+array as readonly, so its frozen projection cannot be passed back as a typed
+creation input. This restriction also applies when that tuple is nested.
+
 ```ts
 const Payload = z.json().brand("Payload");
 class Source extends Entity("Source")({ data: Payload }) {}

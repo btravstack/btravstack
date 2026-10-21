@@ -150,3 +150,20 @@ test("leading rest tuples keep their required trailing element", () => {
   void empty;
   void wrongTail;
 });
+
+test("branded leading rest creation tuples keep their required suffix", () => {
+  const Tail = z.custom<[...string[], number]>().brand("Tail");
+  class WithTail extends Entity("WithTail")({ values: Entity.field(Tail, { unbranded: true }) }) {}
+  const valid = null as unknown as [...string[], number] & z.core.$brand<"Tail">;
+  const empty = null as unknown as [] & z.core.$brand<"Tail">;
+  const wrongTail = null as unknown as string[] & z.core.$brand<"Tail">;
+  WithTail.factory({})({ values: valid });
+  // @ts-expect-error a brand does not replace the required trailing element
+  WithTail.factory({})({ values: empty });
+  // @ts-expect-error a branded string array has no required numeric suffix
+  WithTail.factory({})({ values: wrongTail });
+  type Nested = DeepReadonly<{ values: [...string[], number] & z.core.$brand<"Tail"> }, "creation">;
+  // @ts-expect-error nested creation values keep the native suffix constraint too
+  const nested: Nested = { values: empty };
+  void nested;
+});

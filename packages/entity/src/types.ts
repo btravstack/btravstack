@@ -174,7 +174,8 @@ export type OutputOf<S extends Fields, A extends Schemas> = InputOf<S> & Compute
 
 /** Caller-supplied fields, accepting both mutable and deeply readonly domain values. */
 export type CreateInputOf<S extends Fields, G extends PropertyKey> = DeepReadonly<
-  Omit<InputOf<S>, G>
+  Omit<InputOf<S>, G>,
+  "creation"
 >;
 
 /**
@@ -248,40 +249,56 @@ type Immutable =
  * entity with a nested-entity field (#152). Re-intersecting `z.core.$brand<B>`
  * prints as `z.$brand<"Money">` instead.
  */
-export type DeepReadonly<T> = T extends Immutable
+export type DeepReadonly<T, Mode extends "data" | "creation" = "data"> = T extends Immutable
   ? T
   : T extends z.core.$brand<infer B>
-    ? (T extends ReadonlyArray<infer Element>
-        ? ReadonlyArray<DeepReadonly<Element>> & {
-            readonly [
-              K in keyof T as K extends Exclude<keyof unknown[], "length"> | typeof z.core.$brand
-                ? never
-                : K
-            ]: DeepReadonly<T[K]>;
-          }
-        : {
-            readonly [K in keyof T as K extends typeof z.core.$brand ? never : K]: DeepReadonly<
-              T[K]
-            >;
-          }) &
-        z.core.$brand<B>
+    ? T extends ReadonlyArray<infer Element>
+      ? Mode extends "creation"
+        ? T extends infer Sequence extends readonly [...unknown[], unknown]
+          ? number extends Sequence["length"]
+            ? Sequence
+            : ReadonlyBrandedArray<T, Element, Mode> & z.core.$brand<B>
+          : ReadonlyBrandedArray<T, Element, Mode> & z.core.$brand<B>
+        : ReadonlyBrandedArray<T, Element, Mode> & z.core.$brand<B>
+      : {
+          readonly [K in keyof T as K extends typeof z.core.$brand ? never : K]: DeepReadonly<
+            T[K],
+            Mode
+          >;
+        } & z.core.$brand<B>
     : T extends readonly unknown[]
-      ? ReadonlySequence<T>
+      ? ReadonlySequence<T, Mode>
       : T extends object
-        ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+        ? { readonly [K in keyof T]: DeepReadonly<T[K], Mode> }
         : T;
 
-type ReadonlySequence<T extends readonly unknown[]> = "0" extends keyof T
-  ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+type ReadonlyBrandedArray<
+  T extends readonly unknown[],
+  Element,
+  Mode extends "data" | "creation",
+> = ReadonlyArray<DeepReadonly<Element, Mode>> & {
+  readonly [
+    K in keyof T as K extends Exclude<keyof unknown[], "length"> | typeof z.core.$brand ? never : K
+  ]: DeepReadonly<T[K], Mode>;
+};
+
+type ReadonlySequence<
+  T extends readonly unknown[],
+  Mode extends "data" | "creation",
+> = "0" extends keyof T
+  ? { readonly [K in keyof T]: DeepReadonly<T[K], Mode> }
   : T extends readonly [...unknown[], unknown]
-    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    ? { readonly [K in keyof T]: DeepReadonly<T[K], Mode> }
     : number extends T["length"]
       ? Exclude<keyof T, keyof unknown[]> extends never
-        ? ReadonlyArray<DeepReadonly<T[number]>>
-        : ReadonlyArray<DeepReadonly<T[number]>> & {
-            readonly [K in keyof T as K extends keyof unknown[] ? never : K]: DeepReadonly<T[K]>;
+        ? ReadonlyArray<DeepReadonly<T[number], Mode>>
+        : ReadonlyArray<DeepReadonly<T[number], Mode>> & {
+            readonly [K in keyof T as K extends keyof unknown[] ? never : K]: DeepReadonly<
+              T[K],
+              Mode
+            >;
           }
-      : { readonly [K in keyof T]: DeepReadonly<T[K]> };
+      : { readonly [K in keyof T]: DeepReadonly<T[K], Mode> };
 
 /**
  * What `inspect` returns: a stored row's data, and the rules it breaks.
