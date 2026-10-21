@@ -25,26 +25,27 @@ exposes `/healthz` on the public port.
 
 ## Routes
 
-| Route          | `200`                                                  | `503`         | Anything else |
-| -------------- | ------------------------------------------------------ | ------------- | ------------- |
-| `GET /livez`   | body `ok` — any phase before `exited`                  | `unavailable` | —             |
-| `GET /readyz`  | body `ready` — phase `serving`, and not forced unready | `unavailable` | —             |
-| `GET /healthz` | every declared health check passed                     | the report    | —             |
-| other paths    | —                                                      | —             | `404`, empty  |
+| Route          | `200`                                                      | `503`         | Anything else |
+| -------------- | ---------------------------------------------------------- | ------------- | ------------- |
+| `GET /livez`   | body `ok` — any phase before `exited`                      | `unavailable` | —             |
+| `GET /readyz`  | body `ready` — lifecycle ready and opted-in checks healthy | `unavailable` | —             |
+| `GET /healthz` | every declared health check passed                         | the report    | —             |
+| other paths    | —                                                          | —             | `404`, empty  |
 
-`/readyz` answers from the same predicate `RunningApp.ready()` reads
-synchronously. Readiness is a **one-way latch**: forced false by a drain
-(before the runtime is told to stop accepting) or by an uncaught exception, it
-never returns to `true`.
+`RunningApp.ready()` reads the lifecycle predicate synchronously. `/readyz`
+additionally evaluates the cached results of checks that opt into readiness.
+Dependency failures can recover without a restart. The lifecycle is a one-way
+latch: forced false by a drain (before the runtime stops accepting) or an
+uncaught exception, it never returns to `true`, even if a check recovers.
 
-| Phase      | `/livez` | `/readyz`                   |
-| ---------- | -------- | --------------------------- |
-| `building` | `200`    | `503`                       |
-| `starting` | `200`    | `503`                       |
-| `serving`  | `200`    | `200`, until forced unready |
-| `draining` | `200`    | `503`                       |
-| `stopping` | `200`    | `503`                       |
-| `exited`   | `503`    | `503`                       |
+| Phase      | `/livez` | `/readyz`                                           |
+| ---------- | -------- | --------------------------------------------------- |
+| `building` | `200`    | `503`                                               |
+| `starting` | `200`    | `503`                                               |
+| `serving`  | `200`    | `200` if opted-in checks pass, until forced unready |
+| `draining` | `200`    | `503`                                               |
+| `stopping` | `200`    | `503`                                               |
+| `exited`   | `503`    | `503`                                               |
 
 ## `/healthz` — the dependency report
 
@@ -72,17 +73,47 @@ less than one naming all of them. An application that composed no starter
 declaring a check gets `{"status":"healthy","components":[]}`: a set port with
 no contributors is empty, not missing.
 
-**`/healthz` is deliberately NOT folded into `/readyz`.** Readiness removes a
-pod from its Service's endpoints, so failing it on a dependency several
-replicas share takes every replica out at once and turns a degraded system into
-an outage. `/readyz` answers for the lifecycle; `/healthz` reports on
-dependencies, and what to do about a `503` there is an operator's decision —
-an alert, a dashboard, a dependency-aware rollout gate — not an automatic
-removal from load balancing.
+Ordinary checks do not gate readiness and run on every `/healthz` request.
+Readiness opt-in is for dependencies without which the pod cannot serve, such
+as required credentials or keys. A shared dependency failure can remove every
+replica from load balancing, so each contribution makes that choice explicitly.
 
-Each check runs on every request; the kernel caches nothing. A check that is
-expensive to run is the adapter's problem to make cheap, since only the adapter
-knows what "cheap" means for it.
+## Gating readiness
+
+Set `readiness: true` on a `HealthCheck` to gate `/readyz`, using a 1000 ms
+cache, or set `{ intervalMs }` to choose the cache interval:
+
+<!-- doctest: isolate -->
+
+```ts
+import { type HealthCheck } from "@btravstack/core";
+import { OkAsync } from "unthrown";
+
+const credentials: HealthCheck = {
+  name: "credentials",
+  readiness: { intervalMs: 5000 },
+  check: () => OkAsync(), // replace with the adapter's credential check
+};
+```
+
+Contribute the check through `Provider.member(HealthChecks)` and export the set
+port from its module, just as for any health check. `false` or omission keeps
+the check independent of readiness. The interval must be positive and finite;
+an invalid interval reports the component unhealthy without invoking it.
+
+Both `/readyz` and `/healthz` share each opted-in check's cache. Concurrent
+probes share one evaluation; the interval starts when that evaluation settles.
+Success, failure, defect and timeout reports are cached alike. After expiry,
+the next probe evaluates the check again; no background polling runs. Checks
+run in parallel and use their existing `timeoutMs` (default 800 ms), so the
+first probe or a refresh waits for a bounded report. Set the orchestrator's
+probe timeout to accommodate any longer per-check deadline.
+
+`/healthz` still reports every component. `/readyz` evaluates only opted-in
+checks while the lifecycle is ready and returns `503` if any is unhealthy,
+then `200` after a healthy refresh. It never changes `/livez` or restarts the
+process. `RunningApp.ready()` remains a lifecycle-only predicate, including
+when probes are disabled.
 
 A buggy check is contained, not amplified: one that throws instead of
 answering — or whose `AsyncResult` defects — becomes an unhealthy component

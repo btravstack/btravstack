@@ -4,16 +4,19 @@ import { Config, Env, type ConfigInvalid, type Environment } from "@btravstack/c
 import { Module, Port, Provider } from "@btravstack/di";
 import {
   bootFixture,
+  createFakeClock,
   testRuntime,
   type Boot,
   type TestRuntime,
   type TestRuntimeInfo,
   TestRuntimePort,
 } from "@btravstack/testing";
-import { Ok, OkAsync, type AsyncResult } from "unthrown";
+import { ErrAsync, Ok, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { expect, test } from "vitest";
 
 import type { KernelEvent } from "../events.js";
+import { healthMonitor } from "../health-monitor.js";
+import { HealthCheckFailed, HealthChecks, type HealthCheck } from "../health.js";
 import type { Operation, Settle, Settled } from "../observation.js";
 import { runMain } from "../run-main.js";
 import type { Runtime } from "../runtime.js";
@@ -205,6 +208,64 @@ export type Recording = {
   readonly observer: (operation: Operation) => Settle;
 };
 
+/** Mutable dependency and per-app cache used by readiness acceptance tests. */
+const readinessKit = () => {
+  const clock = createFakeClock();
+  let calls = 0;
+  let optionalCalls = 0;
+  let available = false;
+  let waiting: Promise<void> | undefined;
+  let entered = Promise.withResolvers<void>();
+  const check: HealthCheck["check"] = () => {
+    calls += 1;
+    entered.resolve();
+    return fromSafePromise(waiting ?? Promise.resolve()).flatMap(() =>
+      available
+        ? OkAsync()
+        : ErrAsync(new HealthCheckFailed({ reason: "credentials unavailable" })),
+    );
+  };
+  const checks = (readiness: HealthCheck["readiness"] = true): readonly HealthCheck[] => [
+    { name: "credentials", check, ...(readiness === undefined ? {} : { readiness }) },
+    {
+      name: "optional",
+      check: () => {
+        optionalCalls += 1;
+        return ErrAsync(new HealthCheckFailed({ reason: "offline" }));
+      },
+    },
+  ];
+  return {
+    clock,
+    calls: () => calls,
+    optionalCalls: () => optionalCalls,
+    available: (value: boolean) => {
+      available = value;
+    },
+    hold: () => {
+      const held = Promise.withResolvers<void>();
+      waiting = held.promise;
+      entered = Promise.withResolvers<void>();
+      return { entered: entered.promise, release: () => held.resolve() };
+    },
+    monitor: (readiness?: HealthCheck["readiness"]) => healthMonitor(checks(readiness), clock),
+    root: (readiness?: HealthCheck["readiness"]) =>
+      Module("ReadinessApp")({
+        imports: [testRuntime().module],
+        provides: checks(readiness).map((value) =>
+          Provider.member(HealthChecks)({ inject: {}, value }),
+        ),
+        exports: [TestRuntimePort, HealthChecks],
+      }),
+    status: async (app: RunningApp<never, unknown>, path: string) => {
+      const port = (await app.probePort()).get();
+      const response = await fetch(`http://127.0.0.1:${String(port)}${path}`);
+      await response.text();
+      return response.status;
+    },
+  };
+};
+
 /**
  * A serving application whose runtime binds a `unit` module: `Span` is
  * constructed as each unit opens — reading `Parent` out of the application
@@ -215,6 +276,7 @@ export type Recording = {
  */
 export const it = test.extend<{
   boot: Boot;
+  readiness: ReturnType<typeof readinessKit>;
   unitApp: UnitApp;
   configured: ConfiguredApp;
   recording: Recording;
@@ -228,6 +290,10 @@ export const it = test.extend<{
   applicationScope: ApplicationScopeKit;
 }>({
   boot: bootFixture(),
+  // oxlint-disable-next-line no-empty-pattern -- independent Vitest fixture
+  readiness: async ({}, use) => {
+    await use(readinessKit());
+  },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   unitOverride: async ({}, use) => {

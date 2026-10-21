@@ -321,3 +321,15 @@ const infrastructurePorts: InfrastructureExports<readonly [], readonly []> = inf
   [],
 );
 void infrastructurePorts;
+
+// "Gating readiness" — docs/reference/core/probes.md.
+const credentials: import("./index.js").HealthCheck = {
+  name: "credentials",
+  readiness: { intervalMs: 5000 },
+  check: () => OkAsync(),
+};
+const defaultReadiness: import("./index.js").HealthCheck = {
+  ...credentials,
+  readiness: true,
+};
+expectTypeOf(defaultReadiness).toEqualTypeOf<import("./index.js").HealthCheck>();

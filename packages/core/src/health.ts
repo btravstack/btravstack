@@ -35,6 +35,13 @@ export type HealthCheck = {
    * its own latency omits it.
    */
   readonly timeoutMs?: number;
+  /**
+   * Opt into gating `/readyz`. `true` caches the result for 1000 ms;
+   * an object selects a positive, finite interval. Concurrent probes share
+   * one evaluation, and `/healthz` uses the same cache for this check.
+   * Omitted or `false` leaves readiness independent of this component.
+   */
+  readonly readiness?: boolean | { readonly intervalMs: number };
 };
 
 /**

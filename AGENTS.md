@@ -675,10 +675,15 @@ which type-checks whether or not the call is ever made, so a starter that
 forgot would compile and report healthy forever. A contribution is a provider
 like any other: declared, levelled, and visible in the graph.
 
-**`/healthz` does not gate `/readyz`, and that is the decision.** Readiness
-removes a pod from its Service's endpoints; failing it on a dependency the
-replicas share removes all of them at once, turning a degraded system into an
-outage. The kernel reports; an operator decides.
+**Health checks gate `/readyz` only by explicit opt-in** (#656). A contribution
+with `readiness: true` gates it, with a 1000 ms cache; `{ intervalMs }` selects
+a positive finite cache interval. Both probe endpoints share that check's
+cached report and in-flight evaluation. Ordinary checks still run on every
+`/healthz` request and never gate readiness. An application opts in only when
+that dependency makes the pod unable to serve: failing readiness on a shared
+dependency can remove every replica at once. `/livez` stays independent, and
+a drain or crash cannot be undone by a check recovering. `RunningApp.ready()`
+remains the synchronous lifecycle predicate; `/readyz` adds the check gate.
 
 ## Persistence: one starter, and pagination is the adapter's
 

@@ -27,7 +27,8 @@ import {
 import { systemClock, type Clock } from "./clock.js";
 import { drainApp, type DrainReport } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
-import { HealthChecks, runHealthChecks, type HealthCheck, type HealthReport } from "./health.js";
+import { healthMonitor } from "./health-monitor.js";
+import { HealthChecks, type HealthReport } from "./health.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
 import { startProbeServer } from "./probes.js";
 import { installSignalHandlers, installUncaughtHandlers } from "./process-handlers.js";
@@ -239,9 +240,9 @@ export type RunningApp<E, Info = never> = {
   readonly requestDrain: () => void;
   readonly phase: () => Phase;
   /**
-   * The predicate `/readyz` answers from — serving, and not forced unready by
-   * a drain or an uncaught exception — read synchronously, which the probe
-   * endpoint is not.
+   * The synchronous lifecycle predicate: serving, and not forced unready by
+   * a drain or an uncaught exception. `/readyz` additionally consults opted-in
+   * dependency checks; this method does not evaluate them.
    */
   readonly ready: () => boolean;
   /**
@@ -450,8 +451,9 @@ export const start = <X, E, N>(
   // declares the checks exists — so the list is late-bound rather than passed
   // in. Until it is filled, `/healthz` reports healthy with no components:
   // "nothing has said otherwise yet" is the honest answer while building.
-  let healthChecks: readonly HealthCheck[] = [];
-  const health = (): AsyncResult<HealthReport, never> => runHealthChecks(healthChecks);
+  let monitor = healthMonitor([], clock);
+  const health = (): AsyncResult<HealthReport, never> => monitor.health();
+  const readiness = (): AsyncResult<boolean, never> => monitor.readiness();
   const probeBound = Promise.withResolvers<number | undefined>();
   const runtimePublished = Promise.withResolvers<Info | undefined>();
   // Every route out of a half-built graph: the probe bind's `tapFailure`, the
@@ -564,7 +566,14 @@ export const start = <X, E, N>(
     .flatMap((probes) =>
       probes === false
         ? OkAsync()
-        : startProbeServer({ port: probes.port, hostname: probes.hostname, live, ready, health })
+        : startProbeServer({
+            port: probes.port,
+            hostname: probes.hostname,
+            live,
+            ready,
+            readiness,
+            health,
+          })
             .tap((server) => {
               probeBoundPort = server.port;
               probeBound.resolve(server.port);
@@ -655,8 +664,11 @@ export const start = <X, E, N>(
 
     // A set port with no contributors resolves to `[]`, so an application
     // that composed no starter declaring a check needs no special case.
-    healthChecks = (ctx as unknown as Context<HealthChecks>).get(
-      HealthChecks as unknown as abstract new () => HealthChecks,
+    monitor = healthMonitor(
+      (ctx as unknown as Context<HealthChecks>).get(
+        HealthChecks as unknown as abstract new () => HealthChecks,
+      ),
+      clock,
     );
 
     const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;

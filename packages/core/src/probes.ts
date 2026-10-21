@@ -25,13 +25,9 @@ export type ProbeArgs = {
   readonly hostname: string;
   readonly live: () => boolean;
   readonly ready: () => boolean;
-  /**
-   * Answers `/healthz`. Deliberately NOT folded into `ready`: readiness
-   * removes a pod from its Service's endpoints, so failing it on a shared
-   * dependency takes every replica out at once and turns a degraded system
-   * into an outage. `/healthz` reports; `/readyz` still answers for the
-   * lifecycle alone.
-   */
+  /** Opted-in, cached dependency checks, consulted only while serving. */
+  readonly readiness?: () => AsyncResult<boolean, never>;
+  /** Answers `/healthz` for every component. */
   readonly health: () => AsyncResult<HealthReport, never>;
 };
 
@@ -47,7 +43,15 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
           return;
         }
         if (request.url === "/readyz") {
-          respond(response, args.ready(), "ready");
+          if (!args.ready() || args.readiness === undefined) {
+            respond(response, args.ready(), "ready");
+            return;
+          }
+          // Like /healthz, check failures and defects are already reports.
+          // Re-read the lifecycle after waiting: recovery cannot undo a drain.
+          void args
+            .readiness()
+            .map((healthy) => respond(response, args.ready() && healthy, "ready"));
           return;
         }
         if (request.url === "/healthz") {
