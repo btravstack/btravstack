@@ -285,6 +285,9 @@ declare const document: OpenApiDocument;
 const documentRoute = openApiDocumentRoute({ path: "/v1/openapi.json", document });
 ```
 
+The snippet constructs the provider only. Register it with
+`provides: [documentRoute]` on your existing `HttpModule` to mount the route.
+
 The exact public path supports `GET` and `HEAD`; descendants return `404` and
 other methods return `405` with `Allow: GET, HEAD`. See
 [the document route reference](https://btravstack.github.io/btravstack/reference/http-server#openapidocumentroute-—-from-btravstack-orpc-server-openapi).
