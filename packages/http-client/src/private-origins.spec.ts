@@ -70,7 +70,7 @@ describe("private origin policy", () => {
         deadlineMs: 1000,
       });
       // THEN
-      expect(result.isOk()).toBe(true);
+      expect(result).toBeOk();
     },
   );
 
@@ -85,7 +85,7 @@ describe("private origin policy", () => {
       deadlineMs: 1000,
     });
     // THEN
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeOk();
   });
 
   it("refuses a private literal outside its own approval", () => {
