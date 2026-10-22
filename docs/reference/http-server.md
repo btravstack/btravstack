@@ -2317,7 +2317,8 @@ anywhere.
 The fork is **seeded** with the principal, on `auth.principals[scheme]`,
 whenever a scheme resolved — whichever module ends up forked, so the anonymous
 fallback carries the seed too and an unread entry is the whole cost. A request
-no leaf authenticated is seeded with nothing, since there is no caller to name.
+no leaf authenticated has no principal seed, since there is no caller to name;
+its unit still receives `HttpRequestMetadata`.
 So only a scheme's **own** module is discharged of that scheme's principal: one
 the `anonymous` module, or another scheme's, names in `needs` is owed by the
 composition root like any other port, and `start` refuses a root that provides

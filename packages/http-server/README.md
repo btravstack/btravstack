@@ -38,4 +38,4 @@ answerer returns `503`, reporting the scheme through `Observers`. See
 Request-scoped providers may inject `HttpRequestMetadata` to decode headers,
 method and URL independently of authentication. The runtime seeds its immutable
 snapshot and cancellation signal once per request unit; it is unavailable in
-application-scoped providers. See the [HTTP reference](../../docs/reference/http-server.md).
+application-scoped providers. See the [HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#non-authentication-request-metadata).
