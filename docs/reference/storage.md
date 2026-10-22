@@ -48,7 +48,12 @@ export const documents = Provider(
         ),
     link: (key) =>
       store
-        .presignedUrl(key, { ttlMs: 60_000 })
+        .presignedUrl(key, {
+          ttlMs: 60_000,
+          contentDisposition: "attachment; filename=report.pdf; filename*=UTF-8''relev%C3%A9.pdf",
+          contentType: "application/pdf",
+          cacheControl: "private, no-store",
+        })
         .recoverErrCases((matcher) =>
           matcher
             .with(P.tag("StorageUnavailable"), () => undefined)

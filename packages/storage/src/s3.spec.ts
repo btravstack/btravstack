@@ -134,10 +134,13 @@ describe("s3Storage", () => {
 
       // WHEN an override is changed without signing again
       const response = await fetch(url);
-      await response.arrayBuffer();
+      const body = await response.text();
 
       // THEN the store refuses the signature
-      expect(response.status).toBe(403);
+      expect({ status: response.status, body }).toEqual({
+        status: 403,
+        body: expect.stringContaining("<Code>SignatureDoesNotMatch</Code>"),
+      });
     },
   );
 
