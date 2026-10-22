@@ -1,5 +1,9 @@
 # @btravstack/di
 
+## 0.48.0
+
+No changes in this release.
+
 ## 0.47.0
 
 No changes in this release.

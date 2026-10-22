@@ -1,5 +1,19 @@
 # @btravstack/mcp-server
 
+## 0.48.0
+
+### Minor Changes
+
+- d24f983: Expose immutable HTTP request metadata to request-scoped providers and retain the native request, unit host and cancellation signal in typed oRPC controller contexts. Seed the same metadata for RPC, OpenAPI, htmx, GraphQL and MCP request units.
+
+### Patch Changes
+
+- Updated dependencies [d24f983]
+  - @btravstack/http-server@0.48.0
+  - @btravstack/contract@0.48.0
+  - @btravstack/core@0.48.0
+  - @btravstack/di@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes
