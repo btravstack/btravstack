@@ -1,5 +1,17 @@
 # @btravstack/storage
 
+## 0.47.0
+
+### Minor Changes
+
+- b957cd7: Support signed content disposition, content type and cache control overrides on presigned downloads.
+
+### Patch Changes
+
+- @btravstack/config@0.47.0
+  - @btravstack/core@0.47.0
+  - @btravstack/di@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes
