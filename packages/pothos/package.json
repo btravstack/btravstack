@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/pothos",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "description": "Pothos fields that call oRPC procedures, each declared error answered as a typed GraphQL refusal",
   "keywords": [
     "graphql",
