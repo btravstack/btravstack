@@ -861,6 +861,10 @@ Application-owned outbound mutual TLS identities bind credentials to an exact
 approved origin in `@btravstack/http-client`'s policy. Secret sources rotate
 credentials per connection; account authorization remains application-owned.
 Request input cannot override TLS, and server verification remains mandatory.
+Deployment-owned private-origin CIDRs admit internal HTTPS control planes while
+preserving the public-only default, connection-time checks and origin isolation.
+The private-range restrictions and mapped-address gotcha live in that package's
+`AGENTS.md`.
 
 ## Public surface
 

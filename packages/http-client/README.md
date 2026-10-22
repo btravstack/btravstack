@@ -12,7 +12,8 @@ The application provides a policy port to `httpClient(policyPort)`, and injects
 `httpClientFetch(client)` adapts it for `oauthClient({ fetch })` and other native
 fetch consumers. Application-owned `tlsIdentities` bind rotating PEM client
 credentials from a secret store to exact approved origins, with mandatory server
-verification. Tenant configuration must never supply or expand the policy.
+verification. Deployment-owned `privateOrigins` approve specific RFC 1918 or IPv6
+unique-local CIDRs per exact origin; omitted approvals remain public-only. Tenant configuration must never supply or expand the policy.
 
 See the [reference](https://btravstack.github.io/btravstack/reference/http-client)
 for the compiled composition examples, exact refusal types and address policy.

@@ -13,6 +13,7 @@ export {
 } from "./contracts.js";
 export type {
   HttpPolicy,
+  HttpPrivateOrigin,
   HttpTlsIdentity,
   HttpTlsBinding,
   HttpRequest,
