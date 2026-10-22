@@ -230,7 +230,9 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    A template engine, JSX/SSR with a component model, a message catalogue
    and locale resolution are each a library choice with no wiring problem
    underneath — the one wiring question, which locale a unit serves, is a
-   port the application declares the way it declares `Tenant`. Choosing one
+   port the application declares the way it declares `Tenant`. HTTP units can
+   derive it from the runtime's immutable `HttpRequestMetadata` port; validation
+   remains application policy. Choosing one
    would put an untyped template body or a second escaping model in the
    framework's newest surface. **Mail stays string-in**: `Mail.html` is a
    string, and what rendered it is the application's — a render seam on

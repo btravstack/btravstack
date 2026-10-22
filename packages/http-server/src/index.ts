@@ -37,3 +37,5 @@ export type {
   ProtectedResourcePerHostProvider,
   ProtectedResourceProvider,
 } from "./protected-resource.js";
+
+export { HttpRequestMetadata } from "./request-metadata.js";

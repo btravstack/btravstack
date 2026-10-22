@@ -34,3 +34,8 @@ Application authenticators can return `AuthenticatorUnavailable` when a
 dependency cannot decide. It stops the authentication walk and every HTTP
 answerer returns `503`, reporting the scheme through `Observers`. See
 [authentication dependency outages](https://btravstack.github.io/btravstack/reference/http-server#authentication-dependency-outages).
+
+Request-scoped providers may inject `HttpRequestMetadata` to decode headers,
+method and URL independently of authentication. The runtime seeds its immutable
+snapshot and cancellation signal once per request unit; it is unavailable in
+application-scoped providers. See the [HTTP reference](../../docs/reference/http-server.md).

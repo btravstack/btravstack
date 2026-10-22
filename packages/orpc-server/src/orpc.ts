@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+
 import {
   isAuthenticated,
   type Authenticated,
@@ -6,7 +8,7 @@ import {
   type Requirements,
   type RequirementsOf,
 } from "@btravstack/contract";
-import { Observers, observe } from "@btravstack/core";
+import { Observers, observe, type UnitHost } from "@btravstack/core";
 import {
   Port,
   Provider,
@@ -324,8 +326,8 @@ export const orpc = (options: OrpcOptions = {}) => {
         prefix,
         // The request and the unit host both ride oRPC's initial context:
         // `principalMiddleware` reads the former, `unitScope` the latter.
-        handle: (request, response, _signal, host) =>
-          rpc.handle(request, response, { prefix, context: { request, host, observers } }),
+        handle: (request, response, signal, host) =>
+          rpc.handle(request, response, { prefix, context: { request, host, observers, signal } }),
       };
     },
   });
@@ -639,6 +641,9 @@ type ContextOf<
   ? object
   : { readonly principal: Principal<SchemesOf<Effective<C, R>>, Schemes> }) & {
   readonly unit: UnitFor<U, Units, KindOf<Effective<C, R>>>;
+  readonly request: IncomingMessage;
+  readonly host: UnitHost<never>;
+  readonly signal: AbortSignal;
 };
 
 /**

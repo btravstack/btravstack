@@ -3,12 +3,18 @@ import { request, type IncomingMessage } from "node:http";
 import { authenticated } from "@btravstack/contract";
 import { Observers, type Operation, type Settled } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { CredentialRefused, HttpAuthenticator, Unauthenticated } from "@btravstack/http-server";
+import {
+  apiKeyAuthenticator,
+  HttpRequestMetadata,
+  CredentialRefused,
+  HttpAuthenticator,
+  Unauthenticated,
+} from "@btravstack/http-server";
 import { it as base, type HttpFixtures } from "@btravstack/internal-http-fixtures";
 import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { RequestCompressionHandlerPlugin } from "@orpc/server/plugins";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import { ErrAsync, OkAsync, fromPromise, fromSafePromise } from "unthrown";
 import { vi, type TestAPI } from "vitest";
 import { z } from "zod";
 
@@ -75,7 +81,16 @@ export type Capability = {
   readonly observed: readonly (Operation | Settled)[];
 };
 
-type Fixtures = { portWarnings: () => readonly unknown[]; bodies: Bodies; capability: Capability };
+type Fixtures = {
+  portWarnings: () => readonly unknown[];
+  bodies: Bodies;
+  capability: Capability;
+  metadata: {
+    readonly call: (protocol: "rpc" | "openapi", locale: string) => Promise<unknown>;
+    readonly cancelled: () => Promise<boolean>;
+    readonly anonymous: () => Promise<unknown>;
+  };
+};
 
 export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
   // oxlint-disable-next-line no-empty-pattern -- this fixture observes diagnostics without changing console behavior
@@ -83,6 +98,142 @@ export const it: TestAPI<HttpFixtures & Fixtures> = base.extend<Fixtures>({
     const warnings = vi.spyOn(console, "warn");
     await use(() => warnings.mock.calls);
     warnings.mockRestore();
+  },
+  metadata: async ({ boot }, use) => {
+    const arrived = metadataLatch<void>();
+    const started = metadataLatch<void>();
+    const cancelled = metadataLatch<boolean>();
+    let count = 0;
+    const requestUnit = Module("MetadataRequest")({
+      needs: [HttpRequestMetadata],
+      provides: [Snapshot],
+      exports: [Snapshot],
+    });
+    const auth = defineHttp({
+      namespace: "request-metadata",
+      authenticators: {
+        user: apiKeyAuthenticator<{ readonly id: string }>()({
+          keys: [{ key: "same-key", principal: { id: "same-user" } }],
+        }),
+      },
+    });
+    const api = auth.units<{ user: typeof requestUnit; anonymous: typeof requestUnit }>();
+    const protectedLeaf = authenticated({ user: [] });
+    const contract = {
+      read: protectedLeaf(
+        oc
+          .meta(openapi({ method: "GET", path: "/metadata" }))
+          .input(z.object({}))
+          .output(
+            z.object({
+              locale: z.string(),
+              direct: z.string(),
+              principal: z.string(),
+              sameSignal: z.boolean(),
+            }),
+          ),
+      ),
+      wait: protectedLeaf(
+        oc
+          .meta(openapi({ method: "GET", path: "/wait" }))
+          .input(z.object({}))
+          .output(z.string()),
+      ),
+      publicRead: oc
+        .meta(openapi({ method: "GET", path: "/public" }))
+        .input(z.object({}))
+        .output(z.string()),
+    };
+    const read = api.OrpcController(
+      contract,
+      "read",
+    )({
+      unit: { snapshot: Snapshot },
+      sync:
+        () =>
+        ({ context }) => {
+          const snapshot = context.unit.snapshot;
+          count += 1;
+          if (count === 2) arrived.resolve();
+          return fromSafePromise(arrived.promise).map(() => ({
+            locale: snapshot.locale,
+            direct: String(context.request.headers["x-locale"]),
+            principal: context.principal.id,
+            sameSignal: context.signal === snapshot.signal,
+          }));
+        },
+    });
+    const wait = api.OrpcController(
+      contract,
+      "wait",
+    )({
+      unit: { snapshot: Snapshot },
+      sync:
+        () =>
+        ({ context }) => {
+          context.unit.snapshot.signal.addEventListener("abort", () => cancelled.resolve(true), {
+            once: true,
+          });
+          started.resolve();
+          return fromSafePromise(cancelled.promise).map(() => "cancelled");
+        },
+    });
+    const publicRead = api.OrpcController(
+      contract,
+      "publicRead",
+    )({
+      unit: { snapshot: Snapshot },
+      sync:
+        () =>
+        ({ context }) =>
+          OkAsync(context.unit.snapshot.locale),
+    });
+    const app = boot(
+      HttpModule("MetadataApi")({
+        router: api.OrpcRouter(contract)([read, wait, publicRead]),
+        unit: { user: requestUnit, anonymous: requestUnit },
+        openapi: true,
+        port: 0,
+        hostname: "127.0.0.1",
+      }),
+    );
+    const info = (await app.runtimeInfo()).get();
+    const origin = `http://127.0.0.1:${info?.port ?? 0}`;
+    await use({
+      call: async (protocol, locale): Promise<unknown> => {
+        const response = await fetch(
+          `${origin}/${protocol === "rpc" ? "rpc/read" : "api/metadata"}`,
+          {
+            method: protocol === "rpc" ? "POST" : "GET",
+            headers: {
+              "x-api-key": "same-key",
+              "x-locale": locale,
+              "content-type": "application/json",
+            },
+            ...(protocol === "rpc" ? { body: JSON.stringify({ json: {} }) } : {}),
+          },
+        );
+        return response.json();
+      },
+      anonymous: async (): Promise<unknown> => {
+        const answer = await fetch(`${origin}/api/public`, { headers: { "x-locale": "fr" } });
+        return answer.json();
+      },
+      cancelled: async () => {
+        const controller = new AbortController();
+        const pending = fromPromise(
+          fetch(`${origin}/api/wait`, {
+            headers: { "x-api-key": "same-key" },
+            signal: controller.signal,
+          }),
+          () => "cancelled",
+        );
+        await started.promise;
+        controller.abort();
+        await pending;
+        return cancelled.promise;
+      },
+    });
   },
   bodies: async ({ boot }, use) => {
     let sawFirstChunk = (): void => {};
@@ -435,3 +586,18 @@ const rpc: Bodies["rpc"] = async (port, procedure, input) =>
       body: JSON.stringify({ json: input }),
     })
   ).status;
+
+class Snapshot extends Provider.class("MetadataSnapshot", {
+  inject: { request: HttpRequestMetadata },
+}) {
+  public readonly locale = String(this.deps.request.headers["x-locale"]);
+  public readonly signal = this.deps.request.signal;
+}
+
+function metadataLatch<T>() {
+  let resolve: (value: T | PromiseLike<T>) => void = () => {};
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}

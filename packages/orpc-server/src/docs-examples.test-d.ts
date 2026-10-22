@@ -51,3 +51,9 @@ import { openApiDocumentRoute, type OpenApiDocument } from "./openapi.js";
 declare const document: OpenApiDocument;
 openApiDocumentRoute({ path: "/v1/openapi.json", document });
 HttpAuthenticator<{}>()({ inject: {}, sync: () => () => ErrAsync(new AuthenticatorUnavailable()) });
+
+declare const metadata: import("@btravstack/di").ServiceOf<
+  import("@btravstack/http-server").HttpRequestMetadata
+>;
+const localeInput: string | readonly string[] | undefined = metadata.headers["x-locale"];
+const cancellation: AbortSignal = metadata.signal;

@@ -1,9 +1,12 @@
+import type { IncomingMessage } from "node:http";
+
 import type { UnitHost } from "@btravstack/core";
 import { Port, type AnyPort, type Context } from "@btravstack/di";
 import { OkAsync, type AsyncResult } from "unthrown";
 
 import type { Resolved } from "./auth.js";
 import type { AnyUnitModule } from "./http-runtime.js";
+import { HttpRequestMetadata, requestMetadataOf } from "./request-metadata.js";
 import { unitRecordOf } from "./unit.js";
 
 /**
@@ -41,7 +44,8 @@ export const withFallback = (
  * that is an empty record rather than an absent one — `UnitFor` hides every
  * name in that case, so a handler has nothing to read anyway.
  *
- * The seed is the principal on the port its own scheme minted, which is what
+ * The seed includes immutable request metadata and the principal, when one
+ * resolved, on the port its own scheme minted. The principal seed is what
  * discharges a unit module's `needs: [auth.principals.user]` without the
  * composition root providing one. It is keyed on whether a scheme RESOLVED,
  * never on which module ends up forked: a seed the forked module never names
@@ -53,13 +57,17 @@ export const forkUnit = (
   principals: Readonly<Record<string, AnyPort>>,
   resolved: Resolved | undefined,
   record: Readonly<Record<string, AnyPort>>,
+  request: { readonly incoming: IncomingMessage; readonly signal: AbortSignal },
 ): AsyncResult<Readonly<Record<string, unknown>>, never> => {
   const module = units[resolved?.scheme ?? "anonymous"] ?? units["anonymous"];
   if (module === undefined) return OkAsync({});
   // Asserted, not guarded, on the same grounds `auth.ts`'s authenticator
   // lookup is: `defineHttp` mints one principal port per declared scheme, and
   // only a declared scheme can have resolved.
-  const seed = resolved === undefined ? [] : [[principals[resolved.scheme], resolved.identity]];
+  const seed = [
+    [HttpRequestMetadata, requestMetadataOf(request.incoming, request.signal)],
+    ...(resolved === undefined ? [] : [[principals[resolved.scheme], resolved.identity]]),
+  ];
   // `as never` on both arguments: `AnyUnitModule` erases a module's Needs to
   // `unknown` — the only bound a module with real needs can infer against — so
   // `fork`'s own `DependencyGate` sees `Exclude<unknown, Scope>`, still
@@ -85,7 +93,12 @@ export const unitScope =
     record: Readonly<Record<string, AnyPort>>,
   ) =>
   async (options: {
-    readonly context: { readonly host: UnitHost<never>; readonly resolved?: Resolved };
+    readonly context: {
+      readonly host: UnitHost<never>;
+      readonly resolved?: Resolved;
+      readonly request: IncomingMessage;
+      readonly signal: AbortSignal;
+    };
     readonly next: (injected: {
       readonly context: { readonly unit: Readonly<Record<string, unknown>> };
     }) => Promise<unknown>;
@@ -101,6 +114,7 @@ export const unitScope =
           principals,
           options.context.resolved,
           record,
+          { incoming: options.context.request, signal: options.context.signal },
         ).get(),
       },
     });

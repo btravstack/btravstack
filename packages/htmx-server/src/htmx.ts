@@ -54,7 +54,7 @@ export const htmx = (options: HtmxOptions = {}) => {
     },
     sync: ({ fragments, config, unit: units, observers }) => ({
       prefix,
-      handle: async (request, response, _signal, host) => {
+      handle: async (request, response, signal, host) => {
         const matched = matchRoute(
           fragments.routes,
           request.method,
@@ -125,7 +125,10 @@ export const htmx = (options: HtmxOptions = {}) => {
         // oRPC's own `unitScope` forks at, since `principalMiddleware`
         // short-circuits without calling `next()` on a refusal, and `unitScope`
         // sits inside it.
-        const unit = await forkUnit(host, units, fragments.principals, authenticated, route.unit);
+        const unit = await forkUnit(host, units, fragments.principals, authenticated, route.unit, {
+          incoming: request,
+          signal,
+        });
         if (unit.isDefect()) {
           send(response, 500);
           return;

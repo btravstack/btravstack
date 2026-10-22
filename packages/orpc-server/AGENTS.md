@@ -136,3 +136,9 @@ served, including a query; descendants and a trailing slash are `404`. `HEAD`
 has GET's headers without its body; other methods answer `405` with `Allow`.
 Authentication's modeled outage is reported by the shared walk and is not
 reported a second time as an oRPC defect.
+
+Controller contexts preserve the native incoming `request`, request-unit `host`
+and runtime cancellation `signal`, beside the selected principal and declared
+unit services. RPC and OpenAPI supply the same fields. A request-scoped provider
+can instead inject `HttpRequestMetadata` from the HTTP runtime; metadata does
+not require an authentication scheme or an application ambient store.

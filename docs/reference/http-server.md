@@ -2377,6 +2377,22 @@ every key outside `"anonymous" | keyof A`, which no real module satisfies, and
 the diagnostic names that key. With `units<…>()` never called, `Units` is the
 empty record and everything below degrades to the pre-kinds behaviour.
 
+### Non-authentication request metadata
+
+`HttpRequestMetadata`, exported by `@btravstack/http-server`, is a port seeded
+into every request unit. Its value contains immutable `headers`, the incoming
+`method` and `url` (each possibly undefined, as on Node's request), and the
+runtime cancellation `signal`. Header arrays are copied and frozen too. A unit
+provider injects it to decode an application value such as a locale; no
+authentication scheme or ambient application store is needed. Its need is
+discharged for every unit kind, including anonymous, but never at application
+scope. Values remain untrusted input and grant no authorization.
+
+RPC and OpenAPI controller handlers also receive typed `context.request`
+(Node's incoming request), `context.host` and `context.signal`, beside their
+principal and declared unit services. The context signal and metadata signal
+are the same runtime signal; a disconnected client aborts both.
+
 ### What a leaf reads off the fork
 
 A piece — or a fragment route — declares the unit-scoped ports its leaves may
