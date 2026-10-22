@@ -1516,3 +1516,7 @@ container reaping, the `currentUnit()` lint rule, traces and metrics in
 a package, a lint rule or a gate that sounds new: a
 struck-through entry there has already shipped, and an open one names the
 trigger that would reopen it.
+
+Storage presigned downloads accept signed response header overrides through
+`DownloadOptions`; their semantics and Unicode filename encoding are documented
+in `packages/storage/AGENTS.md` and the storage reference.

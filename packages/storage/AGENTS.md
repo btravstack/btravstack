@@ -175,6 +175,12 @@ adapter signs, idempotent `delete`, the
 `application/octet-stream` default, path-style addressing and the private client
 port are the TSDoc and comments of `src/storage.ts` and `src/s3.ts`.
 
+- **Download overrides belong to the signature, not the object.**
+  `DownloadOptions` takes content disposition, content type and cache control;
+  S3 puts them on `GetObjectCommand` before signing. Unicode filenames use
+  RFC 8187 in the caller's header. RustFS proves returned headers and refuses
+  each tampered override. Memory still answers `PresignNotSupported`.
+
 ## Deliberately not here
 
 - **No multipart form parsing** anywhere in the family. A presigned write keeps

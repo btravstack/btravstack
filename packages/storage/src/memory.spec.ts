@@ -59,7 +59,14 @@ describe("memoryStorageBackend", () => {
     // WHEN a time-limited URL is asked for
     const url = memory
       .put("a/b.json", document.bytes, { contentType: document.contentType })
-      .flatMap(() => memory.presignedUrl("a/b.json", { ttlMs: 60_000 }));
+      .flatMap(() =>
+        memory.presignedUrl("a/b.json", {
+          ttlMs: 60_000,
+          contentDisposition: "attachment",
+          contentType: "application/pdf",
+          cacheControl: "private",
+        }),
+      );
 
     // THEN the adapter says it cannot — a `file://` URL would be a double
     // that passes here and fails in the deployment for a reason no test

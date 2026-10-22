@@ -114,6 +114,15 @@ export type CopyOptions = {
   readonly sha256?: never;
 };
 
+/** Signed response headers for this download only; stored object metadata is unchanged. */
+export type DownloadOptions = {
+  readonly ttlMs: number;
+  /** Content-Disposition header. Encode Unicode filenames with RFC 8187 `filename*`. */
+  readonly contentDisposition?: string;
+  readonly contentType?: string;
+  readonly cacheControl?: string;
+};
+
 export type StorageService = {
   readonly put: (
     key: string,
@@ -206,7 +215,7 @@ export type StorageService = {
    */
   readonly presignedUrl: (
     key: string,
-    options: { readonly ttlMs: number },
+    options: DownloadOptions,
   ) => AsyncResult<string, PresignNotSupported | StorageUnavailable>;
   /**
    * A URL that writes the object for `ttlMs`, without the caller holding

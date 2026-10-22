@@ -20,3 +20,10 @@ storage.copy("staging", "published", write);
 storage.put("document", new Uint8Array(), copy);
 // @ts-expect-error conditional writes use the same write digest contract
 storage.putIfAbsent("document", new Uint8Array(), copy);
+
+storage.presignedUrl("document", {
+  ttlMs: 60_000,
+  contentDisposition: "attachment; filename=report.pdf; filename*=UTF-8''relev%C3%A9.pdf",
+  contentType: "application/pdf",
+  cacheControl: "private, no-store",
+});

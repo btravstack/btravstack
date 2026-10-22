@@ -15,6 +15,7 @@ export {
 } from "./storage.js";
 export type {
   CopyOptions,
+  DownloadOptions,
   ObjectHead,
   StorageService,
   StoredObject,

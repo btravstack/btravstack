@@ -146,3 +146,7 @@ and the same reasoning is in [`AGENTS.md`](./AGENTS.md) for contributors.
 ## License
 
 MIT
+
+Presigned downloads accept `contentDisposition`, `contentType` and `cacheControl`
+response overrides. See the [storage reference](https://btravstack.github.io/btravstack/reference/storage)
+for signing and Unicode filename semantics.

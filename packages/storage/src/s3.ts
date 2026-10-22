@@ -729,11 +729,21 @@ export const s3StorageBackend = (
       ).map(() => undefined),
     presignedUrl: (key, options) =>
       fromPromise(
-        getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
-          // The SDK counts in seconds and the port in milliseconds, as every
-          // other duration in this stack does. The conversion lives here, once.
-          expiresIn: Math.ceil(options.ttlMs / 1_000),
-        }),
+        getSignedUrl(
+          client,
+          new GetObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            ResponseContentDisposition: options.contentDisposition,
+            ResponseContentType: options.contentType,
+            ResponseCacheControl: options.cacheControl,
+          }),
+          {
+            // The SDK counts in seconds and the port in milliseconds, as every
+            // other duration in this stack does. The conversion lives here, once.
+            expiresIn: Math.ceil(options.ttlMs / 1_000),
+          },
+        ),
         (cause) => unavailable("presignedUrl", key, cause),
       ),
     presignedUpload: (key, options) => {
