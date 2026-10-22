@@ -1,5 +1,16 @@
 # @btravstack/http-client
 
+## 0.48.0
+
+### Minor Changes
+
+- b3f21d1: Allow deployment-owned private CIDRs for individual approved HTTPS origins through `HttpPolicy.privateOrigins`. The public-only default, connection-time DNS checks, verified TLS, client identities, redirect refusal and bounded operations remain in force. Approvals accept only RFC 1918 and IPv6 unique-local subnets.
+
+### Patch Changes
+
+- @btravstack/core@0.48.0
+  - @btravstack/di@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes
