@@ -69,6 +69,8 @@ export type WorkflowSource =
 export class TemporalConfig extends Port("TemporalConfig")<{
   readonly address: string;
   readonly namespace: string;
+  /** The deployment queue this worker polls. */
+  readonly taskQueue: string;
   /** Temporal's `shutdownGraceTime`, in milliseconds. */
   readonly gracePeriodMs: number;
   /** Temporal's `shutdownForceTime`, in milliseconds. */
@@ -149,6 +151,8 @@ export type TemporalTuning<
   readonly address?: string;
   /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
   readonly namespace?: string;
+  /** Pins `TemporalConfig.taskQueue` instead of reading `TEMPORAL_TASK_QUEUE` or the contract default. */
+  readonly taskQueue?: string;
   /**
    * Pins `TemporalConfig.forceAfterMs` instead of reading
    * `TEMPORAL_FORCE_AFTER_MS` (default `15_000`) — Temporal's
@@ -195,7 +199,7 @@ export type TemporalOptions<
   Converter extends DataConverterPort = never,
 > = TemporalTuning<Unit, Converter> & {
   /**
-   * The contract; the task queue this worker polls is read off it, and the
+   * The contract; its queue is the deployment default, and the
    * activities port is typed by it. The starter calls
    * `declareActivitiesHandler` itself, with its unit middleware in place.
    */
@@ -242,6 +246,7 @@ export const temporal = <
       never,
       | "TEMPORAL_ADDRESS"
       | "TEMPORAL_NAMESPACE"
+      | "TEMPORAL_TASK_QUEUE"
       | "TEMPORAL_GRACE_PERIOD_MS"
       | "TEMPORAL_FORCE_AFTER_MS"
     >
@@ -261,6 +266,10 @@ export const temporal = <
       namespace: Config.pinned(
         namespace,
         Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
+      ),
+      taskQueue: Config.pinned(
+        options.taskQueue,
+        Config.string("TEMPORAL_TASK_QUEUE", { default: options.contract.taskQueue }),
       ),
       gracePeriodMs: Config.pinned(
         durationMs(options.gracePeriod),
@@ -334,6 +343,7 @@ export const temporal = <
         never,
         | "TEMPORAL_ADDRESS"
         | "TEMPORAL_NAMESPACE"
+        | "TEMPORAL_TASK_QUEUE"
         | "TEMPORAL_GRACE_PERIOD_MS"
         | "TEMPORAL_FORCE_AFTER_MS"
       >
@@ -363,8 +373,7 @@ const createWorker = <
   observers: readonly ((operation: Operation) => Settle)[],
   dataConverter: DataConverter | undefined,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
-  const { taskQueue } = options.contract;
-  const { namespace } = config;
+  const { taskQueue, namespace } = config;
 
   // INSIDE the qualifier: `declareActivitiesHandler` throws on a contract it
   // cannot satisfy, and outside it that throw is a defect — `runMain` exit 70

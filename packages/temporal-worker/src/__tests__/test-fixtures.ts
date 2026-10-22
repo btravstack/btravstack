@@ -554,6 +554,7 @@ type ActivitiesProvider = typeof echoing | ReturnType<typeof contractSeamOf>["ac
 
 /** What a spec may vary: the activities, the starter's pins, the environment, the kernel's drain budget. */
 type BootOptions = {
+  readonly taskQueue?: string;
   readonly activities?: ActivitiesProvider;
   readonly address?: string;
   readonly namespace?: string;
@@ -733,7 +734,7 @@ export type TemporalFixtures = {
   readonly serveEncoded: () => Promise<{ readonly client: Client; readonly taskQueue: string }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
   /** A worker for a contract that declares activities and no workflows, so it has no workflow source. */
-  readonly serveActivitiesOnly: () => Promise<{
+  readonly serveActivitiesOnly: (options?: Pick<BootOptions, "taskQueue" | "env">) => Promise<{
     readonly app: App;
     readonly taskQueue: string;
   }>;
@@ -857,11 +858,12 @@ const composeObserved = (
 const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
-    contract: { ...echoContract, taskQueue },
+    contract: Object.freeze({ ...echoContract, taskQueue }),
     activities: options.activities ?? echoing,
     workflows: options.workflows ?? echoWorkflows,
     ...(options.address === undefined ? {} : { address: options.address }),
     ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
+    ...(options.taskQueue === undefined ? {} : { taskQueue: options.taskQueue }),
     ...(options.gracePeriod === undefined ? {} : { gracePeriod: options.gracePeriod }),
     // `as never`: `options.unit` is `AnyUnitModule`, whose own needs are
     // erased to `unknown` — passed through untyped it would poison
@@ -990,7 +992,7 @@ export const it = test.extend<TemporalFixtures>({
     await use(await schedulesOf(client, echoContract));
   },
   serveActivitiesOnly: async ({ server, boot }, use) => {
-    await use(async () => {
+    await use(async (options = {}) => {
       const taskQueue = nextTaskQueue();
       const contract = defineContract({
         taskQueue,
@@ -1006,12 +1008,19 @@ export const it = test.extend<TemporalFixtures>({
       const app: App = boot(
         TemporalModule("ActivitiesOnly")({
           contract,
+          ...(options.taskQueue === undefined ? {} : { taskQueue: options.taskQueue }),
           activities: TemporalActivities(contract)({
             inject: {},
             sync: () => ({ echo: ({ input }) => OkAsync(input) }),
           }),
         }),
-        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
+        {
+          env: {
+            TEMPORAL_ADDRESS: server.address,
+            TEMPORAL_NAMESPACE: server.namespace,
+            ...options.env,
+          },
+        },
       );
       await app.runtimeInfo();
       return { app, taskQueue };

@@ -15,6 +15,119 @@ describe("temporal", () => {
     await expect(info).toBeOkWith({ taskQueue, namespace: server.namespace });
   });
 
+  it("publishes a deployment task queue read from the environment", async ({ server, serve }) => {
+    // GIVEN
+    const selected = `deployment-${crypto.randomUUID()}`;
+    const { app } = await serve({
+      env: {
+        TEMPORAL_ADDRESS: server.address,
+        TEMPORAL_NAMESPACE: server.namespace,
+        TEMPORAL_TASK_QUEUE: selected,
+      },
+    });
+
+    // WHEN
+    const info = app.runtimeInfo();
+
+    // THEN
+    await expect(info).toBeOkWith({ taskQueue: selected, namespace: server.namespace });
+  });
+
+  it("executes a workflow and its local activity on the deployment task queue", async ({
+    server,
+    serve,
+  }) => {
+    // GIVEN
+    const selected = `deployment-${crypto.randomUUID()}`;
+    const { client } = await serve({
+      env: {
+        TEMPORAL_ADDRESS: server.address,
+        TEMPORAL_NAMESPACE: server.namespace,
+        TEMPORAL_TASK_QUEUE: selected,
+      },
+    });
+
+    // WHEN
+    const answer = await client.workflow.execute("runEcho", {
+      taskQueue: selected,
+      workflowId: crypto.randomUUID(),
+      workflowExecutionTimeout: "2 seconds",
+      args: ["deployment echo"],
+    });
+
+    // THEN
+    expect(answer).toBe("deployment echo");
+  });
+
+  it("pins the deployment task queue ahead of an invalid environment value", async ({
+    server,
+    serve,
+  }) => {
+    // GIVEN
+    const selected = `pinned-${crypto.randomUUID()}`;
+    const { app } = await serve({
+      taskQueue: selected,
+      env: {
+        TEMPORAL_ADDRESS: server.address,
+        TEMPORAL_NAMESPACE: server.namespace,
+        TEMPORAL_TASK_QUEUE: " ",
+      },
+    });
+
+    // WHEN
+    const info = app.runtimeInfo();
+
+    // THEN
+    await expect(info).toBeOkWith({ taskQueue: selected, namespace: server.namespace });
+  });
+
+  it.for(["", " "])(
+    "refuses a blank deployment task queue (%j)",
+    async (taskQueue, { server, serveBroken }) => {
+      // GIVEN
+      const app = await serveBroken({
+        env: {
+          TEMPORAL_ADDRESS: server.address,
+          TEMPORAL_NAMESPACE: server.namespace,
+          TEMPORAL_TASK_QUEUE: taskQueue,
+        },
+      });
+
+      // WHEN
+      const answer = app.exited;
+
+      // THEN
+      await expect(answer).toBeErrTagged(
+        "ConfigInvalid",
+        expect.objectContaining({
+          port: "TemporalConfig",
+          issues: [{ message: "is set but empty", path: ["TEMPORAL_TASK_QUEUE"] }],
+        }),
+      );
+    },
+  );
+
+  it("serves an activity-only worker on its deployment task queue", async ({
+    serve,
+    serveActivitiesOnly,
+  }) => {
+    // GIVEN
+    const selected = `activity-pool-${crypto.randomUUID()}`;
+    await serveActivitiesOnly({ env: { TEMPORAL_TASK_QUEUE: selected } });
+    const { client, taskQueue } = await serve();
+
+    // WHEN
+    const answer = await client.workflow.execute("runRemoteEcho", {
+      taskQueue,
+      workflowId: crypto.randomUUID(),
+      workflowExecutionTimeout: "2 seconds",
+      args: [selected, "deployment pool"],
+    });
+
+    // THEN
+    expect(answer).toBe("deployment pool");
+  });
+
   it("boots a worker for a contract that declares activities only", async ({
     server,
     serveActivitiesOnly,
@@ -54,7 +167,7 @@ describe("temporal", () => {
     configured,
   }) => {
     // GIVEN an environment naming both, and a starter pinning neither
-    await serve({
+    const { taskQueue } = await serve({
       env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
       tap: configured.tap,
     });
@@ -65,6 +178,7 @@ describe("temporal", () => {
       address: server.address,
       namespace: server.namespace,
       gracePeriodMs: 10_000,
+      taskQueue,
       forceAfterMs: 15_000,
     });
   });
@@ -75,7 +189,7 @@ describe("temporal", () => {
     configured,
   }) => {
     // GIVEN the address pinned and the namespace left to the environment
-    await serve({ address: server.address, env: {}, tap: configured.tap });
+    const { taskQueue } = await serve({ address: server.address, env: {}, tap: configured.tap });
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN the pin won for the address and the environment's default for the rest
@@ -83,6 +197,7 @@ describe("temporal", () => {
       address: server.address,
       namespace: "default",
       gracePeriodMs: 10_000,
+      taskQueue,
       forceAfterMs: 15_000,
     });
   });
@@ -94,7 +209,7 @@ describe("temporal", () => {
   }) => {
     // GIVEN both pinned, over an environment that would be a configuration
     // error if it were read — a blank variable is never an absent one
-    await serve({
+    const { taskQueue } = await serve({
       address: server.address,
       namespace: "default",
       env: { TEMPORAL_ADDRESS: "" },
@@ -107,6 +222,7 @@ describe("temporal", () => {
       address: server.address,
       namespace: "default",
       gracePeriodMs: 10_000,
+      taskQueue,
       forceAfterMs: 15_000,
     });
   });
@@ -117,7 +233,7 @@ describe("temporal", () => {
     configured,
   }) => {
     // GIVEN a deployment naming both durations, and a starter pinning neither
-    await serve({
+    const { taskQueue } = await serve({
       address: server.address,
       namespace: server.namespace,
       env: { TEMPORAL_GRACE_PERIOD_MS: "3000", TEMPORAL_FORCE_AFTER_MS: "4000" },
@@ -130,6 +246,7 @@ describe("temporal", () => {
       address: server.address,
       namespace: server.namespace,
       gracePeriodMs: 3_000,
+      taskQueue,
       forceAfterMs: 4_000,
     });
   });
@@ -137,7 +254,7 @@ describe("temporal", () => {
   it("pins a Duration as the milliseconds it means", async ({ server, serve, configured }) => {
     // GIVEN a grace period pinned as Temporal's own duration string, against an
     // environment naming a different one
-    await serve({
+    const { taskQueue } = await serve({
       address: server.address,
       namespace: server.namespace,
       gracePeriod: "3 seconds",
@@ -151,6 +268,7 @@ describe("temporal", () => {
       address: server.address,
       namespace: server.namespace,
       gracePeriodMs: 3_000,
+      taskQueue,
       forceAfterMs: 15_000,
     });
   });

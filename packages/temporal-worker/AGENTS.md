@@ -152,6 +152,15 @@ page, never this file.
   Temporal's own OpenTelemetry interceptors beside `otel()`, not through this
   package.
 
+## Deployment task queue
+
+`taskQueue` pins `TemporalConfig.taskQueue`, ahead of `TEMPORAL_TASK_QUEUE` and
+then `contract.taskQueue`. The starter changes the worker's polling destination,
+never the supplied contract or a caller's destination. Runtime information
+reports the effective queue. The same configuration applies to activity-only
+workers. Local activities inherit the workflow's actual queue from Temporal;
+explicit cross-contract calls still target the queue on their own contract.
+
 ## Activity-only workers
 
 `workflows` is typed by the contract (`WorkflowsOption<C>`): required when
@@ -185,9 +194,8 @@ health check's start period and retry count, and `testcontainers`' own startup
 timeout (60 s by default), all take the budget, default five minutes: a knob
 for each would let one of them stay short.
 
-**The namespace is the isolation, never the task queue**: the starter reads
-its queue off the contract, so two spec files booting one worker poll one
-queue. Registration is retried with `vi.waitFor` until a namespace-scoped
+**The namespace is the isolation, never the task queue**: two spec files may
+boot workers on the same default or configured queue. Registration is retried with `vi.waitFor` until a namespace-scoped
 read answers, so a namespace that never becomes usable fails the file with
 the server's last error.
 

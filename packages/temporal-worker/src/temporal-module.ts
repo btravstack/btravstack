@@ -54,6 +54,7 @@ type TemporalStarter<
       never,
       | "TEMPORAL_ADDRESS"
       | "TEMPORAL_NAMESPACE"
+      | "TEMPORAL_TASK_QUEUE"
       | "TEMPORAL_GRACE_PERIOD_MS"
       | "TEMPORAL_FORCE_AFTER_MS"
     >

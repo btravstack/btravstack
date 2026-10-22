@@ -150,11 +150,11 @@ const OrderWorker = TemporalModule("OrderWorker")({
 await runMain(OrderWorker);
 ```
 
-`TemporalModule` imports the starter — `TemporalRuntime`, `TemporalConfig`
-bound from `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`) and
-`TEMPORAL_NAMESPACE` (default `default`), `TemporalConnection` opened as a
-resource of the graph and closed on every exit path — provides the activities
-and exports the runtime port. A service that will not answer is a modeled
+`TemporalModule` imports the starter, provides the activities and exports the
+runtime port. `TemporalConfig` binds `TEMPORAL_ADDRESS` (default
+`127.0.0.1:7233`), `TEMPORAL_NAMESPACE` (default `default`) and
+`TEMPORAL_TASK_QUEUE` (default `contract.taskQueue`). `TemporalConnection` opens
+as a resource of the graph and closes on every exit path. A service that will not answer is a modeled
 `TemporalUnreachable`, exit `1`; the starter calls `declareActivitiesHandler`
 itself, inside its own error qualifier, so a contract it cannot satisfy is a
 startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
@@ -224,11 +224,12 @@ only way to compose the starter, which is not exported:
 
 | Option          | What it is                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `contract`      | the `temporal-contract` contract; the task queue this worker polls is read off it                                                    |
+| `contract`      | the `temporal-contract` contract; its task queue is the default when no deployment override is set                                   |
 | `activities`    | the activities provider — what `TemporalActivities(contract)(...)` returns for this contract                                         |
 | `workflows`     | where the sandbox's code comes from: `{ workflowsPath }` or `{ workflowBundle }`; required unless the contract declares no workflows |
 | `address`       | pins the service instead of reading `TEMPORAL_ADDRESS`                                                                               |
 | `namespace`     | pins the namespace instead of reading `TEMPORAL_NAMESPACE`                                                                           |
+| `taskQueue`     | pins the queue instead of reading `TEMPORAL_TASK_QUEUE`; otherwise the contract queue is the default                                 |
 | `gracePeriod`   | pins `TEMPORAL_GRACE_PERIOD_MS` — Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                 |
 | `forceAfter`    | pins `TEMPORAL_FORCE_AFTER_MS` — Temporal's `shutdownForceTime` (default `15_000` ms); keep it under `DRAIN_TIMEOUT_MS`              |
 | `unit`          | `{ activity }` — the module the worker forks around every activity it dispatches, seeded with the validated input                    |
