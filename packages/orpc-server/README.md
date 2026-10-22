@@ -84,7 +84,7 @@ const api = defineHttp();
 
 // Contract-first: the record is shaped like the contract, each leaf a plain
 // Result-returning function typed by it. The use cases arrive under the names
-// the `inject` record gave them — di injects them; oRPC's context stays empty.
+// the `inject` record gave them; the request context carries native metadata.
 const ordersRouter = api.OrpcRouter(ordersContract)({
   inject: { place: PlaceOrder, find: FindOrder },
   sync: ({ place, find }) => ({
@@ -447,6 +447,14 @@ that still carries a `ReadableStream` has its cancellation started and
 answers `500` at once, reported as a defect; a locked stream cannot be freed
 that way and is reported on its own. The recipe is
 [Serve an oRPC contract as OpenAPI routes](https://btravstack.github.io/btravstack/how-to/serve-an-openapi-contract#stream-a-binary-body).
+
+Controller context exposes the native `request` (`IncomingMessage`), `host`
+(unit host) and cancellation `signal`, beside the authenticated principal and
+`context.unit` services. Request-scoped providers can inject
+`HttpRequestMetadata` from `@btravstack/http-server` for an immutable metadata
+snapshot carrying the same signal. Headers remain untrusted input to decode
+and authorize in the application. See
+[request metadata](https://btravstack.github.io/btravstack/reference/http-server#non-authentication-request-metadata).
 
 ## What it does not do
 

@@ -48,8 +48,11 @@ export const openApiRoutes = (options: OpenApiRoutesOptions = {}) => {
       );
       return {
         prefix,
-        handle: (request, response, _signal, host) =>
-          handler.handle(request, response, { prefix, context: { request, host, observers } }),
+        handle: (request, response, signal, host) =>
+          handler.handle(request, response, {
+            prefix,
+            context: { request, host, observers, signal },
+          }),
       };
     },
   });

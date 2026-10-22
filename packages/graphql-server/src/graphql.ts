@@ -350,6 +350,7 @@ export const graphql = <
               api.principals,
               resolved,
               options.unit ?? {},
+              { incoming: request, signal },
             );
             if (forked.isDefect()) {
               // oxlint-disable-next-line unthrown/no-throw -- the handler has no defect channel

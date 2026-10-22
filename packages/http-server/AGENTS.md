@@ -778,8 +778,9 @@ This does not change ordinary di module visibility.
   scheme resolved — **regardless of which module ends up forked**, so the
   anonymous fallback carries the seed too and an unread entry is the whole
   cost. That is what discharges a unit module's
-  `needs: [auth.principals.user]`. A request no leaf authenticated is seeded
-  with nothing, since there is no caller to name. `orpc.ts`'s
+  `needs: [auth.principals.user]`. Every fork is also seeded with `HttpRequestMetadata`: immutable headers,
+  method, URL and the runtime cancellation signal. A request no leaf
+  authenticated receives that metadata without a principal. `orpc.ts`'s
   `unitScope` middleware forks on **every leaf**, installed in `routerOf` after
   `principalMiddleware` where a leaf carries one — which is how the resolved
   scheme reaches it, on oRPC's own context as `resolved`. It runs only when oRPC's own
@@ -800,10 +801,10 @@ This does not change ordinary di module visibility.
   every unit, which is gone. Every bound kind's module's own unmet needs join
   `httpServer`'s own Needs channel, structurally, through a single
   `Units extends Readonly<Record<string, AnyUnitModule>> | undefined` type
-  parameter — **less the principal the fork seeds**, which `UnitsNeedsOf<Units>`
-  subtracts **per bound kind** with `Exclude<…, PrincipalInstance<K>>`: kind
-  `K`'s module is discharged of `HttpPrincipal:${K}` and of nothing else, and
-  `anonymous`'s of nothing at all. The subtraction used to be every
+  parameter — **less metadata and the principal the fork seeds**, which `UnitsNeedsOf<Units>`
+  subtracts metadata for every kind and its principal **per bound kind**: kind
+  `K`'s module is discharged of `HttpRequestMetadata` and its `HttpPrincipal:${K}`, and
+  `anonymous`'s of metadata alone. The principal subtraction used to be every
   `HttpPrincipal:*` from every module, which compiled and booted a root whose
   `anonymous` module (or a `user` module naming `service`'s principal) then
   answered `500` on the first request — a fork is seeded with exactly one
@@ -1652,3 +1653,17 @@ a token reference requires the token-aware scheme.
 Authentication dependency outages are modeled by `AuthenticatorUnavailable`,
 short-circuit the shared walk, and answer `503` in every answerer. The request
 adapter reports the scheme to `Observers`; defects remain `500`. See `AUTH.md`.
+
+## Non-authentication request metadata
+
+`HttpRequestMetadata` is seeded per request by the shared `forkUnit`, beside
+whichever principal authenticated. It is available to every bound kind,
+including anonymous units, and its need is discharged by `UnitsNeedsOf`.
+It is never provided in the application scope. Its immutable snapshot copies
+header arrays as well as the header record, so later request mutations cannot
+change a provider's decoded value. Its signal is the runtime's own, aborted
+when the response closes. Header values remain untrusted; decoding and
+resource authorization belong to the application, independently of authentication.
+
+The oRPC initial context retains request, host and signal in controller handler
+types, matching what both the RPC and OpenAPI answerers supply at runtime.

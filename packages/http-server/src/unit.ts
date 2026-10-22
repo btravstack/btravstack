@@ -3,6 +3,7 @@ import type { AnyUnitModule, UnitNeedsOf } from "@btravstack/core";
 import type { AnyPort, Context, Module, PortInstance, ServiceOf } from "@btravstack/di";
 
 import type { SchemesOf } from "./principal.js";
+import type { HttpRequestMetadata } from "./request-metadata.js";
 
 export type { AnyUnitModule };
 
@@ -21,12 +22,15 @@ type PrincipalInstance<K> = K extends "anonymous"
 
 /**
  * What a record of bound kinds still owes the composition root: every bound
- * module's own unmet needs, less the principal its own kind's fork seeds.
+ * module's own unmet needs, less request metadata and its kind's principal.
  */
 export type UnitsNeedsOf<Units> =
   Units extends Readonly<Record<string, unknown>>
     ? {
-        [K in keyof Units]: Exclude<UnitNeedsOf<Units[K]>, PrincipalInstance<K>>;
+        [K in keyof Units]: Exclude<
+          UnitNeedsOf<Units[K]>,
+          PrincipalInstance<K> | HttpRequestMetadata
+        >;
       }[keyof Units]
     : never;
 

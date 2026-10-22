@@ -1,3 +1,6 @@
+import { IncomingMessage } from "node:http";
+import { Socket } from "node:net";
+
 import { Env } from "@btravstack/config";
 import { noObserverMember } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
@@ -25,9 +28,17 @@ import {
 import { oidc } from "../oidc.js";
 import { SessionCodec, sessionCodec } from "../session.js";
 
-type TokenFixtures = { tokens: Awaited<ReturnType<typeof tokenFixture>> };
+type TokenFixtures = {
+  tokens: Awaited<ReturnType<typeof tokenFixture>>;
+  incoming: IncomingMessage;
+};
 
 export const it: TestAPI<HttpFixtures & TokenFixtures> = base.extend<TokenFixtures>({
+  incoming: async ({ task: _task }, use) => {
+    const socket = new Socket();
+    await use(new IncomingMessage(socket));
+    socket.destroy();
+  },
   tokens: async ({ task: _task }, use) => {
     await use(await tokenFixture());
   },
