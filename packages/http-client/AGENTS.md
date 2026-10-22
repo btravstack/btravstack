@@ -69,3 +69,15 @@ integration and preserve every boundary above.
 
 Allowed origins are permissions, not required dependencies; the client contributes
 no reachability health probe. Each operation reports its own outcome.
+
+## Private control planes
+
+Origin-scoped private approvals (#664) admit only RFC 1918 and IPv6 unique-local
+subnets. A CIDR extending beyond one of those allocations is refused at build;
+loopback, metadata/link-local and IPv4-mapped IPv6 cannot be opted in. BlockList
+can match IPv4-mapped addresses against IPv4 subnets, so the address-family
+private-range predicate must precede its membership check. Compilation owns each
+BlockList; caller mutation never broadens an existing client. The public-only
+predicate remains the default, and private membership is an additional path for
+that origin alone. Literal and connection-time DNS checks use the same predicate.
+There is no change to the HTTPS transport or identity handling.

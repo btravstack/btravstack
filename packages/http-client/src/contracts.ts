@@ -14,12 +14,20 @@ export type HttpTlsBinding = {
   readonly credentials: () => HttpTlsIdentity;
 };
 
+/** Private network approval for one exact HTTPS origin. Only RFC 1918 and IPv6 unique-local CIDRs are accepted. */
+export type HttpPrivateOrigin = {
+  readonly origin: string;
+  readonly cidrs: readonly string[];
+};
+
 /** Application-owned approvals. Tenant configuration must never supply or extend this policy. */
 export type HttpPolicy = {
   /** Exact HTTPS origins, including non-default ports. Snapshotted when the client is built. */
   readonly origins: readonly string[];
   /** Exact-origin client identities. Sources are captured at construction; credentials may rotate. */
   readonly tlsIdentities?: readonly HttpTlsBinding[];
+  /** Deployment-owned private CIDRs per approved origin; omitted origins remain public-only. */
+  readonly privateOrigins?: readonly HttpPrivateOrigin[];
   /** Maximum complete response body bytes. Only identity encoding is supported. */
   readonly maxResponseBytes: number;
   /** Whole-operation budget in milliseconds, including DNS, TLS, headers and body. */
@@ -27,13 +35,18 @@ export type HttpPolicy = {
 };
 /** Invalid application policy; contains no input URLs. */
 export class HttpPolicyInvalid extends TaggedError("HttpPolicyInvalid")<{
-  readonly field: "origins" | "maxResponseBytes" | "deadlineMs" | "tlsIdentities";
+  readonly field:
+    | "origins"
+    | "maxResponseBytes"
+    | "deadlineMs"
+    | "tlsIdentities"
+    | "privateOrigins";
 }> {}
 /** The request was refused before transmission. */
 export class HttpPolicyRejected extends TaggedError("HttpPolicyRejected")<{
   readonly reason: "url" | "scheme" | "credentials" | "origin" | "headers" | "request";
 }> {}
-/** At least one resolved address, or a literal address, was private or reserved. */
+/** At least one resolved address, or a literal address, was private or reserved without approval. */
 export class HttpDestinationForbidden extends TaggedError("HttpDestinationForbidden") {}
 /** A redirect response is never followed. Location is deliberately omitted. */
 export class HttpRedirectRefused extends TaggedError("HttpRedirectRefused")<{

@@ -45,8 +45,8 @@ are refused before network work, including calls from JavaScript.
 Approvals compare normalized exact HTTPS origins, including ports. URL
 credentials and unsupported schemes are refused before transmission. A different
 subdomain or non-default port requires its own approval. Literal private/reserved
-addresses are refused too. Every connection resolves all DNS answers and refuses
-the destination if any answer is private/reserved; that checked address is the
+addresses are refused unless covered by the private-origin policy below. Every connection resolves all DNS answers and refuses
+the destination if any answer is private/reserved and unapproved; that checked address is the
 one used for the connection, with the original TLS hostname and SNI preserved.
 
 No redirects are followed. No proxy is used, including one configured through
@@ -65,7 +65,7 @@ open a socket after the operation has settled.
 | Refusal                    | Meaning                                                                       |
 | -------------------------- | ----------------------------------------------------------------------------- |
 | `HttpPolicyRejected`       | Invalid URL, scheme, credentials, origin, headers or unsupported fetch shape. |
-| `HttpDestinationForbidden` | Literal or any DNS answer is private/reserved.                                |
+| `HttpDestinationForbidden` | Literal or any DNS answer is private/reserved and unapproved.                 |
 | `HttpRedirectRefused`      | A 3xx status other than 304, with no retained Location.                       |
 | `HttpEncodingRefused`      | Response is not identity encoded.                                             |
 | `HttpResponseTooLarge`     | Streaming bytes exceeded the policy limit.                                    |
@@ -75,6 +75,49 @@ open a socket after the operation has settled.
 
 Refusals retain no request URL, credentials, raw network causes, headers or body.
 The DI composition reports only bounded operation names to `Observers`.
+
+## Private origins
+
+`HttpPolicy.privateOrigins` extends the public-only default for specific approved
+origins. Each `HttpPrivateOrigin` names an exact origin already present in
+`origins` and a non-empty `cidrs` array. Only subnets wholly within RFC 1918
+(`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) or IPv6 unique-local
+(`fc00::/7`) space are accepted. Use the smallest deployment-owned service range.
+
+```ts
+import { createHttpClient, type HttpPrivateOrigin } from "@btravstack/http-client";
+
+const controlPlane: HttpPrivateOrigin = {
+  origin: "https://apisix-admin.platform.svc.cluster.local:9444",
+  cidrs: ["10.96.0.0/16", "fd00:1234::/32"],
+};
+const adminClient = createHttpClient({
+  origins: [controlPlane.origin],
+  privateOrigins: [controlPlane],
+  maxResponseBytes: 65_536,
+  deadlineMs: 5_000,
+});
+```
+
+The origin and CIDRs belong to trusted application or deployment configuration,
+never tenant input. Construction copies the approvals; changing the policy later
+does not broaden an existing client. Duplicate origins, unknown origins, paths,
+empty ranges, malformed CIDRs and ranges extending beyond the private allocations
+return `HttpPolicyInvalid({ field: "privateOrigins" })` without retaining inputs.
+
+Public destinations remain accepted for an approved origin. Private destinations
+must match that origin's own CIDRs, including literal IP origins. Every DNS
+answer must pass: mixed allowed/disallowed answers are refused before connecting.
+Every new connection repeats the check and connects to the checked answer.
+Approvals never admit loopback, link-local metadata services, multicast,
+IPv4-mapped IPv6, translation prefixes or other reserved ranges.
+
+Redirects remain refused, including redirects between approved origins. TLS
+chain and hostname verification, origin-bound client identities, body limits,
+cancellation and the whole-operation deadline apply unchanged. Install the
+cluster's trusted CA through Node's normal trust configuration; the policy has
+no verification override. The same approvals apply through `httpClient` and
+`httpClientFetch`.
 
 ## Mutual TLS identities
 
@@ -161,12 +204,13 @@ The conservative prefix policy was checked on 2026-10-17 against IANA's
 [IPv6 special-purpose registry](https://www.iana.org/assignments/iana-ipv6-special-registry/),
 [IPv6 address space allocation](https://www.iana.org/assignments/ipv6-address-space/)
 and [global unicast assignments](https://www.iana.org/assignments/ipv6-unicast-address-assignments/).
-All listed IPv4 special-purpose allocations are refused, including their public
+By default, all listed IPv4 special-purpose allocations are refused, including their public
 anycast exceptions, as are multicast/reserved IPv4. IPv6 accepts only the listed
 allocations to regional Internet registries within `2000::/3`, excluding
 `2001:db8::/32` and `2620:4f:8000::/48`. Unallocated and reserved global unicast,
 `2001::/23` and 6to4 are refused.
-All IPv4-mapped IPv6, NAT64, local, multicast and other reserved IPv6 are refused.
+IPv4-mapped IPv6, NAT64, multicast and other reserved IPv6 remain refused.
+Only the explicit private-origin policy above admits RFC 1918 and unique-local ranges.
 This intentionally trades access to special-purpose public services for a small,
 auditable application boundary. Network egress controls must also stop a public
 address being locally routed to private infrastructure.

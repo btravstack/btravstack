@@ -1,7 +1,7 @@
 import dns from "node:dns";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import https from "node:https";
-import { isIP } from "node:net";
+import { type BlockList, isIP } from "node:net";
 
 import { Err, ErrAsync, Ok, fromSafePromise, fromThrowable, type Result } from "unthrown";
 
@@ -24,6 +24,7 @@ import {
   type HttpResponse,
   type HttpTlsIdentity,
 } from "./contracts.js";
+import { privateOrigins, privateRange } from "./private-origins.js";
 
 const parseUrl = fromThrowable(
   (input: string | URL) => new URL(input),
@@ -39,11 +40,15 @@ const validateHeaders = fromThrowable(
   () => new HttpPolicyRejected({ reason: "headers" }),
 );
 const hostname = (url: URL) => url.hostname.replace(/^\[|\]$/g, "");
-const destination = (url: URL): HttpFailure | undefined => {
+const allowedAddress = (address: string, approved?: BlockList): boolean =>
+  publicAddress(address) ||
+  (privateRange(address, isIP(address) === 4 ? 32 : 128, isIP(address)) &&
+    approved?.check(address, isIP(address) === 4 ? "ipv4" : "ipv6") === true);
+const destination = (url: URL, approved?: BlockList): HttpFailure | undefined => {
   if (url.protocol !== "https:") return new HttpPolicyRejected({ reason: "scheme" });
   if (url.username !== "" || url.password !== "")
     return new HttpPolicyRejected({ reason: "credentials" });
-  if (isIP(hostname(url)) !== 0 && !publicAddress(hostname(url)))
+  if (isIP(hostname(url)) !== 0 && !allowedAddress(hostname(url), approved))
     return new HttpDestinationForbidden();
   return undefined;
 };
@@ -53,6 +58,7 @@ const exchange = (
   input: HttpRequest,
   policy: HttpPolicy,
   credentials?: () => HttpTlsIdentity,
+  approved?: BlockList,
 ) =>
   fromSafePromise(
     new Promise<Result<HttpResponse, HttpFailure>>((resolve) => {
@@ -86,7 +92,7 @@ const exchange = (
               callback(error ?? new HttpUnavailable(), "", 4);
               return;
             }
-            if (addresses.some(({ address }) => !publicAddress(address))) {
+            if (addresses.some(({ address }) => !allowedAddress(address, approved))) {
               finish(Err(new HttpDestinationForbidden()));
               callback(new HttpDestinationForbidden(), "", 4);
               return;
@@ -203,7 +209,9 @@ export const createHttpClient = (
     const parsed = parseUrl(origin).getOrUndefined();
     if (
       parsed === undefined ||
-      destination(parsed) !== undefined ||
+      parsed.protocol !== "https:" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
       parsed.pathname !== "/" ||
       parsed.search !== "" ||
       parsed.hash !== ""
@@ -212,58 +220,67 @@ export const createHttpClient = (
     origins.add(parsed.origin);
   }
   if (origins.size === 0) return Err(new HttpPolicyInvalid({ field: "origins" }));
-  const identities = new Map<string, () => HttpTlsIdentity>();
-  if (input.tlsIdentities !== undefined && !Array.isArray(input.tlsIdentities))
-    return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
-  for (const binding of input.tlsIdentities ?? []) {
-    if (binding === null || typeof binding !== "object")
+  const compiled = privateOrigins(input.privateOrigins, origins);
+  return compiled.flatMap((approvals) => {
+    for (const origin of origins) {
+      if (destination(new URL(origin), approvals.get(origin)) !== undefined)
+        return Err(new HttpPolicyInvalid({ field: "origins" }));
+    }
+    const identities = new Map<string, () => HttpTlsIdentity>();
+    if (input.tlsIdentities !== undefined && !Array.isArray(input.tlsIdentities))
       return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
-    const parsed = parseUrl(binding.origin).getOrUndefined();
-    if (
-      parsed === undefined ||
-      parsed.href !== parsed.origin + "/" ||
-      !origins.has(parsed.origin) ||
-      identities.has(parsed.origin) ||
-      typeof binding.credentials !== "function"
-    )
-      return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
-    identities.set(parsed.origin, binding.credentials);
-  }
-  const policy = {
-    origins: [...origins],
-    maxResponseBytes: input.maxResponseBytes,
-    deadlineMs: input.deadlineMs,
-  };
-  return Ok({
-    request: (request) => {
-      const input = snapshotRequest(request);
-      if (input.method !== undefined && !supportedMethod(input.method))
-        return ErrAsync(new HttpPolicyRejected({ reason: "request" }));
-      return parseUrl(input.url)
-        .toAsync()
-        .flatMap((url) => {
-          const refused = destination(url);
-          if (refused !== undefined) return ErrAsync(refused);
-          if (!origins.has(url.origin))
-            return ErrAsync(new HttpPolicyRejected({ reason: "origin" }));
-          if (
-            Object.keys(input.headers ?? {}).some((key) =>
-              [
-                "host",
-                "connection",
-                "transfer-encoding",
-                "content-length",
-                "trailer",
-                "te",
-                "upgrade",
-              ].includes(key.toLowerCase()),
+    for (const binding of input.tlsIdentities ?? []) {
+      if (binding === null || typeof binding !== "object")
+        return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
+      const parsed = parseUrl(binding.origin).getOrUndefined();
+      if (
+        parsed === undefined ||
+        parsed.href !== parsed.origin + "/" ||
+        !origins.has(parsed.origin) ||
+        identities.has(parsed.origin) ||
+        typeof binding.credentials !== "function"
+      )
+        return Err(new HttpPolicyInvalid({ field: "tlsIdentities" }));
+      identities.set(parsed.origin, binding.credentials);
+    }
+    const policy = {
+      origins: [...origins],
+      maxResponseBytes: input.maxResponseBytes,
+      deadlineMs: input.deadlineMs,
+    };
+    return Ok({
+      request: (request) => {
+        const input = snapshotRequest(request);
+        if (input.method !== undefined && !supportedMethod(input.method))
+          return ErrAsync(new HttpPolicyRejected({ reason: "request" }));
+        return parseUrl(input.url)
+          .toAsync()
+          .flatMap((url) => {
+            const refused = destination(url, approvals.get(url.origin));
+            if (refused !== undefined) return ErrAsync(refused);
+            if (!origins.has(url.origin))
+              return ErrAsync(new HttpPolicyRejected({ reason: "origin" }));
+            if (
+              Object.keys(input.headers ?? {}).some((key) =>
+                [
+                  "host",
+                  "connection",
+                  "transfer-encoding",
+                  "content-length",
+                  "trailer",
+                  "te",
+                  "upgrade",
+                ].includes(key.toLowerCase()),
+              )
             )
-          )
-            return ErrAsync(new HttpPolicyRejected({ reason: "headers" }));
-          return validateHeaders(input.headers)
-            .toAsync()
-            .flatMap(() => exchange(url, input, policy, identities.get(url.origin)));
-        });
-    },
+              return ErrAsync(new HttpPolicyRejected({ reason: "headers" }));
+            return validateHeaders(input.headers)
+              .toAsync()
+              .flatMap(() =>
+                exchange(url, input, policy, identities.get(url.origin), approvals.get(url.origin)),
+              );
+          });
+      },
+    });
   });
 };

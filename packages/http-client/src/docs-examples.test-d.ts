@@ -49,3 +49,15 @@ payments.map((client) => {
   // @ts-expect-error Request input cannot override TLS verification.
   client.request({ url: paymentIdentity.origin, rejectUnauthorized: false });
 });
+
+const controlPlane: import("./index.js").HttpPrivateOrigin = {
+  origin: "https://apisix-admin.platform.svc.cluster.local:9444",
+  cidrs: ["10.96.0.0/16", "fd00:1234::/32"],
+};
+const adminClient = createHttpClient({
+  origins: [controlPlane.origin],
+  privateOrigins: [controlPlane],
+  maxResponseBytes: 65_536,
+  deadlineMs: 5_000,
+});
+void adminClient;
