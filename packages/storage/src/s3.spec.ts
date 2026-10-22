@@ -68,6 +68,82 @@ describe("s3Storage", () => {
     });
   });
 
+  it("serves signed response overrides including a unicode filename", async ({ s3, keyPrefix }) => {
+    // GIVEN a stored document and an RFC 8187 filename
+    const key = `${keyPrefix}download`;
+    const disposition = "attachment; filename=report.pdf; filename*=UTF-8''relev%C3%A9.pdf";
+    const url = await s3
+      .put(key, aDocument().bytes, { contentType: "application/json" })
+      .flatMap(() =>
+        s3.presignedUrl(key, {
+          ttlMs: 60_000,
+          contentDisposition: disposition,
+          contentType: "application/pdf",
+          cacheControl: "private, no-store",
+        }),
+      );
+
+    // WHEN the signed download is fetched
+    const response = await fetch(url.getOrThrow());
+    await response.arrayBuffer();
+
+    // THEN the response carries the requested headers
+    expect({
+      status: response.status,
+      disposition: response.headers.get("content-disposition"),
+      type: response.headers.get("content-type"),
+      cache: response.headers.get("cache-control"),
+    }).toEqual({ status: 200, disposition, type: "application/pdf", cache: "private, no-store" });
+  });
+
+  it("keeps stored metadata unchanged when a download overrides it", async ({ s3, keyPrefix }) => {
+    // GIVEN an object with its own content type
+    const key = `${keyPrefix}unchanged`;
+    await s3.put(key, aDocument().bytes, { contentType: "application/json" }).getOrThrow();
+
+    // WHEN a download overrides its response type
+    await s3.presignedUrl(key, { ttlMs: 60_000, contentType: "application/pdf" }).getOrThrow();
+
+    // THEN the stored description is unchanged
+    await expect(s3.head(key)).toBeOkWith(
+      expect.objectContaining({ contentType: "application/json" }),
+    );
+  });
+
+  it.for([
+    ["response-content-disposition", "inline"],
+    ["response-content-type", "text/plain"],
+    ["response-cache-control", "public"],
+  ] as const)(
+    "refuses a changed %s override",
+    async ([parameter, replacement], { s3, keyPrefix }) => {
+      // GIVEN a download signed with response overrides
+      const key = `${keyPrefix}download`;
+      const signed = await s3
+        .put(key, aDocument().bytes, { contentType: "application/json" })
+        .flatMap(() =>
+          s3.presignedUrl(key, {
+            ttlMs: 60_000,
+            contentDisposition: "attachment",
+            contentType: "application/pdf",
+            cacheControl: "private",
+          }),
+        );
+      const url = new URL(signed.getOrThrow());
+      url.searchParams.set(parameter, replacement);
+
+      // WHEN an override is changed without signing again
+      const response = await fetch(url);
+      const body = await response.text();
+
+      // THEN the store refuses the signature
+      expect({ status: response.status, body }).toEqual({
+        status: 403,
+        body: expect.stringContaining("<Code>SignatureDoesNotMatch</Code>"),
+      });
+    },
+  );
+
   it("mints a url for a key nobody stored, because presigning asks the store nothing", async ({
     s3,
     keyPrefix,

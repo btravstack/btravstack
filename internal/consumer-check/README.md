@@ -27,6 +27,12 @@ CI job rather than asking another repository for a new one.
    case unwraps a root, derives a Node WebCrypto key and encrypts without casts;
    a type assertion also refuses an unresolved root key degraded to `any`.
 
+   The declaration check installs the oRPC client, contract, server, JSON Schema
+   and OpenAPI peers at their catalog versions. Leaving a peer to resolve from
+   its prerelease range can mix releases and make this check depend on a
+   partially published upstream release. The isolated load check still tests
+   each package's declared peer ranges at its published floor.
+
 2. **The tarballs are well formed.** `publint` on each, plus
    `@arethetypeswrong/cli --pack`, which is what caught that the
    `@btravstack/http-server` subpaths resolve no types under legacy `node10`

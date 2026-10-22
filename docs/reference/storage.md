@@ -48,7 +48,12 @@ export const documents = Provider(
         ),
     link: (key) =>
       store
-        .presignedUrl(key, { ttlMs: 60_000 })
+        .presignedUrl(key, {
+          ttlMs: 60_000,
+          contentDisposition: "attachment; filename=report.pdf; filename*=UTF-8''relev%C3%A9.pdf",
+          contentType: "application/pdf",
+          cacheControl: "private, no-store",
+        })
         .recoverErrCases((matcher) =>
           matcher
             .with(P.tag("StorageUnavailable"), () => undefined)
@@ -69,7 +74,7 @@ export const documents = Provider(
 | `copy(from, to, options: CopyOptions)`                                            | `AsyncResult<void, ObjectNotFound \| InvalidStorageOptions \| StorageUnavailable>`                                                          |
 | `head(key)`                                                                       | `AsyncResult<ObjectHead, ObjectNotFound \| StorageUnavailable>`                                                                             |
 | `delete(key)`                                                                     | `AsyncResult<void, StorageUnavailable>`                                                                                                     |
-| `presignedUrl(key, { ttlMs })`                                                    | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                                                            |
+| `presignedUrl(key, options)`                                                      | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`                                                                            |
 | `presignedUpload(key, { ttlMs, contentType, contentLength, sha256?, kmsKeyId? })` | `AsyncResult<string, PresignNotSupported \| InvalidStorageOptions \| StorageUnavailable>`                                                   |
 
 `WriteOptions` requires `contentType` and accepts `kmsKeyId`, `sha256` and
@@ -287,6 +292,18 @@ hand out a dead link reads first: `examples/order-amqp-worker`'s notifier
 `get`s an invoice before presigning it into a withdrawal mail, retries an
 `ObjectNotFound` while the invoice may still be on its way, and folds one past
 the store's retention into a mail without a link.
+
+`presignedUrl` also accepts `contentDisposition`, `contentType` and
+`cacheControl`. These override the download response only; they do not mutate
+stored metadata. The S3 adapter signs each override, so changing or removing
+one from the URL invalidates its signature. Omitted overrides retain the
+store's response defaults. An adapter that cannot mint this URL answers
+`PresignNotSupported`.
+
+For a Unicode filename, pass an RFC 8187 encoded header, for example
+`attachment; filename=report.pdf; filename*=UTF-8''relev%C3%A9.pdf`.
+The application chooses attachment versus inline, the filename and cache policy.
+Response headers and the resulting URL are not observation attributes.
 
 ## Adapters
 
