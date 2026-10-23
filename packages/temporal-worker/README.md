@@ -160,6 +160,9 @@ itself, inside its own error qualifier, so a contract it cannot satisfy is a
 startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
 back once the worker is polling.
 
+Activity-piece DI identities include the contract task queue. Separate worker
+contracts can reuse keys without sharing a port; wire activity names stay unchanged.
+
 A worker polling for several workflows can be several slices instead of one
 record: `TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, unit, fork, sync })` mints a
 provider for ONE workflow's activities (or a contract-global activity),

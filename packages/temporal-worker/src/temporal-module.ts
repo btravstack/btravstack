@@ -229,6 +229,7 @@ export const TemporalModule =
 type PieceOf<C extends ContractDefinition> = {
   readonly [K in ActivitiesKeyOf<C>]: {
     readonly port: WorkflowActivitiesPortOf<C, K>;
+    readonly _activityKey?: K;
     /** Phantom, carrying the ports the piece injects off `context.unit`. */
     readonly _declared?: unknown;
   };
@@ -239,9 +240,9 @@ type DeclaredOf<T extends readonly { readonly _declared?: unknown }[]> = NonNull
   T[number]["_declared"]
 >;
 
-/** The key a piece carries, read back off its port id. */
+/** The contract key a piece carries independently of its queue namespace. */
 type KeyOfPiece<P> = P extends {
-  readonly port: { readonly portId: `${typeof WORKFLOW_ACTIVITIES_PREFIX}${infer K}` };
+  readonly _activityKey?: infer K;
 }
   ? K
   : never;
@@ -322,6 +323,9 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
 export const TemporalActivities = <C extends ContractDefinition>(
   contract: C,
 ): Whole<C> & Compose<C> => {
-  void contract;
-  return composeByPrefix(TemporalActivitiesPort, WORKFLOW_ACTIVITIES_PREFIX, withUnit) as never;
+  return composeByPrefix(
+    TemporalActivitiesPort,
+    `${WORKFLOW_ACTIVITIES_PREFIX}${contract.taskQueue}:`,
+    withUnit,
+  ) as never;
 };

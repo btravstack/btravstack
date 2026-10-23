@@ -10,6 +10,12 @@ page, never this file.
 
 ## Decisions and gotchas
 
+- **Activity pieces are namespaced by the contract's task queue.** Different
+  worker contracts can reuse a workflow or activity key in one process without
+  sharing a DI port. The composing form strips that queue prefix while keeping
+  wire activity names unchanged. Two pieces claiming one key in the same worker
+  still conflict. Tenant isolation stays the namespace's responsibility.
+
 - The package exports ESM only. Its required `@temporal-contract/worker` peer
   exposes activity subpaths under `import` alone; a CommonJS build cannot load
   them on any Node. Its Node floor is `>=22.22`, matching that peer.

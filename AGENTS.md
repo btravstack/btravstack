@@ -1061,6 +1061,10 @@ in its place.
   repeated as a second positional parameter. Why oRPC's, and the naming
   asymmetry still undecided, are in `docs/explanation/deferred-decisions.md`.
 
+  Temporal activity-piece DI identities include the contract's task queue, so
+  separate workers can reuse keys without sharing a port. Wire activity names
+  and the same-worker duplicate-provider refusal stay unchanged.
+
   **All three starters share one shape**: mint a piece from a contract key
   (`api.OrpcController(contract, path)`, `AmqpHandler(contract, key)`,
   `TemporalWorkflowActivities(contract, key)`) and compose an **array** of them
