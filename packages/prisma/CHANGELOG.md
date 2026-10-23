@@ -1,5 +1,13 @@
 # @btravstack/prisma
 
+## 0.49.0
+
+### Patch Changes
+
+- @btravstack/config@0.49.0
+  - @btravstack/core@0.49.0
+  - @btravstack/di@0.49.0
+
 ## 0.48.1
 
 ### Patch Changes
