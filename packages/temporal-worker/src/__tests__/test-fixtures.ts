@@ -906,7 +906,7 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
     ...(options.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs }),
     ...(options.stopTimeoutMs === undefined ? {} : { stopTimeoutMs: options.stopTimeoutMs }),
   });
-  return { app, taskQueue };
+  return { app, taskQueue: options.taskQueue ?? options.env?.["TEMPORAL_TASK_QUEUE"] ?? taskQueue };
 };
 
 /**

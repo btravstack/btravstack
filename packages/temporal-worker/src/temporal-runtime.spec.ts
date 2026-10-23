@@ -21,7 +21,7 @@ describe("temporal", () => {
   }) => {
     // GIVEN
     const queue = "runtime-binding-env";
-    const { app, client } = await serve({
+    const { app, client, taskQueue } = await serve({
       env: {
         TEMPORAL_ADDRESS: server.address,
         TEMPORAL_NAMESPACE: server.namespace,
@@ -30,7 +30,7 @@ describe("temporal", () => {
     });
     // WHEN
     const result = await client.workflow.execute("runEcho", {
-      taskQueue: queue,
+      taskQueue,
       workflowId: queue,
       args: ["bound"],
     });
@@ -48,12 +48,12 @@ describe("temporal", () => {
     // WHEN
     const results = await Promise.all([
       first.client.workflow.execute("runEcho", {
-        taskQueue: "runtime-release-a",
+        taskQueue: first.taskQueue,
         workflowId: "binding-operation-a",
         args: ["input"],
       }),
       second.client.workflow.execute("runEcho", {
-        taskQueue: "runtime-release-b",
+        taskQueue: second.taskQueue,
         workflowId: "binding-operation-b",
         args: ["input"],
       }),
