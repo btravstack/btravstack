@@ -587,3 +587,17 @@ deliveries and awaiting in-flight handlers before releasing its connection.
 The kernel's stop deadline bounds that wait. `amqp-subscription:<name>` is a
 health contribution reporting broker connectivity; it does not detect a
 server-cancelled consumer while the connection remains up.
+
+## Runtime resource bindings
+
+The worker accepts a normalized contract with physical deployment resources.
+Its handler composition uses logical consumer/RPC keys, so a compatible bound
+contract keeps the same handlers. Pass the same materialized topology to the
+publisher client; preserve unmapped imported producer exchanges. Retry, parking
+and RPC destinations belong to the bound topology rather than a global prefix.
+
+The public binding helper is tracked in
+[amqp-contract#754](https://github.com/btravstack/amqp-contract/issues/754).
+Until that API is released, compose topology through supported public builders;
+never patch private descriptors. The starter needs no new handler dispatch layer
+for this: deployment uniqueness and tenant event admission remain separate.

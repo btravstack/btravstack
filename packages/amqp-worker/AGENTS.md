@@ -174,3 +174,13 @@ the isolated strict-peer consumer install verifies both together.
 `InvalidAmqpSubscription` names configuration refusals; `SubscriptionHandlers`
 is the exported contract-typed handler record, so consumers can name it without
 rebuilding upstream parameter inference. Both appear in the reference export index.
+
+Physical runtime resource bindings preserve logical consumer/RPC keys. Handler
+ports and message units therefore remain compatible with bound topology; no
+implicit global prefix belongs in this starter. The contract library owns full
+resource materialization and the application owns admitted tenant routing.
+
+`AmqpModule` infers its contract from the `contract` property only (`NoInfer` on
+handlers). Otherwise an existing handler provider makes inference select its
+original physical topology, refusing a compatible deployment binding. Type
+regressions run on both compiler trains and still reject changed payloads.

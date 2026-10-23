@@ -221,6 +221,8 @@ optional peers. See
 
 ## Options
 
+- `taskQueue`: pins `TEMPORAL_TASK_QUEUE`, defaulting to the contract queue; see the [reference](https://btravstack.github.io/btravstack/reference/temporal-worker).
+
 `TemporalModule(name)({...})` takes the starter's options plus `activities`
 and the module lists (`imports`, `provides`, `exports`, `needs`). It is the
 only way to compose the starter, which is not exported:

@@ -57,7 +57,7 @@ import { currentUnit } from "@btravstack/core";
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                                     |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows?, address?, namespace?, gracePeriod?, forceAfter?, unit?, dataConverter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                               |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows?, address?, namespace?, taskQueue?, gracePeriod?, forceAfter?, unit?, dataConverter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                   |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                                |
 | `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                                    |
 | `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                                     |
@@ -831,3 +831,25 @@ alongside the ordinary `tsc --noEmit`.
 `TemporalModule` automatically exports publicly available `Logger` and `HealthChecks`
 ports, including whole-module re-exports and providers declared at the root.
 It keeps private infrastructure hidden and business exports explicit.
+
+## Runtime task queue
+
+`taskQueue` pins `TEMPORAL_TASK_QUEUE`; when both are absent the contract's queue
+is the default. Configuration validates the destination using the contract
+library, including pinned values. `TemporalConfig.taskQueue` and runtime info
+report the physical queue. Activity providers, activity names, workflow types,
+schemas and execution IDs keep their logical identity.
+
+For example, compose `TemporalModule` with the original `orderContract` and its
+existing activity provider, then set `TEMPORAL_TASK_QUEUE=orders.release-a` in the
+deployment. A second deployment may poll `orders.release-b` using the same wire
+names. Clients must bind the corresponding destination explicitly before start;
+a queue change does not update existing histories or make a bundle replay-safe.
+Keep workers needed by in-flight histories. Resolve child/activity targets from
+recorded decisions, never environment reads in workflow code.
+
+```ts
+const deploymentQueue: Pick<TemporalOptions<typeof orderContract>, "taskQueue"> = {
+  taskQueue: "orders.release-a",
+};
+```

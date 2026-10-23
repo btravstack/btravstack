@@ -69,7 +69,11 @@ export type AmqpModuleOptions<
    * read off `context.unit`, which is what {@link UnitGate} checks `unit.message`
    * against.
    */
-  readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds> & {
+  readonly handlers: Provider<
+    HandlersInstanceOf<NoInfer<TContract>>,
+    HandlersError,
+    HandlersNeeds
+  > & {
     readonly _declaredUnit?: Declared;
   };
   readonly imports?: I;

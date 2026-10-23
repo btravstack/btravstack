@@ -477,6 +477,7 @@ const slicesOf = () => {
 
 export type AmqpFixtures = {
   readonly subscriptionContract: typeof subscriptionContract;
+  readonly serveBoundPair: () => Promise<{ seen: string[][]; apps: readonly [App, App] }>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /** Boots the starter over `handlers` — a record that acks everything when none is given. */
@@ -522,6 +523,41 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- a contract factory needs no other fixture
   subscriptionContract: async ({}, use) => {
     await use(subscriptionContract);
+  },
+  serveBoundPair: async ({ amqpConnectionUrl, boot }, use) => {
+    await use(async () => {
+      const seen: string[][] = [[], []];
+      const startBound = async (release: string, index: number) => {
+        const event = defineEventPublisher(defineExchange(`${release}.events`), echoMessage, {
+          routingKey: "echo.requested",
+        });
+        const contract = defineContract({
+          publishers: { echo: event },
+          consumers: {
+            echo: defineEventConsumer(
+              event,
+              defineQueue(`${release}.inbox`, { type: "classic", onPoison: "drop" }),
+            ),
+          },
+        });
+        const handlers = echoHandlers({
+          sync: () => ({
+            echo: ({ input }) => {
+              seen[index]!.push(input.payload.value);
+              return OkAsync();
+            },
+          }),
+        });
+        const app: App = boot(
+          AmqpModule(`Bound-${release}`)({ contract, handlers, url: amqpConnectionUrl }),
+        );
+        await untilServing(app);
+        return app;
+      };
+      const first = await startBound("release-a", 0);
+      const second = await startBound("release-b", 1);
+      return { seen, apps: [first, second] as const };
+    });
   },
   serve: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers, options) => {

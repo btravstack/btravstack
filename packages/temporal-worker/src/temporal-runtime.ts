@@ -41,6 +41,7 @@ import {
 } from "unthrown";
 
 import { activityUnits } from "./activity-units.js";
+import { taskQueueField } from "./task-queue.js";
 import { forkOf, unitsOf } from "./unit.js";
 import type { ActivityInputInstance } from "./workflow-activities.js";
 
@@ -69,6 +70,7 @@ export type WorkflowSource =
 export class TemporalConfig extends Port("TemporalConfig")<{
   readonly address: string;
   readonly namespace: string;
+  readonly taskQueue: string;
   /** Temporal's `shutdownGraceTime`, in milliseconds. */
   readonly gracePeriodMs: number;
   /** Temporal's `shutdownForceTime`, in milliseconds. */
@@ -149,6 +151,8 @@ export type TemporalTuning<
   readonly address?: string;
   /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
   readonly namespace?: string;
+  /** Physical polling queue, independent of the logical contract and DI identities. Pins TEMPORAL_TASK_QUEUE. */
+  readonly taskQueue?: string;
   /**
    * Pins `TemporalConfig.forceAfterMs` instead of reading
    * `TEMPORAL_FORCE_AFTER_MS` (default `15_000`) — Temporal's
@@ -242,6 +246,7 @@ export const temporal = <
       never,
       | "TEMPORAL_ADDRESS"
       | "TEMPORAL_NAMESPACE"
+      | "TEMPORAL_TASK_QUEUE"
       | "TEMPORAL_GRACE_PERIOD_MS"
       | "TEMPORAL_FORCE_AFTER_MS"
     >
@@ -262,6 +267,7 @@ export const temporal = <
         namespace,
         Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
       ),
+      taskQueue: Config.pinned(options.taskQueue, taskQueueField(options.contract)),
       gracePeriodMs: Config.pinned(
         durationMs(options.gracePeriod),
         Config.integer("TEMPORAL_GRACE_PERIOD_MS", { default: DEFAULT_GRACE_MS, min: 0 }),
@@ -334,6 +340,7 @@ export const temporal = <
         never,
         | "TEMPORAL_ADDRESS"
         | "TEMPORAL_NAMESPACE"
+        | "TEMPORAL_TASK_QUEUE"
         | "TEMPORAL_GRACE_PERIOD_MS"
         | "TEMPORAL_FORCE_AFTER_MS"
       >
@@ -363,8 +370,7 @@ const createWorker = <
   observers: readonly ((operation: Operation) => Settle)[],
   dataConverter: DataConverter | undefined,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
-  const { taskQueue } = options.contract;
-  const { namespace } = config;
+  const { namespace, taskQueue } = config;
 
   // INSIDE the qualifier: `declareActivitiesHandler` throws on a contract it
   // cannot satisfy, and outside it that throw is a defect — `runMain` exit 70

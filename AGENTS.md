@@ -1061,6 +1061,10 @@ in its place.
   repeated as a second positional parameter. Why oRPC's, and the naming
   asymmetry still undecided, are in `docs/explanation/deferred-decisions.md`.
 
+  `TEMPORAL_TASK_QUEUE` or a worker `taskQueue` pin selects the physical polling
+  destination independently of the logical contract. Clients bind destinations
+  explicitly; workflow replay reads no deployment environment.
+
   Temporal activity-piece DI identities include the contract's task queue, so
   separate workers can reuse keys without sharing a port. Wire activity names
   and the same-worker duplicate-provider refusal stay unchanged.
