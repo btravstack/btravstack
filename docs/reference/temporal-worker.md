@@ -836,14 +836,16 @@ It keeps private infrastructure hidden and business exports explicit.
 
 `taskQueue` pins `TEMPORAL_TASK_QUEUE`; when both are absent the contract's queue
 is the default. Configuration validates the destination using the contract
-library, including pinned values. `TemporalConfig.taskQueue` and runtime info
+library's `defineContractBinding`, including pinned values. `TemporalConfig.taskQueue` and runtime info
 report the physical queue. Activity providers, activity names, workflow types,
 schemas and execution IDs keep their logical identity.
 
 For example, compose `TemporalModule` with the original `orderContract` and its
 existing activity provider, then set `TEMPORAL_TASK_QUEUE=orders.release-a` in the
 deployment. A second deployment may poll `orders.release-b` using the same wire
-names. Clients must bind the corresponding destination explicitly before start;
+names. Clients use `defineContractBinding(orderContract, { taskQueue })` from
+`@temporal-contract/contract` (8.0.0-beta.15 or later) and pass that bound contract
+to their typed client before starting work;
 a queue change does not update existing histories or make a bundle replay-safe.
 Keep workers needed by in-flight histories. Resolve child/activity targets from
 recorded decisions, never environment reads in workflow code.

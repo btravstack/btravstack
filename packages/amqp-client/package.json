@@ -50,7 +50,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@amqp-contract/client": "^3.0.0-beta.11",
+    "@amqp-contract/client": "^3.0.0-beta.12",
     "@btravstack/di": "workspace:^",
     "@opentelemetry/api": "^1",
     "unthrown": "^5.12.0"

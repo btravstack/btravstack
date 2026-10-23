@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   defineContract,
+  defineContractBinding,
   defineEventConsumer,
   defineEventPublisher,
   defineExchange,
@@ -528,17 +529,9 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(async () => {
       const seen: string[][] = [[], []];
       const startBound = async (release: string, index: number) => {
-        const event = defineEventPublisher(defineExchange(`${release}.events`), echoMessage, {
-          routingKey: "echo.requested",
-        });
-        const contract = defineContract({
-          publishers: { echo: event },
-          consumers: {
-            echo: defineEventConsumer(
-              event,
-              defineQueue(`${release}.inbox`, { type: "classic", onPoison: "drop" }),
-            ),
-          },
+        const contract = defineContractBinding(echoContract, {
+          exchanges: { "amqp-test": `${release}.events`, "amqp-test-dlx": `${release}.dlx` },
+          queues: { "amqp-echo": `${release}.inbox` },
         });
         const handlers = echoHandlers({
           sync: () => ({

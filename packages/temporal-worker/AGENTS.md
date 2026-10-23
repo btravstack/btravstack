@@ -273,7 +273,7 @@ It keeps private infrastructure hidden and business exports explicit.
 
 `TEMPORAL_TASK_QUEUE` (or the `taskQueue` pin) changes only the physical polling
 queue. Activity-piece and input-port DI identities still come from the logical
-contract. Validation reuses the protocol library's public `defineContract` through
+contract. Validation reuses the protocol library's public `defineContractBinding` through
 a Config field; defaults and pins are validated too. The client still binds its
 own destination explicitly. A worker's environment never resolves child or
 activity targets during workflow replay.

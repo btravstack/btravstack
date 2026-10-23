@@ -165,8 +165,9 @@ Health reports the worker connection only; upstream exposes no consumer-cancel
 signal. Scope cleanup uses the worker's bounded close and the kernel's stop
 deadline still bounds application teardown.
 
-The worker peer starts at `3.0.0-beta.11`: the scoped subscription's health
-check uses its public `isConnected()`, absent in the former beta.7 floor.
+The worker peer starts at `3.0.0-beta.12`: the scoped subscription's health
+check uses its public `isConnected()` and its binding regressions use the released
+`defineContractBinding` API.
 The worker and contract keep the same catalog train. Its standard-schema
 dependency requires unthrown `^5.11.0`, which is this package's peer floor too;
 the isolated strict-peer consumer install verifies both together.

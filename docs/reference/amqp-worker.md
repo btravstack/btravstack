@@ -528,7 +528,7 @@ It keeps private infrastructure hidden and business exports explicit.
 
 ## Broadcast subscriptions beside another runtime
 
-Subscriptions require `@amqp-contract/worker >=3.0.0-beta.11` for its public connectivity check, and `unthrown >=5.11.0` for that train's dependency closure.
+Subscriptions require `@amqp-contract/worker >=3.0.0-beta.12` for its public connectivity check, and `unthrown >=5.11.0` for that train's dependency closure.
 
 `amqpSubscription(name, { contract, settings, inject?, sync })` imports a
 scoped consumer resource without exporting a runtime. Compose it in an HTTP
@@ -596,8 +596,9 @@ contract keeps the same handlers. Pass the same materialized topology to the
 publisher client; preserve unmapped imported producer exchanges. Retry, parking
 and RPC destinations belong to the bound topology rather than a global prefix.
 
-The public binding helper is tracked in
-[amqp-contract#754](https://github.com/btravstack/amqp-contract/issues/754).
-Until that API is released, compose topology through supported public builders;
-never patch private descriptors. The starter needs no new handler dispatch layer
-for this: deployment uniqueness and tenant event admission remain separate.
+Use `defineContractBinding` from `@amqp-contract/contract` (3.0.0-beta.12
+or later) with explicit `exchanges` and `queues` maps. It preserves logical
+consumer/RPC keys and schemas while materializing retry, parking and RPC
+destinations. Pass its result as `AmqpModule`'s `contract` and reuse the logical
+handler provider. Unmapped resources retain their original names.
+Deployment uniqueness and tenant event admission remain separate.

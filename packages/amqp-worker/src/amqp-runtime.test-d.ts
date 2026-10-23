@@ -13,6 +13,7 @@
  */
 import {
   defineContract,
+  defineContractBinding,
   defineEventConsumer,
   defineEventPublisher,
   defineExchange,
@@ -47,14 +48,9 @@ const pinHandlers = AmqpHandlers(pinContract)({
   sync: () => ({ echo: () => OkAsync(undefined) }),
 });
 AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers, needs: [Env] });
-const boundEvent = defineEventPublisher(defineExchange("runtime.events"), pinMessage, {
-  routingKey: "pin.requested",
-});
-const boundContract = defineContract({
-  publishers: { echo: boundEvent },
-  consumers: {
-    echo: defineEventConsumer(boundEvent, defineQueue("runtime.inbox", { onPoison: "drop" })),
-  },
+const boundContract = defineContractBinding(pinContract, {
+  exchanges: { "pin-exchange": "runtime.events" },
+  queues: { "pin-queue": "runtime.inbox" },
 });
 AmqpModule("RuntimeBinding")({ contract: boundContract, handlers: pinHandlers, needs: [Env] });
 const wrongMessage = defineMessage(z.object({ different: z.number() }));

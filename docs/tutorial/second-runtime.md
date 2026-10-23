@@ -23,15 +23,15 @@ composition root, not a second flag ([why](/explanation/one-process-one-runtime)
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14 zod
+pnpm add @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15 zod
 ```
 
 ```sh [npm]
-npm install @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14 zod
+npm install @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15 zod
 ```
 
 ```sh [yarn]
-yarn add @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14 zod
+yarn add @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15 zod
 ```
 
 :::
