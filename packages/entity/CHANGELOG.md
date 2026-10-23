@@ -1,5 +1,9 @@
 # @btravstack/entity
 
+## 0.49.0
+
+No changes in this release.
+
 ## 0.48.1
 
 No changes in this release.

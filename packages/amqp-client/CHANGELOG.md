@@ -1,5 +1,17 @@
 # @btravstack/amqp-client
 
+## 0.49.0
+
+### Patch Changes
+
+- 763a861: Allow a validated runtime task queue through TEMPORAL_TASK_QUEUE or a taskQueue pin without changing logical activity-provider identities.
+
+  Infer AMQP deployment contracts from their supplied topology while retaining schema-checked logical handler providers.
+
+  Require the released AMQP beta.12 and Temporal beta.15 trains and exercise their public runtime binding APIs.
+
+- @btravstack/di@0.49.0
+
 ## 0.48.1
 
 ### Patch Changes
