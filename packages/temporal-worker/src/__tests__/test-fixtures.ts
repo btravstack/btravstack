@@ -307,9 +307,9 @@ const slicedContract = defineContract({
   },
 });
 
-const contractSlicesOf = () => {
+const contractSlicesOf = (testId: string) => {
   const make = (label: string) => {
-    const contract = defineContract({ ...echoContract, taskQueue: `${label}:${randomUUID()}` });
+    const contract = defineContract({ ...echoContract, taskQueue: `${label}:${testId}` });
     const piece = TemporalWorkflowActivities(
       contract,
       "runEcho",
@@ -1084,12 +1084,10 @@ export const it = test.extend<TemporalFixtures>({
       defect: () => undefined,
     });
   },
-  contractSlices: async ({ onTestFinished }, use) => {
+  contractSlices: async ({ task }, use) => {
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    onTestFinished(() => {
-      warnings.mockRestore();
-    });
-    await use({ ...contractSlicesOf(), warnings: () => warnings.mock.calls });
+    await use({ ...contractSlicesOf(task.id), warnings: () => warnings.mock.calls });
+    warnings.mockRestore();
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
