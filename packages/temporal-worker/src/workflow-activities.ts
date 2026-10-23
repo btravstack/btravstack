@@ -96,7 +96,10 @@ export const WORKFLOW_ACTIVITIES_PREFIX = "TemporalWorkflowActivities:";
 export type WorkflowActivitiesPortOf<
   C extends ContractDefinition,
   K extends ActivitiesKeyOf<C>,
-> = PortClassOf<`${typeof WORKFLOW_ACTIVITIES_PREFIX}${K}`, ActivitiesRecordOf<C>[K]>;
+> = PortClassOf<
+  `${typeof WORKFLOW_ACTIVITIES_PREFIX}${C["taskQueue"]}:${K}`,
+  ActivitiesRecordOf<C>[K]
+>;
 
 /**
  * What a minted piece returns. A piece naming its own `fork` owes that
@@ -111,6 +114,7 @@ type MintedActivities<
   M extends AnyUnitModule | undefined,
 > = Provider<InstanceType<WorkflowActivitiesPortOf<C, K>>, never, N | UnitNeedsOf<M>> & {
   readonly port: WorkflowActivitiesPortOf<C, K>;
+  readonly _activityKey?: K;
   /** Phantom: the ports this piece injects, which the root's `unit.activity` must export. */
   readonly _declared?: undefined extends M ? InstanceType<U[keyof U]> : never;
 };
@@ -128,16 +132,16 @@ type ScopedActivitiesOf<
  *
  * A worker that polls one queue for several workflows is several pieces, each
  * declaring the services its own activities call;
- * `TemporalActivities(contract)([...])` composes them. `contract` is read for
- * its TYPE only, and types both `key` and the record — so an activity the
- * workflow does not declare is a compile error here rather than at startup.
+ * `TemporalActivities(contract)([...])` composes them. The contract types both
+ * `key` and the record and supplies the task queue that namespaces the port.
+ * An undeclared activity is a compile error rather than a startup failure.
  *
  * `key` is any top-level key of the activities record, which includes a
  * contract-global activity as well as a workflow; the name is imprecise in that
  * one case deliberately, since narrowing it would lock such a contract out of
  * the split.
  *
- * There is no name to give: the key IS the port's name.
+ * The contract's task queue and the key identify the port; wire activity names stay unchanged.
  *
  * `unit` declares the ports the activities read off `context.unit`, resolved
  * out of the fork the attempt opened; the root's `unit.activity` module must
@@ -157,11 +161,8 @@ export const TemporalWorkflowActivities = <
   contract: C,
   key: K,
 ) => {
-  // Named rather than `_`-prefixed so it reads as `contract` in the published
-  // `.d.ts`; nothing needs its value.
-  void contract;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-  const port = class extends Port(`${WORKFLOW_ACTIVITIES_PREFIX}${key}`)<
+  const port = class extends Port(`${WORKFLOW_ACTIVITIES_PREFIX}${contract.taskQueue}:${key}`)<
     ActivitiesRecordOf<C>[K]
   > {};
   return <

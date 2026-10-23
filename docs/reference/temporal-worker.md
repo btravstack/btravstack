@@ -351,10 +351,11 @@ own piece.
 ## `TemporalWorkflowActivities(contract, key)`
 
 One workflow's activities, or a contract-global activity, as a provider of
-its own: the port id carries the top-level key
-(`` `TemporalWorkflowActivities:${key}` ``, `WORKFLOW_ACTIVITIES_PREFIX`
-stripped by the composing form to recover it), so two slices claiming one
-workflow is di's duplicate-provider defect rather than a silent merge.
+its own: the port id carries the contract queue and the top-level key
+(`` `TemporalWorkflowActivities:${contract.taskQueue}:${key}` ``). Different
+contracts can reuse a key without sharing a DI port. The composing form strips
+the queue prefix to recover the original wire key; two slices claiming one key
+in the same worker remain di's duplicate-provider defect rather than a silent merge.
 `contract` types `key` (any top-level key of `ActivitiesOf<C>` — a workflow
 that declares activities, or a contract-global activity, so the name is
 imprecise in the latter case, deliberately: narrowing the type to workflow

@@ -307,6 +307,20 @@ const slicedContract = defineContract({
   },
 });
 
+const contractSlicesOf = () => {
+  const make = (label: string) => {
+    const contract = defineContract({ ...echoContract, taskQueue: `${label}:${randomUUID()}` });
+    const piece = TemporalWorkflowActivities(
+      contract,
+      "runEcho",
+    )({
+      sync: () => ({ echo: ({ input }) => OkAsync(`${label}:${input}`) }),
+    });
+    return { contract, piece, activities: TemporalActivities(contract)([piece]) };
+  };
+  return { first: make("first"), second: make("second") };
+};
+
 /**
  * Two slices, composed. `runEcho`'s piece declares `Greeting` and `runShout`'s
  * declares nothing, so a spec can tell each was built from the ports its OWN
@@ -754,6 +768,13 @@ export type TemporalFixtures = {
   readonly deadline: ReturnType<typeof deadlineOf>;
   readonly configured: ReturnType<typeof configuredOf>;
   readonly connected: ReturnType<typeof connectedOf>;
+  readonly contractSlices: ReturnType<typeof contractSlicesOf> & {
+    readonly warnings: () => readonly unknown[];
+  };
+  readonly serveContractSlice: (slice: ReturnType<typeof contractSlicesOf>["first"]) => Promise<{
+    readonly client: Client;
+    readonly taskQueue: string;
+  }>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<{
     readonly app: App;
@@ -1063,6 +1084,13 @@ export const it = test.extend<TemporalFixtures>({
       defect: () => undefined,
     });
   },
+  contractSlices: async ({ onTestFinished }, use) => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    onTestFinished(() => {
+      warnings.mockRestore();
+    });
+    await use({ ...contractSlicesOf(), warnings: () => warnings.mock.calls });
+  },
   // oxlint-disable-next-line no-empty-pattern -- see above
   slices: async ({}, use) => {
     await use(slicesOf());
@@ -1132,6 +1160,21 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   counting: async ({}, use) => {
     await use(countingUnit());
+  },
+  serveContractSlice: async ({ server, client, boot }, use) => {
+    await use(async (slice) => {
+      const app = boot(
+        TemporalModule("ContractSlice")({
+          contract: slice.contract,
+          activities: slice.activities,
+          workflows: echoWorkflows,
+          provides: [slice.piece],
+        }),
+        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
+      );
+      (await app.runtimeInfo()).get();
+      return { client, taskQueue: slice.contract.taskQueue };
+    });
   },
   serveSliced: async ({ server, client, boot }, use) => {
     await use(async (slices) => {
