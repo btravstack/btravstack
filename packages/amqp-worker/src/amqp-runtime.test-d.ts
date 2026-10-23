@@ -13,6 +13,7 @@
  */
 import {
   defineContract,
+  defineContractBinding,
   defineEventConsumer,
   defineEventPublisher,
   defineExchange,
@@ -47,6 +48,23 @@ const pinHandlers = AmqpHandlers(pinContract)({
   sync: () => ({ echo: () => OkAsync(undefined) }),
 });
 AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers, needs: [Env] });
+const boundContract = defineContractBinding(pinContract, {
+  exchanges: { "pin-exchange": "runtime.events" },
+  queues: { "pin-queue": "runtime.inbox" },
+});
+AmqpModule("RuntimeBinding")({ contract: boundContract, handlers: pinHandlers, needs: [Env] });
+const wrongMessage = defineMessage(z.object({ different: z.number() }));
+const wrongEvent = defineEventPublisher(defineExchange("wrong.events"), wrongMessage, {
+  routingKey: "pin.requested",
+});
+const wrongContract = defineContract({
+  consumers: {
+    echo: defineEventConsumer(wrongEvent, defineQueue("wrong.inbox", { onPoison: "drop" })),
+  },
+});
+// @ts-expect-error -- retaining the handler key does not make incompatible payloads compatible
+AmqpModule("WrongRuntimePayload")({ contract: wrongContract, handlers: pinHandlers, needs: [Env] });
+
 Module("PinByHand")({
   needs: [Env],
   imports: [amqp({ contract: pinContract })],

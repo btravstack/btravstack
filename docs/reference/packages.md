@@ -172,23 +172,23 @@ pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
 ```sh [Temporal worker]
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14
+  @temporal-contract/worker@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15
 ```
 
 ```sh [AMQP worker]
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@3.0.0-beta.11 @opentelemetry/api
+  @amqp-contract/worker@3.0.0-beta.12 @opentelemetry/api
 ```
 
 ```sh [Temporal client]
 pnpm add @btravstack/temporal-client @btravstack/di unthrown \
-  @temporal-contract/client@8.0.0-beta.14 @temporal-contract/contract@8.0.0-beta.14 \
+  @temporal-contract/client@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15 \
   @temporalio/client @temporalio/common
 ```
 
 ```sh [AMQP client]
 pnpm add @btravstack/amqp-client @btravstack/di unthrown \
-  @amqp-contract/client@3.0.0-beta.11 @opentelemetry/api
+  @amqp-contract/client@3.0.0-beta.12 @opentelemetry/api
 ```
 
 ```sh [Calling as a service]

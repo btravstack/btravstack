@@ -568,6 +568,8 @@ type ActivitiesProvider = typeof echoing | ReturnType<typeof contractSeamOf>["ac
 
 /** What a spec may vary: the activities, the starter's pins, the environment, the kernel's drain budget. */
 type BootOptions = {
+  readonly marker?: string;
+  readonly taskQueue?: string;
   readonly activities?: ActivitiesProvider;
   readonly address?: string;
   readonly namespace?: string;
@@ -879,7 +881,12 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
     contract: { ...echoContract, taskQueue },
-    activities: options.activities ?? echoing,
+    activities:
+      options.activities ??
+      (options.marker === undefined
+        ? echoing
+        : EchoActivities({ sync: () => ({ runEcho: { echo: () => OkAsync(options.marker!) } }) })),
+    ...(options.taskQueue === undefined ? {} : { taskQueue: options.taskQueue }),
     workflows: options.workflows ?? echoWorkflows,
     ...(options.address === undefined ? {} : { address: options.address }),
     ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
@@ -899,7 +906,7 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
     ...(options.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs }),
     ...(options.stopTimeoutMs === undefined ? {} : { stopTimeoutMs: options.stopTimeoutMs }),
   });
-  return { app, taskQueue };
+  return { app, taskQueue: options.taskQueue ?? options.env?.["TEMPORAL_TASK_QUEUE"] ?? taskQueue };
 };
 
 /**

@@ -165,8 +165,9 @@ Health reports the worker connection only; upstream exposes no consumer-cancel
 signal. Scope cleanup uses the worker's bounded close and the kernel's stop
 deadline still bounds application teardown.
 
-The worker peer starts at `3.0.0-beta.11`: the scoped subscription's health
-check uses its public `isConnected()`, absent in the former beta.7 floor.
+The worker peer starts at `3.0.0-beta.12`: the scoped subscription's health
+check uses its public `isConnected()` and its binding regressions use the released
+`defineContractBinding` API.
 The worker and contract keep the same catalog train. Its standard-schema
 dependency requires unthrown `^5.11.0`, which is this package's peer floor too;
 the isolated strict-peer consumer install verifies both together.
@@ -174,3 +175,13 @@ the isolated strict-peer consumer install verifies both together.
 `InvalidAmqpSubscription` names configuration refusals; `SubscriptionHandlers`
 is the exported contract-typed handler record, so consumers can name it without
 rebuilding upstream parameter inference. Both appear in the reference export index.
+
+Physical runtime resource bindings preserve logical consumer/RPC keys. Handler
+ports and message units therefore remain compatible with bound topology; no
+implicit global prefix belongs in this starter. The contract library owns full
+resource materialization and the application owns admitted tenant routing.
+
+`AmqpModule` infers its contract from the `contract` property only (`NoInfer` on
+handlers). Otherwise an existing handler provider makes inference select its
+original physical topology, refusing a compatible deployment binding. Type
+regressions run on both compiler trains and still reject changed payloads.

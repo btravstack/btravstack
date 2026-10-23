@@ -15,6 +15,70 @@ describe("temporal", () => {
     await expect(info).toBeOkWith({ taskQueue, namespace: server.namespace });
   });
 
+  it("binds its polling queue from the environment without rebuilding activity providers", async ({
+    server,
+    serve,
+  }) => {
+    // GIVEN
+    const queue = "runtime-binding-env";
+    const { app, client, taskQueue } = await serve({
+      env: {
+        TEMPORAL_ADDRESS: server.address,
+        TEMPORAL_NAMESPACE: server.namespace,
+        TEMPORAL_TASK_QUEUE: queue,
+      },
+    });
+    // WHEN
+    const result = await client.workflow.execute("runEcho", {
+      taskQueue,
+      workflowId: queue,
+      args: ["bound"],
+    });
+    // THEN
+    expect({ result, info: (await app.runtimeInfo()).get() }).toEqual({
+      result: "bound",
+      info: { taskQueue: queue, namespace: server.namespace },
+    });
+  });
+
+  it("runs the same workflow type on two deployment queues in one namespace", async ({ serve }) => {
+    // GIVEN
+    const first = await serve({ taskQueue: "runtime-release-a", marker: "first" });
+    const second = await serve({ taskQueue: "runtime-release-b", marker: "second" });
+    // WHEN
+    const results = await Promise.all([
+      first.client.workflow.execute("runEcho", {
+        taskQueue: first.taskQueue,
+        workflowId: "binding-operation-a",
+        args: ["input"],
+      }),
+      second.client.workflow.execute("runEcho", {
+        taskQueue: second.taskQueue,
+        workflowId: "binding-operation-b",
+        args: ["input"],
+      }),
+    ]);
+    // THEN
+    expect(results).toEqual(["first", "second"]);
+  });
+
+  it("pins its polling queue over an invalid environment queue", async ({ server, serve }) => {
+    // GIVEN
+    const queue = "runtime-binding-pinned";
+    const { app } = await serve({
+      taskQueue: queue,
+      env: {
+        TEMPORAL_ADDRESS: server.address,
+        TEMPORAL_NAMESPACE: server.namespace,
+        TEMPORAL_TASK_QUEUE: "",
+      },
+    });
+    // WHEN
+    const info = app.runtimeInfo();
+    // THEN
+    await expect(info).toBeOkWith({ taskQueue: queue, namespace: server.namespace });
+  });
+
   it("boots a worker for a contract that declares activities only", async ({
     server,
     serveActivitiesOnly,
@@ -64,6 +128,7 @@ describe("temporal", () => {
     expect(configured.bound()).toEqual({
       address: server.address,
       namespace: server.namespace,
+      taskQueue: expect.any(String),
       gracePeriodMs: 10_000,
       forceAfterMs: 15_000,
     });
@@ -82,6 +147,7 @@ describe("temporal", () => {
     expect(configured.bound()).toEqual({
       address: server.address,
       namespace: "default",
+      taskQueue: expect.any(String),
       gracePeriodMs: 10_000,
       forceAfterMs: 15_000,
     });
@@ -106,6 +172,7 @@ describe("temporal", () => {
     expect(configured.bound()).toEqual({
       address: server.address,
       namespace: "default",
+      taskQueue: expect.any(String),
       gracePeriodMs: 10_000,
       forceAfterMs: 15_000,
     });
@@ -129,6 +196,7 @@ describe("temporal", () => {
     expect(configured.bound()).toEqual({
       address: server.address,
       namespace: server.namespace,
+      taskQueue: expect.any(String),
       gracePeriodMs: 3_000,
       forceAfterMs: 4_000,
     });
@@ -150,6 +218,7 @@ describe("temporal", () => {
     expect(configured.bound()).toEqual({
       address: server.address,
       namespace: server.namespace,
+      taskQueue: expect.any(String),
       gracePeriodMs: 3_000,
       forceAfterMs: 15_000,
     });

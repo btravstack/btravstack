@@ -26,7 +26,7 @@ decode payloads with one codec. See the worker's
 ## Standalone activities
 
 `client.for(contract)` also runs a contract's global activity with no workflow
-around it, on `@temporal-contract/client` 8.0.0-beta.14: `startActivity(name,
+around it, on `@temporal-contract/client` 8.0.0-beta.15: `startActivity(name,
 options)`, `executeActivity(name, options)` (start, then the result) and
 `getActivityHandle(name, activityId)`. They need **Temporal Server 1.32 or
 later**; the activity's worker is an

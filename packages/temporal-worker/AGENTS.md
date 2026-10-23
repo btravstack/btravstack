@@ -268,3 +268,12 @@ whoever ships the worker, who already holds this package.
 `TemporalModule` automatically exports publicly available `Logger` and `HealthChecks`
 ports, including whole-module re-exports and providers declared at the root.
 It keeps private infrastructure hidden and business exports explicit.
+
+## Runtime queue bindings
+
+`TEMPORAL_TASK_QUEUE` (or the `taskQueue` pin) changes only the physical polling
+queue. Activity-piece and input-port DI identities still come from the logical
+contract. Validation reuses the protocol library's public `defineContractBinding` through
+a Config field; defaults and pins are validated too. The client still binds its
+own destination explicitly. A worker's environment never resolves child or
+activity targets during workflow replay.

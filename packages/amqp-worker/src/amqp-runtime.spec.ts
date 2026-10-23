@@ -3,6 +3,31 @@ import { describe, expect, vi } from "vitest";
 import { it, untilServing } from "./__tests__/test-fixtures.js";
 
 describe("amqp", () => {
+  it("keeps logical handler providers when deployment resources differ in one vhost", async ({
+    serveBoundPair,
+    publishMessage,
+  }) => {
+    // GIVEN
+    const { seen, apps } = await serveBoundPair();
+    // WHEN
+    publishMessage(
+      { exchange: "release-a.events", routingKey: "echo.requested" },
+      { value: "first" },
+    );
+    publishMessage(
+      { exchange: "release-b.events", routingKey: "echo.requested" },
+      { value: "second" },
+    );
+    await vi.waitUntil(() => seen[0]!.length === 1 && seen[1]!.length === 1);
+    // THEN
+    expect({ seen, queues: await Promise.all(apps.map((app) => app.runtimeInfo().get())) }).toEqual(
+      {
+        seen: [["first"], ["second"]],
+        queues: [{ queues: ["release-a.inbox"] }, { queues: ["release-b.inbox"] }],
+      },
+    );
+  });
+
   it("fails fixture startup with the actual error before waiting for deliveries", async ({
     serveBroken,
   }) => {
