@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/keys",
-  "version": "0.48.0",
+  "version": "0.48.1",
   "description": "An EnvelopeKeys port for @btravstack/core: per-owner root keys wrapped by an AWS KMS key of that owner, unwrapped in memory and cached for a TTL, erased with one key deletion, and an HKDF helper giving each purpose its own key",
   "keywords": [
     "crypto-shredding",
