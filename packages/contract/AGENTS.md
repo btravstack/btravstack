@@ -9,8 +9,18 @@ gate compiles the README's unskipped `ts` fences, but nothing checks this file.
 ## What this is
 
 **The contract tier: what a client and the server that implements it both
-need, and no transport owns.** Two things live here today, admitted by one
-rule (below): the `authenticated` marker, and the shape of a cursor page.
+need, and no transport owns.** The root holds the `authenticated` marker and
+the shape of a cursor page. Optional integrations live behind subpaths.
+
+### oRPC schema access
+
+`/orpc` provides `contractInputSchema` and `contractOutputSchema`. It peers
+optionally on oRPC and Zod, leaving the root dependency-free. These accessors
+return the actual single Zod schema; they never reconstruct it or choose a
+stage from a chain. Missing, non-Zod and multiple schemas throw a Zod error at
+composition, where the contract is authored rather than supplied by a request.
+The types preserve schema composition and both codec directions. Pothos
+re-exports the input accessor under its existing `contractInput` name.
 
 ### The admission rule
 
@@ -58,7 +68,7 @@ identity, transport-agnostic by construction.
 
 ## Public surface
 
-`src/index.ts` and `src/zod.ts` (`/zod`), each with its TSDoc;
+`src/index.ts`, `src/zod.ts` (`/zod`) and `src/orpc.ts` (`/orpc`), each with its TSDoc;
 `docs/reference/contract.md`'s **Exports** tables carry every signature, why a
 `Requirement` names exactly one scheme, and why `isAuthenticated` answers
 `undefined` rather than an empty array.

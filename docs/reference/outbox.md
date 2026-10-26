@@ -60,7 +60,7 @@ export const publisher = Provider(OutboxPublisher)({
         eventId: message.id,
         tenantId: message.tenantId,
         id: message.subjectId,
-        occurredAt: message.occurredAt.toISOString(),
+        occurredAt: message.occurredAt.toString(),
         payload: message.payload,
       }),
   }),
@@ -76,7 +76,7 @@ A message is the row, as the relay reads it:
 | `kind`       | which sort of thing changed                                                        |
 | `subjectId`  | which one, and the key a reader compacts on                                        |
 | `payload`    | your own encoding, handed to the publisher untouched — `null` is the **tombstone** |
-| `occurredAt` | when the row was written, as a `Date`                                              |
+| `occurredAt` | when the fact occurred, as a `Temporal.Instant`, preserving microseconds           |
 
 ## Standalone processes: `outboxRuntime(options)`
 
@@ -332,7 +332,15 @@ namespace orders {
 ```
 
 `occurredAt` is read through `to_json`, so `Timestamptz` works as well as
-`TimestamptzString`.
+`TimestamptzString`, including a Prisma Temporal timestamptz codec. Both return
+`Temporal.Instant` from the store, with PostgreSQL's microseconds intact.
+
+Install the required `temporal-polyfill` peer. It selects native Temporal when
+available and supplies it otherwise, without changing global objects. The
+CommonJS entry requires Node 22.12 or newer. When migrating a publisher from
+`Date`, replace `occurredAt.toISOString()` with `occurredAt.toString()` and
+`occurredAt.getTime()` with `occurredAt.epochMilliseconds` only where the
+receiving API requires millisecond precision.
 
 **Row security is supported, and opted into in the contract alone.** Every
 read and mark the store issues is pinned to its tenant, so the model may carry
@@ -418,8 +426,12 @@ yours.
 
 The in-process store, for tests and for in-memory adapters. `append(message)`
 is its write half — there is no transaction to write inside — stamping the next
-id and the clock's time; the claim is a per-tenant flag, so two relays over one
-instance behave as two replicas over one table do.
+id and the clock's time as an instant. Pass `occurredAt: Temporal.Instant`
+to retain an explicitly supplied timestamp, including microseconds. Otherwise
+the supplied clock determines the timestamp at its millisecond precision.
+The oldest-pending read compares timestamps independently of append order;
+delivery remains ordered by id. The claim is a per-tenant flag, so two relays
+over one instance behave as two replicas over one table do.
 
 ## The health check
 

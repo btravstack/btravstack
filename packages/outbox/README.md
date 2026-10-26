@@ -9,11 +9,15 @@
 [API Reference](https://btravstack.github.io/btravstack/api/outbox/)
 
 ```sh
-pnpm add @btravstack/outbox @btravstack/core @btravstack/config @btravstack/di unthrown
+pnpm add @btravstack/outbox @btravstack/core @btravstack/config @btravstack/di unthrown temporal-polyfill
 ```
 
-Four peer dependencies, plus `@prisma/orm-postgres` — optional, and needed only
-if you compose the Prisma store from `@btravstack/outbox/prisma`. Node `>=22`.
+`@prisma/orm-postgres` is an optional peer, needed only if you compose the
+Prisma store from `@btravstack/outbox/prisma`. Node `>=22.12`.
+
+Occurrence timestamps are `Temporal.Instant`, preserving database microseconds
+through reads and publication. Serialize them with `toString()`; use
+`epochMilliseconds` where a millisecond-only integration requires it.
 
 ## A worked example
 

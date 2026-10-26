@@ -46,6 +46,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
+    "@btravstack/contract": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
@@ -67,6 +68,7 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/contract": "workspace:^",
     "@orpc/client": "^2.0.0-beta.28",
     "@orpc/contract": "^2.0.0-beta.28",
     "@pothos/core": "^4.15.0",

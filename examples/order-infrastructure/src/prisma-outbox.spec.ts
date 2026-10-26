@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { DuplicateOrder } from "@btravstack/example-order-domain";
 import type { OutboxMessage } from "@btravstack/outbox";
 import { tenantPinned } from "@btravstack/prisma/rls";
+import { Temporal } from "temporal-polyfill";
 import { Ok, OkAsync, P, allAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { describe, expect } from "vitest";
@@ -10,6 +11,68 @@ import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
 describe("the transactional outbox", () => {
+  it("reads persisted microseconds as an instant", async ({ preciseEvent, tenant, outbox }) => {
+    // GIVEN
+    const expected = preciseEvent.epochNanoseconds;
+
+    // WHEN
+    const timestamps = await outbox.pending(tenant, 1).map((messages) =>
+      messages.map(({ occurredAt }) => ({
+        instant: occurredAt instanceof Temporal.Instant,
+        nanoseconds: occurredAt.epochNanoseconds,
+      })),
+    );
+
+    // THEN
+    expect(timestamps).toBeOkWith([{ instant: true, nanoseconds: expected }]);
+  });
+
+  it("retains microseconds in the oldest pending timestamp", async ({
+    preciseEvent,
+    tenant,
+    outbox,
+  }) => {
+    // GIVEN
+    const expected = preciseEvent.epochNanoseconds;
+
+    // WHEN
+    const timestamps = await outbox.oldestPending([tenant]).map((messages) =>
+      messages.map(({ occurredAt }) => ({
+        instant: occurredAt instanceof Temporal.Instant,
+        nanoseconds: occurredAt.epochNanoseconds,
+      })),
+    );
+
+    // THEN
+    expect(timestamps).toBeOkWith([{ instant: true, nanoseconds: expected }]);
+  });
+
+  it("hands the publisher the persisted instant through a claim", async ({
+    preciseEvent,
+    tenant,
+    outbox,
+  }) => {
+    // GIVEN
+    const expected = preciseEvent.epochNanoseconds;
+    const published: { instant: boolean; nanoseconds: bigint }[] = [];
+
+    // WHEN
+    const timestamps = await outbox
+      .claim(tenant, 1, (messages) => {
+        published.push(
+          ...messages.map(({ occurredAt }) => ({
+            instant: occurredAt instanceof Temporal.Instant,
+            nanoseconds: occurredAt.epochNanoseconds,
+          })),
+        );
+        return OkAsync(messages.map(({ id }) => id));
+      })
+      .map(() => published);
+
+    // THEN
+    expect(timestamps).toBeOkWith([{ instant: true, nanoseconds: expected }]);
+  });
+
   it("appends an event in the same write as the order", async ({
     decoded,
     tenant,
@@ -39,7 +102,7 @@ describe("the transactional outbox", () => {
           placementId: expect.any(Number),
           order: { quantity: 3 },
         },
-        occurredAt: expect.any(Date),
+        occurredAt: expect.any(Temporal.Instant),
       }),
     ]);
   });
@@ -221,7 +284,7 @@ describe("the transactional outbox", () => {
       .flatMap(() => outbox.oldestPending([tenant, otherTenant]));
 
     // THEN only the tenant with something pending is named, once
-    expect(oldest).toBeOkWith([{ tenantId: tenant, occurredAt: expect.any(Date) }]);
+    expect(oldest).toBeOkWith([{ tenantId: tenant, occurredAt: expect.any(Temporal.Instant) }]);
   });
 
   it("publishes what has committed, so a lower id still in flight goes out after a higher one", async ({

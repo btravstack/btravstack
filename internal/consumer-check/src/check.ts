@@ -205,6 +205,7 @@ type SmokeFailure = {
 const adapters: Readonly<Record<string, readonly string[]>> = {
   "@btravstack/cache/redis": ["redis"],
   "@btravstack/contract/zod": ["zod"],
+  "@btravstack/contract/orpc": ["zod"],
   "@btravstack/http-server/jwt": ["jose"],
   "@btravstack/keys/kms": ["@aws-sdk/client-kms"],
   "@btravstack/http-server/oidc": ["jose", "openid-client"],

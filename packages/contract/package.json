@@ -51,18 +51,30 @@
         "default": "./dist/zod.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./orpc": {
+      "import": {
+        "types": "./dist/orpc.d.mts",
+        "default": "./dist/orpc.mjs"
+      },
+      "require": {
+        "types": "./dist/orpc.d.cts",
+        "default": "./dist/orpc.cjs"
+      }
+    }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/zod.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/zod.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/zod.ts src/orpc.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/zod.ts src/orpc.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json && node ./node_modules/typescript-consumer/bin/tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",
+    "@orpc/contract": "catalog:",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "temporal-polyfill": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",
@@ -70,10 +82,14 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
+    "@orpc/contract": "^2.0.0-beta.28",
     "zod": "^4.3.0"
   },
   "peerDependenciesMeta": {
     "zod": {
+      "optional": true
+    },
+    "@orpc/contract": {
       "optional": true
     }
   },

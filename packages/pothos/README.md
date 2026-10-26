@@ -23,9 +23,11 @@ contract-first services. The default export is the plugin, listed after
   contract half on its own.
 
 Every dependency is a peer: Pothos plugins and `graphql` each need one copy.
+Install `@btravstack/contract` alongside them; `contractInput` reuses its
+`/orpc` input-schema accessor.
 
 ```sh
-pnpm add @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
+pnpm add @btravstack/pothos @btravstack/contract @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
   @unthrown/pothos@^0.1.2 graphql unthrown zod \
   @orpc/client@2.0.0-beta.44 @orpc/contract@2.0.0-beta.44
 ```

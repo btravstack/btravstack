@@ -12,8 +12,9 @@ import {
   type DatabaseUnreachable,
   type RowSecurityBypassed,
 } from "@btravstack/prisma";
-import { tenantListing, type TenantListing } from "@btravstack/prisma/rls";
+import { tenantListing, tenantPinned, type TenantListing } from "@btravstack/prisma/rls";
 import postgres from "@prisma/orm-postgres/runtime";
+import { Temporal } from "temporal-polyfill";
 import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
@@ -30,6 +31,7 @@ import type { Contract } from "../prisma/contract.js";
 import contractJson from "../prisma/contract.json" with { type: "json" };
 
 export type PersistenceFixtures = {
+  readonly preciseEvent: Temporal.Instant;
   /**
    * A client on the shared PostgreSQL database, already migrated by
    * `src/global-setup.ts`. It is the SAME database every other test in the
@@ -106,6 +108,21 @@ export type PersistenceFixtures = {
 };
 
 export const it = test.extend<PersistenceFixtures>({
+  preciseEvent: async ({ db, tenant }, use) => {
+    const occurredAt = Temporal.Instant.from("2026-10-26T12:00:00.123456Z");
+    const inserted = await tenantPinned(db, tenant, (tx) =>
+      tx.orm.orders.OutboxMessage.create({
+        tenantId: tenant,
+        kind: "precise-time",
+        subjectId: "a",
+        payload: null,
+        occurredAt: occurredAt.toString(),
+      }),
+    );
+    inserted.getOrThrow();
+    await use(occurredAt);
+  },
+
   listing: async ({ db }, use) => {
     const admin = postgres<Contract>({
       contractJson,

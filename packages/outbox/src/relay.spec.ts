@@ -1,4 +1,5 @@
 import { HealthChecks, runHealthChecks } from "@btravstack/core";
+import { Temporal } from "temporal-polyfill";
 import { type AsyncResult, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
@@ -12,6 +13,52 @@ const order = (tenantId: string, subjectId: string) => ({
 });
 
 describe("outbox", () => {
+  it("preserves occurrence microseconds at the publisher boundary", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN
+    const occurredAt = Temporal.Instant.from("2026-10-26T12:00:00.123456Z");
+    store.append({ ...order("acme", "a"), occurredAt });
+
+    // WHEN
+    const timestamps = await relaying({ tenants: ["acme"] }, () =>
+      clock
+        .advance(0)
+        .map(() => publisher.messages().map((message) => message.occurredAt.epochNanoseconds)),
+    );
+
+    // THEN
+    expect(timestamps).toBeOkWith([occurredAt.epochNanoseconds]);
+  });
+
+  it("measures submillisecond lag at the health threshold", async ({
+    store,
+    publisher,
+    clock,
+    relaying,
+  }) => {
+    // GIVEN
+    const occurredAt = Temporal.Instant.fromEpochMilliseconds(clock.now()).subtract({
+      microseconds: 1,
+    });
+    store.append({ ...order("acme", "stuck"), occurredAt });
+    publisher.refuse("stuck");
+
+    // WHEN
+    const report = await relaying({ tenants: ["acme"], maxLagMs: 5_000 }, (ctx) =>
+      clock.advance(5_000).flatMap(() => runHealthChecks(ctx.get(HealthChecks))),
+    );
+
+    // THEN
+    expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "outbox", status: "unhealthy", reason: "acme is 5000.001 ms behind" }],
+    });
+  });
+
   it("publishes every pending message in outbox order, and marks each published", async ({
     store,
     publisher,

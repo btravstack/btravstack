@@ -1,3 +1,4 @@
+import { contractInputSchema } from "@btravstack/contract/orpc";
 import { ORPCError } from "@orpc/client";
 import { oc } from "@orpc/contract";
 import SchemaBuilder from "@pothos/core";
@@ -7,13 +8,17 @@ import UnthrownPlugin from "@unthrown/pothos";
 import { ErrAsync } from "unthrown";
 import { z } from "zod";
 
-import OrpcPlugin, { type InvalidInput } from "./index.js";
+import OrpcPlugin, { contractInput, type InvalidInput } from "./index.js";
 
 const Item = z.object({ id: z.string() });
 const findItem = oc
   .input(Item)
   .output(Item)
   .errors({ ITEM_MISSING: { data: Item } });
+
+const sharedInput: typeof Item = contractInputSchema(findItem);
+const graphqlInput: typeof sharedInput = contractInput(findItem);
+void graphqlInput;
 
 class MissingItem extends Error {
   constructor(failure: { readonly data: { readonly id: string } }) {

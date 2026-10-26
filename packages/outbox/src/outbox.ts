@@ -1,4 +1,5 @@
 import { Port } from "@btravstack/di";
+import type { Temporal } from "temporal-polyfill";
 import type { AsyncResult } from "unthrown";
 
 /**
@@ -18,7 +19,7 @@ export type OutboxMessage = {
   readonly kind: string;
   readonly subjectId: string;
   readonly payload: string | null;
-  readonly occurredAt: Date;
+  readonly occurredAt: Temporal.Instant;
 };
 
 /**
@@ -44,7 +45,10 @@ export type OutboxStoreService = {
    */
   readonly oldestPending: (
     tenantIds: readonly string[],
-  ) => AsyncResult<readonly { readonly tenantId: string; readonly occurredAt: Date }[], never>;
+  ) => AsyncResult<
+    readonly { readonly tenantId: string; readonly occurredAt: Temporal.Instant }[],
+    never
+  >;
   /**
    * Claims a tenant's oldest unpublished messages, hands them to `relay`, and
    * marks published exactly the ids `relay` answers — all under one claim, so

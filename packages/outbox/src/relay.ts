@@ -25,6 +25,7 @@ import {
   type Settle,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
+import { Temporal } from "temporal-polyfill";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import {
@@ -357,7 +358,9 @@ const relayModule = <const O extends OutboxOptions, const Standalone extends boo
           const behind = oldest
             .map(({ tenantId, occurredAt }) => ({
               tenantId,
-              lagMs: clock.now() - occurredAt.getTime(),
+              lagMs: Temporal.Instant.fromEpochMilliseconds(clock.now())
+                .since(occurredAt)
+                .total("milliseconds"),
             }))
             .filter(({ lagMs }) => lagMs > maxLagMs);
           return behind.length === 0

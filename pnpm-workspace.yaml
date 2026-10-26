@@ -193,6 +193,13 @@ catalogs:
 # below reaches us only through dev/build tooling (never a published package's
 # runtime deps). Each selector is version-scoped so only the affected line moves.
 overrides:
+  # GHSA-mrhx-c7xc-m3w5: constrained collection validation can exhaust memory.
+  # Stryker and Knip retain older Zod resolutions than the patched catalog.
+  "mutation-server-protocol>zod@<4.6.6": "4.6.7"
+  "knip>zod@<4.6.6": "4.6.7"
+  # GHSA-27r3-jxmh-p828: trailing bytes after compressed requests cause DoS.
+  # Reached through the MCP SDK's Express dependency.
+  "body-parser@>=2.0.0 <2.4.0": "2.4.0"
   # Audited only through Stryker's REST client and markdownlint's config/math
   # parsers; lift affected versions to their patched releases.
   "qs@<6.16.0": "6.16.0"
@@ -253,9 +260,10 @@ overrides:
   # @changesets/cli > launch-editor, which only runs on an interactive edit.
   "shell-quote@>=1.8.4 <1.11.0": "1.12.0"
   # GHSA-rfgv-xxqx-mfg5, GHSA-w293-vg96-wgc3, GHSA-vp8m-p9jh-q5pm: undici
-  # WebSocket DoS, TLS validation bypass, cache poisoning. Via testcontainers,
+  # WebSocket DoS, TLS validation bypass, cache poisoning; GHSA-xjj6-f33q-929c:
+  # excessive content encodings cause an unhandled error. Via testcontainers,
   # test-only.
-  "undici@>=8.0.0 <8.10.2": "8.11.2"
+  "undici@>=8.0.0 <8.12.2": "8.12.2"
   # GHSA-m9gg-hp2v-232j: @grpc/grpc-js. Via @opentelemetry/sdk-node's OTLP gRPC
   # exporter.
   "@grpc/grpc-js@>=1.14.0 <1.14.5": "1.14.5"

@@ -16,7 +16,10 @@ pnpm add @btravstack/contract
 ```
 
 Nothing to install beside it, unless you use the page **schemas** under
-`@btravstack/contract/zod`, whose `zod` is an optional peer. **A package that
+`@btravstack/contract/zod`, whose `zod` is an optional peer. The optional
+`@btravstack/contract/orpc` entry also needs `@orpc/contract`: its
+`contractInputSchema` and `contractOutputSchema` retrieve the procedure's
+original Zod schemas with their exact types. **A package that
 ships a marked contract takes this one as a `peerDependency`** rather than an
 ordinary one — the marker is identity-based, so one copy per application is
 the point; see [Why a peer](#the-marker-is-a-weakmap-not-a-property) below.

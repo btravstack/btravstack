@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -12,6 +13,53 @@ const order = (subjectId: string) => ({
 });
 
 describe("memoryOutboxStore", () => {
+  it("preserves an appended instant through reads and claims", async ({ store }) => {
+    // GIVEN
+    const occurredAt = Temporal.Instant.from("2026-10-26T12:00:00.123456Z");
+    store.append({ ...order("a"), occurredAt });
+    const claimed: bigint[] = [];
+
+    // WHEN
+    const timestamps = await store.pending("acme", 1).flatMap((pending) =>
+      store
+        .claim("acme", 1, (batch) => {
+          claimed.push(...batch.map((message) => message.occurredAt.epochNanoseconds));
+          return OkAsync(batch.map(({ id }) => id));
+        })
+        .map(() => ({
+          pending: pending.map((message) => message.occurredAt.epochNanoseconds),
+          claimed,
+        })),
+    );
+
+    // THEN
+    expect(timestamps).toBeOkWith({
+      pending: [occurredAt.epochNanoseconds],
+      claimed: [occurredAt.epochNanoseconds],
+    });
+  });
+
+  it("finds the oldest timestamp independently of append order", async ({ store }) => {
+    // GIVEN
+    store.append({
+      ...order("a"),
+      occurredAt: Temporal.Instant.from("2026-10-26T12:00:00.123457Z"),
+    });
+    const oldest = Temporal.Instant.from("2026-10-26T12:00:00.123456Z");
+    store.append({ ...order("b"), occurredAt: oldest });
+
+    // WHEN
+    const timestamps = await store.oldestPending(["acme", "empty"]).map((pending) =>
+      pending.map(({ tenantId, occurredAt }) => ({
+        tenantId,
+        nanoseconds: occurredAt.epochNanoseconds,
+      })),
+    );
+
+    // THEN
+    expect(timestamps).toBeOkWith([{ tenantId: "acme", nanoseconds: oldest.epochNanoseconds }]);
+  });
+
   it("stamps each appended message with the next id and the clock's time", async ({ store }) => {
     // GIVEN two appends
     store.append(order("a"));
@@ -22,8 +70,8 @@ describe("memoryOutboxStore", () => {
 
     // THEN they come back in outbox order, stamped
     expect(pending).toBeOkWith([
-      { ...order("a"), id: 1, occurredAt: new Date(1_000_000) },
-      { ...order("b"), id: 2, occurredAt: new Date(1_000_000) },
+      { ...order("a"), id: 1, occurredAt: Temporal.Instant.fromEpochMilliseconds(1_000_000) },
+      { ...order("b"), id: 2, occurredAt: Temporal.Instant.fromEpochMilliseconds(1_000_000) },
     ]);
   });
 

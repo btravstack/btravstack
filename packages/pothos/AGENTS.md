@@ -11,8 +11,8 @@ the field's union, never as a thrown error.
 The answerer accepts any `GraphQLSchema` and owns no protocol; a helper
 validating GraphQL arguments through an oRPC contract would have put an
 `@orpc/contract` peer on it (`docs/explanation/deferred-decisions.md`). Here
-the gateway that builds its schema with Pothos opts in. It depends on no other
-workspace package, so it runs under any GraphQL server.
+the gateway that builds its schema with Pothos opts in. Its contract-package
+peer owns schema extraction; it runs under any GraphQL server.
 
 **Every dependency is a peer.** Pothos registers plugins on its own
 `SchemaBuilder` class and `graphql` checks a schema's realm, so a second copy
@@ -63,6 +63,8 @@ carrying either access code, stays masked by `@unthrown/pothos`.
 contract does not hold exactly one Zod input schema is a mistake in the
 schema's source; it is read as the schema is built, never per request. Inside
 a resolver the same read goes through `contractCall`, where it is a defect.
+It is an alias of `@btravstack/contract/orpc`'s `contractInputSchema`, so
+GraphQL and other consumers share the same schema extraction rules.
 
 **`loadProcedure` answers a `Promise`**, the exception to thesis #6 that a
 DataLoader's batch function forces: it answers a value or an `Error` per key.

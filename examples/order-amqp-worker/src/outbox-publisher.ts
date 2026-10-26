@@ -47,7 +47,7 @@ export const orderPublisher = Provider(OutboxPublisher)({
             tenantId: message.tenantId,
             kind: message.kind as "order",
             id: message.subjectId,
-            occurredAt: message.occurredAt.toISOString(),
+            occurredAt: message.occurredAt.toString(),
             placedAt,
             placementId,
             payload: order,

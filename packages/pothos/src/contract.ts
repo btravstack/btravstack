@@ -1,3 +1,4 @@
+import { contractInputSchema as contractInput } from "@btravstack/contract/orpc";
 import type { AnySchema, ErrorMap, ProcedureContract } from "@orpc/contract";
 import {
   Err,
@@ -9,27 +10,7 @@ import {
 } from "unthrown";
 import { z } from "zod";
 
-/**
- * The one Zod schema a procedure's contract declares for its input, typed as
- * declared — to derive a GraphQL argument's shape from it (`.shape`, a
- * `z.preprocess` around it) when the schema is built.
- *
- * A procedure whose contract holds anything but exactly one Zod input schema
- * is a mistake in the schema's source, not a request's: it throws, once, as
- * the schema is built.
- */
-export const contractInput = <
-  Input extends z.ZodType,
-  Output extends AnySchema,
-  Errors extends ErrorMap,
->(
-  procedure: ProcedureContract<Input, Output, Errors>,
-): Input => {
-  const [schema] = z
-    .tuple([z.custom<Input>((value) => value instanceof z.ZodType)])
-    .parse(procedure["~orpc"].inputSchemas);
-  return schema;
-};
+export { contractInput };
 
 /**
  * An input the procedure's contract refuses, caught before the procedure is

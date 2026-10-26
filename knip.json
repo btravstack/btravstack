@@ -88,9 +88,6 @@
         "@unthrown/orpc"
       ],
       "ignoreBinaries": ["tsc"]
-    },
-    "packages/outbox": {
-      "ignoreDependencies": ["temporal-polyfill"]
     }
   }
 }

@@ -53,9 +53,9 @@ loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
 and says what publishing means), and the three
 **servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus four HTTP answerer packages: `orpc-server`, `htmx-server`, `graphql-server` and `mcp-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `http-client`, an application-policy-bound outbound HTTPS capability, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
-**with its history**; it, `contract`, `entity` and `pothos` are the four packages that depend on
+**with its history**; it, `contract` and `entity` are packages that depend on
 nothing else in
-this workspace, and the dependencies run `core` → `config` → `di`, never
+this workspace. Pothos peers on the contract tier for schema access. The dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports,
 `keys`, `outbox`, `http-client`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
 `packages/contract/AGENTS.md`; the harness's is
@@ -1143,7 +1143,7 @@ in its place.
   `pnpm typecheck` with TS2835.
 - Published packages state the lowest Node version their required dependencies
   and entry points support: most claim `>=22`, while `http-server`, `prisma`,
-  `oauth-client` and `mcp-server` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
+  `oauth-client`, `outbox` and `mcp-server` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
   `>=22.22`.
   The root claims `>=22.22` for the dev toolchain. A package's floor is a
   compatibility promise to consumers; the consumer check tests each package
