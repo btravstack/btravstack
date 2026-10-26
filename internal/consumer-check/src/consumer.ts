@@ -14,6 +14,7 @@ import { webcrypto } from "node:crypto";
 // them would ever see the error this file exists to catch.
 
 import { Config, Env } from "@btravstack/config";
+import { contractInputSchema, contractOutputSchema } from "@btravstack/contract/orpc";
 import { HealthChecks, RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { Entity } from "@btravstack/entity";
@@ -73,6 +74,9 @@ export const namespacedApi = defineHttp({ namespace: "consumer" });
 const contract = {
   hello: oc.input(z.object({ name: z.string() })).output(z.object({ message: z.string() })),
 };
+
+export const greetingInput = contractInputSchema(contract.hello);
+export const greetingOutput = contractOutputSchema(contract.hello);
 
 export const namespacedController = namespacedApi.OrpcController(
   contract,

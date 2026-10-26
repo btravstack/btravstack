@@ -1803,12 +1803,18 @@ importers:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.44
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
+      temporal-polyfill:
+        specifier: 'catalog:'
+        version: 1.0.4
       tsdown:
         specifier: 'catalog:'
         version: 0.23.1(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2508,6 +2514,9 @@ importers:
 
   packages/pothos:
     devDependencies:
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0

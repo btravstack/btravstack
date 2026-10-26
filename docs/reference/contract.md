@@ -1,13 +1,13 @@
 ---
 title: "@btravstack/contract"
-description: The contract tier — the authenticated() marker and everything it puts on a contract node, plus the cursor page shapes Page, PageRequest, page and pageRequest, with pageOf and pageRequestOf behind the /zod subpath.
+description: The contract tier — authentication markers, cursor pages, and typed oRPC schema accessors.
 ---
 
 # @btravstack/contract
 
 > **Reference.** A complete, structured description of the contract tier's
-> public surface: every export of `@btravstack/contract` and of its `/zod`
-> subpath — what a marked node carries and what reads it, and the one shape of
+> public surface: every export of `@btravstack/contract` and its `/zod` and `/orpc`
+> subpaths — what a marked node carries and what reads it, and the one shape of
 > a page. For the task, see
 > [Protect a procedure](/how-to/protect-a-procedure); for how the HTTP starter
 > turns the marker into a typed `opts.context.principal`, see
@@ -18,7 +18,7 @@ A marker a contract puts on a node — a record of procedures, or a single
 procedure — to say _"this requires a caller satisfying one of these security
 requirements"_, readable by both the client that imports the contract and the
 server that implements it. A requirement is OpenAPI's own shape: a security
-scheme's name, mapped to the scopes it must grant. Nothing here talks to oRPC,
+scheme's name, mapped to the scopes it must grant. The root never talks to oRPC,
 HTTP, AMQP or Temporal: it is a plain marker over `WeakMap` identity,
 transport-agnostic by construction.
 
@@ -69,6 +69,50 @@ the server's view of a caller reaches a client.
 
 A cursor is an **opaque string**. The server mints it and is the only side
 that may read it; the client hands it back verbatim and interprets nothing.
+
+### Procedure schemas, under `@btravstack/contract/orpc`
+
+Install `@orpc/contract` and `zod` alongside this optional subpath. It has no
+GraphQL or server dependency; the root still needs neither peer.
+
+| Export                            | What it returns                                                            |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `contractInputSchema(procedure)`  | The procedure's single Zod input schema, with its exact type and identity  |
+| `contractOutputSchema(procedure)` | The procedure's single Zod output schema, with its exact type and identity |
+
+These accessors preserve object composition, defaults, refinements, brands
+and codecs. Contracts can export their operations alone: a consumer derives
+the schema and chooses the input or output type appropriate to its side.
+
+```ts
+import { contractInputSchema, contractOutputSchema } from "@btravstack/contract/orpc";
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+
+const amount = z.codec(z.string(), z.bigint(), { decode: BigInt, encode: String });
+const payment = oc
+  .input(z.object({ amount, reference: z.string().default("payment") }))
+  .output(z.object({ receipt: amount }));
+
+const paymentRequest = contractInputSchema(payment);
+const paymentResponse = contractOutputSchema(payment);
+export type ClientInput = z.input<typeof paymentRequest>;
+export type ServerInput = z.output<typeof paymentRequest>;
+export type ServerOutput = z.input<typeof paymentResponse>;
+export type ClientOutput = z.output<typeof paymentResponse>;
+export const paymentAmount = paymentRequest.pick({ amount: true });
+```
+
+For the input schema, the client supplies a string amount and may omit the
+reference; the handler receives a bigint and a required reference. For the
+output schema, the handler supplies its input and the client receives its
+validated output. A transport's own wire encoding is a separate boundary.
+
+An absent schema or a non-Zod Standard Schema is rejected by the types. At
+runtime, each accessor requires exactly one Zod schema and throws a
+`ZodError` during composition for absent, non-Zod or chained schemas. Returning
+only one stage of a chain would drop validation. Pothos's `contractInput`
+remains available as an alias of `contractInputSchema`.
 
 ## `authenticated(...requirements)(node)`
 
@@ -184,8 +228,8 @@ to use the factory, not a fallback.
 ## Three load-bearing properties
 
 **Zero dependencies and no required peers.** Nothing in the root imports
-oRPC, `di`, `core` or `unthrown`; the `/zod` subpath is the one exception, and
-its `zod` is optional. That is what lets a client take a contract without pulling in
+oRPC, `di`, `core` or `unthrown`; `/zod` and `/orpc` isolate their optional
+vendor peers. That is what lets a client take a contract without pulling in
 the server that implements it, and what would let an AMQP or Temporal contract
 reuse the same marker: it has no opinion about which transport reads it.
 
