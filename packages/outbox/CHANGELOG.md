@@ -1,5 +1,25 @@
 # @btravstack/outbox
 
+## 0.50.0
+
+### Minor Changes
+
+- 5587177: Use `Temporal.Instant` for outbox occurrence timestamps, pending reads and
+  publisher envelopes, preserving PostgreSQL microseconds. The memory store
+  accepts an optional precise occurrence time and health checks retain
+  submillisecond lag.
+
+  Install the new `temporal-polyfill` peer. Outbox now requires Node 22.12 or
+  newer so its CommonJS entry can load the ESM polyfill. Replace timestamp
+  `toISOString()` calls with `toString()` and `getTime()` with
+  `epochMilliseconds` only at integrations that require millisecond precision.
+
+### Patch Changes
+
+- @btravstack/config@0.50.0
+  - @btravstack/core@0.50.0
+  - @btravstack/di@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes
