@@ -12,6 +12,19 @@ application would otherwise copy is a framework concern.
 The exports are `src/index.ts` and `src/prisma.ts` (`@btravstack/outbox/prisma`),
 each with its TSDoc; `docs/reference/outbox.md` is the reader's page.
 
+## Timestamp precision
+
+Occurrence timestamps are `Temporal.Instant`, including pending reads,
+oldest-pending answers and the publisher's envelope. The Prisma raw lane reads
+ISO text through `to_json` and constructs an instant without passing through
+`Date`, preserving PostgreSQL microseconds independently of the model's codec.
+The memory store accepts an explicit instant or stamps the supplied clock's
+epoch milliseconds; lag comparisons retain fractional milliseconds.
+
+`temporal-polyfill` is a required peer, selecting native Temporal where it
+exists without mutating globals. Its ESM-only distribution makes Node 22.12
+the minimum for the outbox's CommonJS entry to load through `require(esm)`.
+
 ## What is the application's, and stays so
 
 - **The write.** The business row and its outbox row commit in ONE

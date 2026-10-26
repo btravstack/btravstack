@@ -1143,7 +1143,7 @@ in its place.
   `pnpm typecheck` with TS2835.
 - Published packages state the lowest Node version their required dependencies
   and entry points support: most claim `>=22`, while `http-server`, `prisma`,
-  `oauth-client` and `mcp-server` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
+  `oauth-client`, `outbox` and `mcp-server` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
   `>=22.22`.
   The root claims `>=22.22` for the dev toolchain. A package's floor is a
   compatibility promise to consumers; the consumer check tests each package

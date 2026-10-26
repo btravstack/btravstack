@@ -42,6 +42,7 @@ export type Observation = {
 /** A publisher that records what it was handed, and refuses what a test tells it to. */
 export type Publisher = OutboxPublisherService & {
   readonly sent: () => readonly string[];
+  readonly messages: () => readonly OutboxMessage[];
   /** Refuse `subjectId`'s message the next `times` attempts (default: forever). */
   readonly refuse: (subjectId: string, times?: number) => void;
   /** Make every publish wait one real macrotask, so two relays overlap. */
@@ -254,7 +255,7 @@ export const it = test.extend<OutboxFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   publisher: async ({}, use) => {
-    const sent: string[] = [];
+    const sent: OutboxMessage[] = [];
     const refusals = new Map<string, number>();
     const holds = new Map<string, { readonly enter: () => void; readonly resume: Promise<void> }>();
     let slow = false;
@@ -273,11 +274,12 @@ export const it = test.extend<OutboxFixtures>({
               refusals.set(message.subjectId, left - 1);
               return false;
             }
-            sent.push(message.subjectId);
+            sent.push(message);
             return true;
           })(),
         ).flatMap((accepted) => (accepted ? OkAsync() : ErrAsync(new Refused()))),
-      sent: () => sent,
+      sent: () => sent.map(({ subjectId }) => subjectId),
+      messages: () => sent,
       refuse: (subjectId, times = Number.POSITIVE_INFINITY) => {
         refusals.set(subjectId, times);
       },

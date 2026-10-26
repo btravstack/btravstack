@@ -78,6 +78,7 @@
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@prisma/orm-postgres": "^8.0.0-rc.11",
+    "temporal-polyfill": "^1.0.4",
     "unthrown": "^5.0.0"
   },
   "peerDependenciesMeta": {
@@ -86,6 +87,6 @@
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   }
 }

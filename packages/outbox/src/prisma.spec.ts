@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -74,16 +75,16 @@ describe("prismaOutboxStore", () => {
     expect(db.ran().map(({ sql }) => sql)).toEqual([LOCK, SELECT(`"public"."outboxMessage"`)]);
   });
 
-  it("reads pending rows with their time as a Date", async ({ stub }) => {
+  it("reads pending rows with their time as a Temporal.Instant", async ({ stub }) => {
     // GIVEN a pending row
     const db = stub({ rows: [row] });
 
     // WHEN they are read
     const pending = await prismaOutboxStore(db, { table: "events" }).pending("acme", 1);
 
-    // THEN the ISO text became a Date
+    // THEN the ISO text retains its microseconds as a Temporal.Instant
     expect(pending).toBeOkWith([
-      { ...row, id: 7, occurredAt: new Date("2026-10-06T21:00:00.123456+00:00") },
+      { ...row, id: 7, occurredAt: Temporal.Instant.from("2026-10-06T21:00:00.123456+00:00") },
     ]);
   });
 
@@ -118,7 +119,7 @@ describe("prismaOutboxStore", () => {
     // THEN each read was pinned to its own tenant, all on one connection, and a
     // tenant with nothing pending is absent rather than undated
     expect(asked).toBeOkWith({
-      oldest: [{ tenantId: "acme", occurredAt: new Date(row.occurredAt) }],
+      oldest: [{ tenantId: "acme", occurredAt: Temporal.Instant.from(row.occurredAt) }],
       ran: ["acme", "globex", "initech"].flatMap((tenant) => [
         { sql: PIN, values: ["app.tenant_id", tenant], tx: 1 },
         { sql: OLDEST, values: [tenant], tx: 1 },

@@ -1,10 +1,13 @@
 import { systemClock, type Clock } from "@btravstack/core";
+import { Temporal } from "temporal-polyfill";
 import { OkAsync } from "unthrown";
 
 import type { OutboxMessage, OutboxStoreService } from "./outbox.js";
 
-/** What an in-memory write appends: the envelope, without the two fields the store assigns. */
-export type OutboxAppend = Omit<OutboxMessage, "id" | "occurredAt">;
+/** The envelope to append, with an optional precise occurrence time; the store assigns its id. */
+export type OutboxAppend = Omit<OutboxMessage, "id" | "occurredAt"> & {
+  readonly occurredAt?: Temporal.Instant;
+};
 
 /** The in-process store, plus the write half an application's in-memory adapter calls. */
 export type MemoryOutboxStore = OutboxStoreService & {
@@ -31,14 +34,25 @@ export const memoryOutboxStore = (clock: Clock = systemClock): MemoryOutboxStore
   return {
     append: (message) => {
       sequence += 1;
-      messages.push({ ...message, id: sequence, occurredAt: new Date(clock.now()) });
+      messages.push({
+        ...message,
+        id: sequence,
+        occurredAt: message.occurredAt ?? Temporal.Instant.fromEpochMilliseconds(clock.now()),
+      });
     },
     pending: (tenantId, limit) => OkAsync(pendingOf(tenantId, limit)),
     oldestPending: (tenantIds) =>
       OkAsync(
-        tenantIds.flatMap((tenantId) =>
-          pendingOf(tenantId, 1).map(({ occurredAt }) => ({ tenantId, occurredAt })),
-        ),
+        tenantIds.flatMap((tenantId) => {
+          const oldest = pendingOf(tenantId, messages.length).reduce<Temporal.Instant | undefined>(
+            (earliest, { occurredAt }) =>
+              earliest === undefined || Temporal.Instant.compare(occurredAt, earliest) < 0
+                ? occurredAt
+                : earliest,
+            undefined,
+          );
+          return oldest === undefined ? [] : [{ tenantId, occurredAt: oldest }];
+        }),
       ),
     claim: (tenantId, limit, relay) => {
       if (claimed.has(tenantId)) return OkAsync();

@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import { fromSafePromise } from "unthrown";
 
 import type { OutboxMessage, OutboxStoreService } from "./outbox.js";
@@ -204,7 +205,7 @@ export const prismaOutboxStore = <Tx>(
     ((await tx.query(select(tenantId, limit))) as readonly Row[]).map((row): OutboxMessage => ({
       ...row,
       id: safe(row.id),
-      occurredAt: new Date(row.occurredAt),
+      occurredAt: Temporal.Instant.from(row.occurredAt),
     }));
 
   const transaction = <R>(work: (tx: Queryable) => Promise<R>) =>
@@ -222,14 +223,14 @@ export const prismaOutboxStore = <Tx>(
     // read once per statement, so no single statement can see two tenants.
     oldestPending: (tenantIds) =>
       transaction(async (tx) => {
-        const oldestOf: { readonly tenantId: string; readonly occurredAt: Date }[] = [];
+        const oldestOf: { readonly tenantId: string; readonly occurredAt: Temporal.Instant }[] = [];
         for (const tenantId of tenantIds) {
           await tx.query(pin(tenantId));
           const [row] = (await tx.query(oldest(tenantId))) as readonly {
             readonly occurredAt: string | null;
           }[];
           if (row?.occurredAt != null)
-            oldestOf.push({ tenantId, occurredAt: new Date(row.occurredAt) });
+            oldestOf.push({ tenantId, occurredAt: Temporal.Instant.from(row.occurredAt) });
         }
         return oldestOf;
       }),
