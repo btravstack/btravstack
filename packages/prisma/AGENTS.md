@@ -15,11 +15,15 @@ is — the surface moves between candidates.
 
 **The three catalog numbers are deliberately unaligned**, and the alignment
 belongs upstream rather than here: Prisma ships three release trains and pins
-across them exactly, so `prisma@8.0.0-rc.23` depends on
-`@prisma/cli-engine@0.7.0` and `@prisma/orm-toolchain@8.0.0-rc.18`, while
-the catalog pins `@prisma/orm-postgres` to `8.0.0-rc.18`. These are the
+across them exactly, so `prisma@8.0.0-rc.27` depends on
+`@prisma/cli-engine@0.9.0` and `@prisma/orm-toolchain@8.0.0-rc.20`, while
+the catalog pins `@prisma/orm-postgres` to `8.0.0-rc.20` and supplies the
+toolchain's required `@prisma/cli-engine@0.9.0` peer. These are the
 versions adopted together, not a claim about the current dist-tags. Do not "fix" them to one number — for two of the three it
-names a version that was never published.
+names a version that was never published. The CLI's toolchain and the
+facade must use the same ORM train: their contract contributions are an exact
+versioned interface, so a CLI-only bump can refuse the application's packs
+during `contract emit` before any application code runs.
 
 **Two Prisma trains, and the peer admits both** (issue #641). The peer is
 `^8.0.0-rc.11`; the default catalog is the newest train and the
@@ -47,6 +51,21 @@ no `@btravstack/prisma` release at all.
 - **The floor's migrations are a fixture, never edited**: the order example's
   history as released under rc.11, applied by the floor CLI's `db migrate` and
   checked by `db verify` against the released marker.
+
+**The client factory changed in rc.19; the starter did not.** New clients take
+a typed `contract` value, validated once with
+`contractFromJson<Contract>(contractJson)` from the facade's `/static` entry.
+The floor keeps `postgres<Contract>({ contractJson, ... })`. Both satisfy the
+starter's structural `PrismaLike`; do not raise its peer floor or rewrite the
+floor workspace to make application construction look uniform.
+
+**Exported rc.20 clients need a named facade type.** Use an
+`OrderDatabaseClient = PostgresClient<Contract>` alias imported from
+`@prisma/orm-postgres/runtime` and annotate the client factory's return type.
+Inference can expose `NoCollectionClasses` from the transitive SQL family,
+which the facade does not re-export, and fail declaration emission with
+TS2883 (TS2742 on the consumer compiler). Keep the named annotation rather
+than adding the transitive package or disabling declarations.
 
 **`@prisma/orm-postgres` ships its own agent skill**, at
 `node_modules/@prisma/orm-postgres/skills/prisma-8/`, which states that it is
@@ -356,7 +375,10 @@ observed twice.
 - **From rc.18: `beforeEncode` opens, `activityEnded` settles.** `beforeEncode`
   receives rendered SQL on both lanes. A symbol in `ctx.state` holds the
   finisher for that activity, so concurrent statements stay apart without a
-  map. Transaction activities are ignored. `failed` or `stopped` settles
+  map. Transaction and client activities such as `orm-call` are ignored;
+  only a statement result settles a query observation. The structural hook
+  accepts those client activities so rc.19 and later middleware remains
+  assignable without importing a target. `failed` or `stopped` settles
   `error`; `succeeded` settles `ok`. A statement refused before encoding never
   opens an observation.
 - **Up to rc.17: `beforeQuery` / `beforeExecute` open, `afterQuery` /

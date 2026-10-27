@@ -16,9 +16,9 @@ export type SqlMiddlewareLike = {
   readonly familyId: "sql";
   /** rc.18 and later: before the statement's parameters are encoded, on both lanes. */
   readonly beforeEncode: (plan: Plan, ctx: ActivityContext) => Promise<void>;
-  /** rc.18 and later: a statement or a transaction ended. */
+  /** rc.18 and later: a statement, transaction or client activity ended. */
   readonly activityEnded: (
-    activity: { readonly kind: "statement" | "transaction" },
+    activity: { readonly kind: string },
     result: ActivityEnded,
     ctx: ActivityContext,
   ) => Promise<void>;
@@ -112,6 +112,6 @@ type ActivityEnded =
       readonly outcome: "succeeded" | "failed" | "stopped";
       readonly source?: string;
     }
-  | { readonly kind: "transaction" };
+  | { readonly kind: "transaction" | `${string}-${string}` };
 type PlanContext = { readonly scope?: Scope };
 type Completed = { readonly completed: boolean; readonly source?: string };

@@ -1,9 +1,15 @@
 import { type PrismaBinding, prismaDatabase } from "@btravstack/prisma";
-import postgres from "@prisma/orm-postgres/runtime";
+import postgres, { type PostgresClient } from "@prisma/orm-postgres/runtime";
+import { contractFromJson } from "@prisma/orm-postgres/static";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { Contract } from "./prisma/contract.js";
 import contractJson from "./prisma/contract.json" with { type: "json" };
+
+export const contract = contractFromJson<Contract>(contractJson);
+
+/** The client, typed by the contract: `db.orm.orders.Order`, `db.sql`, `db.raw`. */
+export type OrderDatabaseClient = PostgresClient<Contract>;
 
 /**
  * The one thing `@btravstack/prisma` cannot own: the client is typed by THIS
@@ -13,11 +19,8 @@ import contractJson from "./prisma/contract.json" with { type: "json" };
  * is where the per-query observation comes from, with no `$extends` and nothing
  * layered over a built client.
  */
-const createClient = ({ url, middleware }: PrismaBinding) =>
-  postgres<Contract>({ contractJson, url, middleware });
-
-/** The client, typed by the contract: `db.orm.orders.Order`, `db.sql`, `db.raw`. */
-export type OrderDatabaseClient = ReturnType<typeof createClient>;
+const createClient = ({ url, middleware }: PrismaBinding): OrderDatabaseClient =>
+  postgres({ contract, url, middleware });
 
 /** The transaction context a pinned unit of work runs on. */
 export type OrderTransaction = Parameters<Parameters<OrderDatabaseClient["transaction"]>[0]>[0];

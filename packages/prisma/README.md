@@ -9,7 +9,7 @@
 
 ```sh
 pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @prisma/orm-postgres@8.0.0-rc.18 temporal-polyfill@1.0.4
+  @prisma/orm-postgres@8.0.0-rc.20 temporal-polyfill@1.0.4
 ```
 
 Install the required peers, so the application holds a single copy of each;
@@ -49,18 +49,21 @@ import type { PrismaBinding } from "@btravstack/prisma";
 
 // The stand-in for the client YOUR contract types. It does not exist in this
 // package — that is what the `client` arrow is for.
-declare const postgres: (options: PrismaBinding & { readonly contractJson: unknown }) => {
+declare const postgres: (options: PrismaBinding & { readonly contract: Contract }) => {
   readonly raw: { readonly sql: unknown };
   readonly runtime: unknown;
 };
+type Contract = ReturnType<typeof contractFromJson>;
 declare const contractJson: unknown;
 -->
 
 ```ts
 import { prismaDatabase } from "@btravstack/prisma";
+import { contractFromJson } from "@prisma/orm-postgres/static";
 
+const contract = contractFromJson<Contract>(contractJson);
 const database = prismaDatabase("OrderDatabase")({
-  client: ({ url, middleware }) => postgres({ contractJson, url, middleware }),
+  client: ({ url, middleware }) => postgres({ contract, url, middleware }),
 });
 ```
 
@@ -78,7 +81,9 @@ export const PersistenceModule = Module("Persistence")({
 
 **The client type is yours, and that is deliberate.** A Prisma 8 client is
 typed by _your_ emitted `Contract` and built from _your_ `contract.json`, so
-there is none for this package to ship — the `client` arrow is where your
+there is none for this package to ship. From Prisma rc.19, turn that JSON into
+a typed value once with `contractFromJson<Contract>(contractJson)` and pass
+`contract` to `postgres({ contract, ... })`. The `client` arrow is where your
 contract and this starter meet, and the port is typed by exactly what it
 returns. Spread the `middleware` it hands you into the client: that is where
 the per-query observation below comes from.

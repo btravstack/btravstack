@@ -19,6 +19,7 @@ import type { AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
+import { contract } from "../database.js";
 import {
   openDatabase,
   prismaCustomerRepository,
@@ -27,8 +28,6 @@ import {
   type OrderDatabaseClient,
   type OrderPayload,
 } from "../index.js";
-import type { Contract } from "../prisma/contract.js";
-import contractJson from "../prisma/contract.json" with { type: "json" };
 
 export type PersistenceFixtures = {
   readonly preciseEvent: Temporal.Instant;
@@ -124,8 +123,8 @@ export const it = test.extend<PersistenceFixtures>({
   },
 
   listing: async ({ db }, use) => {
-    const admin = postgres<Contract>({
-      contractJson,
+    const admin: OrderDatabaseClient = postgres({
+      contract,
       url: inject("__ORDERS_OWNER_DATABASE_URL__"),
     });
     const suffix = uuidv7().replaceAll("-", "");
@@ -338,11 +337,11 @@ export const it = test.extend<PersistenceFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   freshScope: async ({}, use) => {
     const database = prismaDatabase("FreshDatabase")({
-      client: ({ url, middleware }) =>
-        postgres<Contract>({
-          contractJson,
+      client: ({ url, middleware }): OrderDatabaseClient =>
+        postgres({
+          contract,
           url,
-          middleware: middleware as never,
+          middleware,
           poolOptions: { connectionTimeoutMillis: 2_000 },
         }),
     });

@@ -87,13 +87,13 @@ catalog:
   # the surface moves between release candidates.
   #
   # The three numbers do not match because upstream ships three release trains
-  # and pins across them exactly: `prisma@8.0.0-rc.23` — the CLI's own `latest`
-  # — depends on `@prisma/cli-engine@0.7.0` and `@prisma/orm-toolchain@
-  # 8.0.0-rc.18`, and `@prisma/orm-postgres`'s own `latest` is `8.0.0-rc.18`.
+  # and pins across them exactly: `prisma@8.0.0-rc.27` depends on
+  # `@prisma/cli-engine@0.9.0` and `@prisma/orm-toolchain@8.0.0-rc.20`.
+  # The Postgres facade must use that same ORM train for contract emission.
   # Each entry here is the head of its own train, and aligning them by hand
   # would mean naming a version one of these packages has never published.
-  "@prisma/cli-engine": 0.7.0
-  "@prisma/orm-postgres": 8.0.0-rc.18
+  "@prisma/cli-engine": 0.9.0
+  "@prisma/orm-postgres": 8.0.0-rc.20
   "@tanstack/query-core": 5.104.5
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.1. 8.x also
