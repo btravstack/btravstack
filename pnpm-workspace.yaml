@@ -189,10 +189,13 @@ catalogs:
     "@prisma/orm-postgres": 8.0.0-rc.11
     prisma: 8.0.0-rc.15
 
-# Force patched versions of vulnerable transitive dependencies. Every advisory
-# below reaches us only through dev/build tooling (never a published package's
-# runtime deps). Each selector is version-scoped so only the affected line moves.
+# Keep build dependencies compatible and patch vulnerable transitives. Every
+# advisory below reaches us only through dev/build tooling (never a published
+# package's runtime deps). Selectors are version-scoped to the affected releases.
 overrides:
+  # Keep TypeScript 7.0's native declaration emitter. The 0.29 beta needs
+  # TypeScript 7.1's async API; see AGENTS.md, Toolchain & conventions.
+  "tsdown@0.23.2>rolldown-plugin-dts": "0.28.8"
   # GHSA-mrhx-c7xc-m3w5: constrained collection validation can exhaust memory.
   # Stryker and Knip retain older Zod resolutions than the patched catalog.
   "mutation-server-protocol>zod@<4.6.6": "4.6.7"
