@@ -701,6 +701,11 @@ leave it by rewriting them, which a no-edit policy forbids, so a new train is
 adopted in the default catalog and the floor moves only in a major
 (`packages/prisma/AGENTS.md`, _Two Prisma trains_).
 
+The default Prisma client consumes a typed contract value validated by
+`contractFromJson<Contract>(contractJson)`; the floor client retains its older
+construction API. That application-side difference does not change the starter's
+structural client contract or raise its peer floor.
+
 **Row-level security is DECLARED, in the application's own contract**: `@@rls`
 on the model and a `policy_<operation>` block beside it, planned and applied as
 ordinary migration operations. What the starter still owns is the pin —

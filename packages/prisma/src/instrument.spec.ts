@@ -145,6 +145,17 @@ describe("queryObserver", () => {
     expect(observed.taken()).toEqual([]);
   });
 
+  it("does not count client activities as statements", async ({ observed }) => {
+    // GIVEN a middleware receiving an ORM call activity
+    const hook = queryObserver(observed.members);
+
+    // WHEN the client activity ends
+    await hook.activityEnded({ kind: "orm-call" }, { kind: "orm-call" }, ctx("orm-call"));
+
+    // THEN the enclosing call does not duplicate its statements' observations
+    expect(observed.taken()).toEqual([]);
+  });
+
   it("settles a statement whose reader stopped early", async ({ observed }) => {
     // GIVEN a statement whose result is still being read
     const hook = queryObserver(observed.members);

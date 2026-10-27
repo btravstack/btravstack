@@ -11,10 +11,11 @@ import { prismaDatabase, type PrismaBinding, type PrismaLike } from "@btravstack
 
 // The stand-in for the client YOUR contract types. There is no such type in
 // this package, which is the whole point of the `client` arrow.
-declare const postgres: (options: PrismaBinding & { readonly contractJson: unknown }) => {
+declare const postgres: (options: PrismaBinding & { readonly contract: Contract }) => {
   readonly raw: { readonly sql: unknown };
   readonly runtime: unknown;
 };
+type Contract = ReturnType<typeof contractFromJson>;
 declare const contractJson: unknown;
 -->
 
@@ -32,7 +33,7 @@ admits are tested:
 | Train  | `@prisma/orm-postgres` | `prisma` CLI  | `@prisma/cli-engine` | Tested by                                                        |
 | ------ | ---------------------- | ------------- | -------------------- | ---------------------------------------------------------------- |
 | Floor  | `8.0.0-rc.11`          | `8.0.0-rc.15` | `0.4.0`              | `internal/prisma-floor`: migrations released under it, unedited  |
-| Latest | `8.0.0-rc.18`          | `8.0.0-rc.23` | `0.7.0`              | the rest of the gate, including the order infrastructure example |
+| Latest | `8.0.0-rc.20`          | `8.0.0-rc.27` | `0.9.0`              | the rest of the gate, including the order infrastructure example |
 
 The starter's middleware carries the hooks of both: `beforeQuery` /
 `afterQuery` / `beforeExecute` / `afterExecute` up to rc.17, and
@@ -75,9 +76,9 @@ requires `temporal-polyfill@^1.0.4` as a peer, and from rc.18 a policy's
 The pinned Prisma 8 Postgres facade has **no supported toolchain-free
 production install**. Importing `@prisma/orm-postgres/runtime` selects the
 runtime JavaScript entry point; it does not select a smaller package manifest.
-The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.18)
+The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.20)
 requires `@prisma/orm-toolchain`, whose
-[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.18)
+[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.20)
 requires the `@prisma/cli-engine` peer and declares build-tool dependencies.
 
 Keep the application manifest split by responsibility:
@@ -121,8 +122,11 @@ on contract emission or migrations running inside the application process.
 ## `prismaDatabase(name)({ client })`
 
 ```ts
+import { contractFromJson } from "@prisma/orm-postgres/static";
+
+const contract = contractFromJson<Contract>(contractJson);
 const database = prismaDatabase("OrderDatabase")({
-  client: ({ url, middleware }) => postgres({ contractJson, url, middleware }),
+  client: ({ url, middleware }) => postgres({ contract, url, middleware }),
 });
 ```
 
@@ -211,7 +215,16 @@ the driver's message, and it reaches `/healthz` rather than the caller.
 A Prisma 8 client is typed by **that application's** emitted `Contract` and
 built from **its** `contract.json`, so there is no client type to ship. The
 arrow is where your contract and this starter meet, and the port is typed by
-exactly what it returns.
+exactly what it returns. From Prisma rc.19, validate the JSON once with
+`contractFromJson<Contract>(contractJson)` from `@prisma/orm-postgres/static`,
+then pass the typed `contract` value to `postgres({ contract, ... })`. The
+rc.11 floor client keeps its `postgres<Contract>({ contractJson, ... })` API.
+
+When exporting the client or a module that provides it, name its type as
+`PostgresClient<Contract>` from `@prisma/orm-postgres/runtime` and annotate
+the factory's return type with that alias. In rc.20 an inferred client can
+expose `NoCollectionClasses`, which the facade does not re-export, and fail
+declaration emission. The explicit facade type keeps the declarations portable.
 
 It receives the URL, already validated, and the starter's own `middleware`.
 Spread that into the client rather than dropping it: it carries the statement
@@ -241,8 +254,8 @@ cannot see. The v7 `$allModels` wrapper saw only the first.
 **The operation opens before the driver runs and settles after it**, so a span
 an observer opens is one the statement runs _inside_. From rc.18 it opens in
 `beforeEncode` and settles in `activityEnded`, its finisher held in the
-activity's own `ctx.state`; transaction activities are ignored, and a statement
-refused before encoding opens nothing. Up to rc.17 it opens in `beforeQuery` or
+activity's own `ctx.state`; transaction and client activities such as
+`orm-call` are ignored, and a statement refused before encoding opens nothing. Up to rc.17 it opens in `beforeQuery` or
 `beforeExecute` and settles in `afterQuery` or `afterExecute`, paired by the
 context object the runtime hands every hook of one statement. A statement that
 rc.11 refuses after `beforeQuery` never reaches `afterQuery`, so its
@@ -343,18 +356,22 @@ import { prismaDatabase, type PrismaBinding } from "@btravstack/prisma";
 declare class Pool {
   constructor(config: { readonly connectionString: string; readonly max: number; readonly connectionTimeoutMillis: number });
 }
-declare const postgres: (options: Pick<PrismaBinding, "middleware"> & { readonly contractJson: unknown; readonly pg: Pool }) => {
+declare const postgres: (options: Pick<PrismaBinding, "middleware"> & { readonly contract: Contract; readonly pg: Pool }) => {
   readonly raw: { readonly sql: unknown };
   readonly runtime: unknown;
 };
+type Contract = ReturnType<typeof contractFromJson>;
 declare const contractJson: unknown;
 -->
 
 ```ts
+import { contractFromJson } from "@prisma/orm-postgres/static";
+
+const contract = contractFromJson<Contract>(contractJson);
 const database = prismaDatabase("OrderDatabase")({
   client: ({ url, middleware }) =>
     postgres({
-      contractJson,
+      contract,
       middleware,
       pg: new Pool({ connectionString: url, max: 20, connectionTimeoutMillis: 5_000 }),
     }),

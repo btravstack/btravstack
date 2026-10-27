@@ -143,9 +143,12 @@ export type PrismaOptions<C extends PrismaLike> = {
    *
    * @example
    * ```ts
+   * import { contractFromJson } from "@prisma/orm-postgres/static";
+   *
+   * const contract = contractFromJson<Contract>(contractJson);
    * prismaDatabase("OrderDatabase")({
    *   client: ({ url, middleware }) =>
-   *     postgres<Contract>({ contractJson, url, middleware }),
+   *     postgres({ contract, url, middleware }),
    * });
    * ```
    */

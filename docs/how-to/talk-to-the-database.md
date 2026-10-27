@@ -14,7 +14,7 @@ import { TaggedError, P, fromNullable, type AsyncResult } from "unthrown";
 // The stand-in for the client YOUR contract types — there is no such type in
 // the starter, which is the whole point of the `client` arrow.
 type OrderRow = { readonly id: string; readonly quantity: number };
-declare const postgres: (options: PrismaBinding & { readonly contractJson: unknown }) => {
+declare const postgres: (options: PrismaBinding & { readonly contract: Contract }) => {
   readonly raw: { readonly sql: unknown };
   readonly runtime: unknown;
   readonly orm: {
@@ -23,6 +23,7 @@ declare const postgres: (options: PrismaBinding & { readonly contractJson: unkno
     };
   };
 };
+type Contract = ReturnType<typeof contractFromJson>;
 declare const contractJson: unknown;
 -->
 
@@ -45,15 +46,20 @@ middleware, and holds the result as a resourceful provider whose `release`
 closes the pool on every exit path.
 
 ```ts
+import { contractFromJson } from "@prisma/orm-postgres/static";
+
+const contract = contractFromJson<Contract>(contractJson);
 export const database = prismaDatabase("OrderDatabase")({
-  client: ({ url, middleware }) => postgres({ contractJson, url, middleware }),
+  client: ({ url, middleware }) => postgres({ contract, url, middleware }),
 });
 ```
 
 The `client` arrow is the one thing the starter cannot own: a Prisma 8 client
 is typed by **your** emitted `Contract` and built from **your**
 `contract.json`, so there is no client type to ship. Whatever you return is
-what the port carries.
+what the port carries. `Contract` is the type your contract emission generated;
+`contractFromJson<Contract>(contractJson)` validates its JSON once and supplies
+the typed value Prisma rc.19 and later clients accept.
 
 Spread `middleware` into the client rather than dropping it: that is the
 starter's own statement middleware, and it is where the per-query observation
