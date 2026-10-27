@@ -1121,6 +1121,15 @@ in its place.
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
 - `declarationMap: false` on all twenty-five published packages — the published
   tarball has no `src/`, so maps would be dead ends.
+- **tsdown's declaration plugin must support the installed compiler.**
+  `tsdown@0.23.2` pulls `rolldown-plugin-dts@0.29.0-beta.2`, whose native
+  generator requires TypeScript 7.1's asynchronous declaration API. On this
+  repository's TypeScript 7.0.2 it falls back to the classic compiler API,
+  which the native port does not provide, and every declaration build fails.
+  A release-scoped override retains `rolldown-plugin-dts@0.28.8`, which runs
+  the installed native compiler's CLI. Remove it when the adopted compiler
+  and declaration plugin agree, with the build and consumer checks passing;
+  declarations and their inferred types remain part of the gate.
 - **A deployment extends `@btravstack/tsconfig/app.json`; everything that
   exports something keeps `base.json`.** The two differ in one thing,
   `declaration: false`, and the split is a DX decision rather than tidiness.
