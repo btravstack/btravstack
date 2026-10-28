@@ -45,6 +45,7 @@ const TEMPORAL_IMAGE = "temporalio/temporal:1.9.1";
 const RACE_RETRY_MS = 100;
 const RACE_RETRY_MAX_MS = 1_000;
 const NAMESPACE_READY_MS = 60_000;
+const NAMESPACE_RETRY_MS = 250;
 
 /**
  * A Vitest `globalSetup` providing a Temporal server's address: the Temporal
@@ -151,13 +152,27 @@ const sharedName = (startupTimeoutMs: number): string => {
 };
 
 /**
+ * Registers the namespace `<prefix>-<uuid>` on the Temporal server at
+ * `address`, and answers its name once every Temporal service can use it. It
+ * needs no test context, so a Vitest `globalSetup` can register one namespace
+ * for the whole run, for workers it starts once and shares across spec files.
+ *
  * Registering a namespace is not the same as being able to use one: each
  * Temporal service refreshes its namespace registry on its own interval, so a
- * namespace-scoped read is retried until it answers, and its last error is
- * what a namespace that never becomes usable fails with.
+ * namespace-scoped read is retried for up to a minute. A namespace that never
+ * becomes usable rejects with an error naming it, the server's last answer as
+ * its `cause`.
+ *
+ * @example
+ * ```ts
+ * // workers-setup.ts, named in `globalSetup` after the server's setup
+ * export default async (project: TestProject) => {
+ *   const address = project.getProvidedContext().__BTRAVSTACK_TEMPORAL_ADDRESS__;
+ *   const namespace = await temporalNamespace(address, "workers");
+ * };
+ * ```
  */
-const registerNamespace = async (address: string, prefix: string): Promise<string> => {
-  const { vi } = await import("vitest");
+export const temporalNamespace = async (address: string, prefix = "spec"): Promise<string> => {
   const namespace = `${prefix}-${randomUUID()}`;
   const connection = await Connection.connect({ address });
   try {
@@ -165,15 +180,26 @@ const registerNamespace = async (address: string, prefix: string): Promise<strin
       namespace,
       workflowExecutionRetentionPeriod: msToTs("1 day"),
     });
-    await vi.waitFor(() => connection.workflowService.countWorkflowExecutions({ namespace }), {
-      timeout: NAMESPACE_READY_MS,
-      interval: 250,
-    });
+    await usable(connection, namespace, Date.now() + NAMESPACE_READY_MS);
     return namespace;
   } finally {
     await connection.close();
   }
 };
+
+const usable = (connection: Connection, namespace: string, deadline: number): Promise<unknown> =>
+  connection.workflowService
+    .countWorkflowExecutions({ namespace })
+    .catch((cause: unknown) =>
+      Date.now() < deadline
+        ? pause(NAMESPACE_RETRY_MS).then(() => usable(connection, namespace, deadline))
+        : Promise.reject(
+            new Error(
+              `Temporal namespace ${namespace} was registered but not usable within ${String(NAMESPACE_READY_MS)} ms`,
+              { cause },
+            ),
+          ),
+    );
 
 /**
  * A file-scoped Vitest fixture answering the {@link TemporalEnvironment} of a
@@ -207,7 +233,7 @@ export const temporalEnvironment = (
     const address = inject("__BTRAVSTACK_TEMPORAL_ADDRESS__");
     await use({
       TEMPORAL_ADDRESS: address,
-      TEMPORAL_NAMESPACE: await registerNamespace(address, prefix),
+      TEMPORAL_NAMESPACE: await temporalNamespace(address, prefix),
     });
   },
   { scope: "file" },

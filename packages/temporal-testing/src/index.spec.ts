@@ -1,6 +1,8 @@
+import { Client } from "@temporalio/client";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { temporalNamespace } from "./index.js";
 
 const IMAGE = "temporalio/temporal:1.9.1";
 const SHARED_NAME = /^btravstack-temporal-[0-9a-f]{12}$/;
@@ -146,6 +148,78 @@ describe("temporalServer", () => {
     expect(run).toMatchObject({
       outcome: `failed: ${IMAGE} is unhealthy`,
       configured: [expect.anything()],
+    });
+  });
+});
+
+describe("temporalNamespace", () => {
+  it("answers a namespace a global setup registered, usable at once", async ({ run }) => {
+    // GIVEN a workflow started, with no worker, in the namespace the run's global setup registered
+    const workflowId = `run-${run.options.namespace}`;
+    await run.workflow.start("unserved", { taskQueue: "nobody", workflowId, args: [] });
+
+    // WHEN it is described there
+    const described = run.workflow.getHandle(workflowId).describe();
+
+    // THEN the server holds it in that namespace
+    await expect(described).resolves.toMatchObject({
+      workflowId,
+      status: { name: "RUNNING" },
+    });
+  });
+
+  it("keeps two runs registering at once apart, down to the tasks they poll", async ({
+    temporal,
+    connection,
+    pollOnce,
+  }) => {
+    // GIVEN two runs registering on the shared server at once, and a workflow started in the first's namespace
+    const [first, second] = await Promise.all([
+      temporalNamespace(temporal.TEMPORAL_ADDRESS, "run"),
+      temporalNamespace(temporal.TEMPORAL_ADDRESS, "run"),
+    ]);
+    const queue = `shared-${first}`;
+    const workflowId = `first-${first}`;
+    await new Client({ connection, namespace: first }).workflow.start("unserved", {
+      taskQueue: queue,
+      workflowId,
+      args: [],
+    });
+
+    // WHEN each run polls the queue both their workers would serve
+    const [polledByFirst, polledBySecond] = await Promise.all([
+      pollOnce(first, queue),
+      pollOnce(second, queue),
+    ]);
+
+    // THEN the names differ, and only the first run's poller receives its task
+    expect({ distinct: first !== second, polledByFirst, polledBySecond }).toEqual({
+      distinct: true,
+      polledByFirst: workflowId,
+      polledBySecond: undefined,
+    });
+  });
+
+  it("names the namespace that never became usable, with the server's last answer", async ({
+    neverUsable,
+    onFakeClock,
+  }) => {
+    // GIVEN a server that registers a namespace but never serves it
+    // WHEN a namespace is registered on it
+    const { settled, elapsedMs } = await onFakeClock(() => temporalNamespace(neverUsable, "stuck"));
+
+    // THEN it gave up after a minute, naming the namespace
+    expect({ settled, seconds: Math.round(elapsedMs / 1_000) }).toEqual({
+      settled: {
+        status: "rejected",
+        reason: expect.objectContaining({
+          message: expect.stringMatching(
+            /^Temporal namespace stuck-[0-9a-f-]{36} was registered but not usable within 60000 ms$/,
+          ),
+          cause: expect.objectContaining({ message: "Namespace not found" }),
+        }),
+      },
+      seconds: 60,
     });
   });
 });

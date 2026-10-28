@@ -9,6 +9,9 @@ host shares that container, concurrent processes included.
 `temporalEnvironment(prefix)` is a file-scoped fixture that registers a
 namespace of the spec file's own and answers
 `{ TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE }`, the variables the starters read.
+`temporalNamespace(address, prefix)` is the same registration without a test
+context, for a `globalSetup` that registers one namespace for the run and
+starts workers shared across spec files.
 
 ```sh
 pnpm add -D @btravstack/temporal-testing @btravstack/testing vitest testcontainers @temporalio/client @temporalio/common

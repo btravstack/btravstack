@@ -73,6 +73,17 @@ with the code in the same commit.
   setup's process. `index.spec.ts` replaces `testcontainers` with
   `vi.doMock`, which only reaches a dynamic import.
 
+- **A run's namespace is a function, not a setup that provides it.** Suites
+  whose workers a `globalSetup` starts, shared across spec files, need one
+  namespace for the run, registered where neither `inject` nor `vi` exists.
+  `temporalNamespace(address, prefix)` is the registration
+  `temporalEnvironment` itself uses, so there is one implementation, and it
+  imports nothing from Vitest: its readiness retry is its own, a minute at
+  250 ms, rejecting with an error that names the namespace. A setup that
+  registered and provided one under a key of this package's would hand the
+  specs a value the suite's own setup already holds, and that setup provides
+  it anyway, beside the rest of what its workers were started with.
+
 - **The namespace is the isolation, never the task queue**: the starter reads
   its queue off the contract, so two spec files booting one worker poll one
   queue, and suites listing workflows on a shared server would see each
@@ -89,4 +100,8 @@ Vitest's fake clock, which is why it pauses with the global `setTimeout`:
 time. The fixture runs against the server
 `internal/test-infra` shares, which provides the same inject key. That
 workspace cannot depend on this one, because this one devDepends on it, so it
-restates the key's declaration.
+restates the key's declaration. `src/__tests__/run-namespace.setup.ts` is a
+second `globalSetup` that registers a namespace with `temporalNamespace`,
+proving the registration outside any test, and a spec starts a workflow in it.
+The namespace that never becomes usable is a faked `Connection.connect` on
+the fake clock, since the real server makes every namespace usable at once.

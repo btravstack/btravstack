@@ -12,13 +12,14 @@ package peers on no `@btravstack/*` package, so the specs of a
 `@btravstack/temporal-client` caller install the same one, as a **dev
 dependency**.
 
-| Export                  | Kind  | What it is                                                                                                                                                                                           |
-| ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `temporalServer`        | value | `temporalServer({ startupTimeoutMs?, reuse? })` — a Vitest `globalSetup` starting one `temporalio/temporal:1.9.1` container (`server start-dev`, in memory) and providing its address                |
-| default export          | value | `temporalServer()`, so `globalSetup: ["@btravstack/temporal-testing"]` is the whole configuration                                                                                                    |
-| `TemporalServerOptions` | type  | `{ readonly startupTimeoutMs?: number; readonly reuse?: boolean }` — the container's health-check start period, retry count and `testcontainers` wait (default `60_000`), and reuse (default `true`) |
-| `temporalEnvironment`   | value | `temporalEnvironment(prefix = "spec")` — a file-scoped `test.extend` fixture registering `<prefix>-<uuid>` and answering a `TemporalEnvironment` once every Temporal service can use it              |
-| `TemporalEnvironment`   | type  | `{ readonly TEMPORAL_ADDRESS: string; readonly TEMPORAL_NAMESPACE: string }` — spread into `start`'s or `boot`'s `env`, or read by a client's settings                                               |
+| Export                  | Kind  | What it is                                                                                                                                                                                                                                |
+| ----------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `temporalServer`        | value | `temporalServer({ startupTimeoutMs?, reuse? })` — a Vitest `globalSetup` starting one `temporalio/temporal:1.9.1` container (`server start-dev`, in memory) and providing its address                                                     |
+| default export          | value | `temporalServer()`, so `globalSetup: ["@btravstack/temporal-testing"]` is the whole configuration                                                                                                                                         |
+| `TemporalServerOptions` | type  | `{ readonly startupTimeoutMs?: number; readonly reuse?: boolean }` — the container's health-check start period, retry count and `testcontainers` wait (default `60_000`), and reuse (default `true`)                                      |
+| `temporalEnvironment`   | value | `temporalEnvironment(prefix = "spec")` — a file-scoped `test.extend` fixture registering `<prefix>-<uuid>` and answering a `TemporalEnvironment` once every Temporal service can use it                                                   |
+| `temporalNamespace`     | value | `temporalNamespace(address, prefix = "spec")` — registers `<prefix>-<uuid>` on the server at `address` and resolves to its name once every Temporal service can use it, with no test context, so a `globalSetup` can register one per run |
+| `TemporalEnvironment`   | type  | `{ readonly TEMPORAL_ADDRESS: string; readonly TEMPORAL_NAMESPACE: string }` — spread into `start`'s or `boot`'s `env`, or read by a client's settings                                                                                    |
 
 ## The server
 
@@ -62,8 +63,20 @@ starter reads its queue off the contract, so two files booting one worker poll
 one queue, and suites sharing a server's `default` namespace see each other's
 workflows as soon as they list them. `temporalEnvironment` registers a fresh
 namespace per file and retries a namespace-scoped read until it answers, so a
-namespace that never becomes usable fails the file with the server's last
-error. Nothing is cleaned up: the namespace lives as long as the server.
+namespace that never becomes usable fails the file, its error naming the
+namespace. Nothing is cleaned up: the namespace lives as long as the server.
+
+**A run whose workers a `globalSetup` starts gets one namespace for the run.**
+Workers started once and shared across spec files cannot take a namespace per
+file, and must not poll `default`, where every run on the shared server
+would take the others' tasks. `temporalNamespace(address, prefix)` is the
+registration the fixture uses, with neither `inject` nor `vi`: a setup reads
+the address with `project.getProvidedContext()`, registers, starts its
+workers in that namespace and provides the environment to its specs under a
+key of its own. A namespace still unusable after a minute rejects with an
+error naming it, the server's last answer as its `cause`.
+[Test a Temporal worker](/how-to/test-a-temporal-worker#workers-a-global-setup-shares-a-namespace-per-run)
+has the setup.
 
 The fixture reads the address through Vitest's `inject`, under the key the
 setup provides. A run that gets its server elsewhere — a long-lived one a CI

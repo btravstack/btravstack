@@ -1,5 +1,5 @@
 import { Client, Connection } from "@temporalio/client";
-import { test, vi } from "vitest";
+import { inject, test, vi } from "vitest";
 import type { TestProject } from "vitest/node";
 
 import { temporalEnvironment, temporalServer, type TemporalEnvironment } from "../index.js";
@@ -26,6 +26,12 @@ type Configured = {
   name?: string;
 };
 
+/** How a piece of work settled on the fake clock. */
+export type FakeClockRun<T> = {
+  readonly settled: PromiseSettledResult<Awaited<T>>;
+  readonly elapsedMs: number;
+};
+
 export type TemporalTestingFixtures = {
   /** This package's own environment: the shared server and this file's namespace. */
   readonly temporal: TemporalEnvironment;
@@ -33,6 +39,16 @@ export type TemporalTestingFixtures = {
   readonly client: Client;
   /** A client in the server's `default` namespace. */
   readonly foreign: Client;
+  /** A client in the namespace `run-namespace.setup.ts` registered for the whole run. */
+  readonly run: Client;
+  /** A connection to the shared server, outside any namespace. */
+  readonly connection: Connection;
+  /** One workflow task poll of `queue` in `namespace`, answering the polled workflow's id, or `undefined` once the poll times out empty. */
+  readonly pollOnce: (namespace: string, queue: string) => Promise<string | undefined>;
+  /** The address of a server that registers a namespace but never serves it: `Connection.connect` faked until the test ends. */
+  readonly neverUsable: string;
+  /** `work` settled on a fake clock, and how long it took on that clock. */
+  readonly onFakeClock: <T>(work: () => Promise<T>) => Promise<FakeClockRun<T>>;
   /** `temporalServer` run over a fake `testcontainers` and a fake clock, each `start()` going as `attempts` say, then torn down. */
   readonly runServer: (
     options?: Parameters<typeof temporalServer>[0],
@@ -52,8 +68,57 @@ export const it = test.extend<TemporalTestingFixtures>({
     await use(new Client({ connection, namespace: "default" }));
     await connection.close();
   },
+  run: async ({ temporal }, use) => {
+    const connection = await Connection.connect({ address: temporal.TEMPORAL_ADDRESS });
+    await use(new Client({ connection, namespace: inject("runNamespace") }));
+    await connection.close();
+  },
+  connection: async ({ temporal }, use) => {
+    const connection = await Connection.connect({ address: temporal.TEMPORAL_ADDRESS });
+    await use(connection);
+    await connection.close();
+  },
+  pollOnce: async ({ connection }, use) => {
+    await use(async (namespace, queue) => {
+      const task = await connection.withDeadline(Date.now() + POLL_MS, () =>
+        connection.workflowService.pollWorkflowTaskQueue({
+          namespace,
+          taskQueue: { name: queue },
+          identity: "temporal-testing",
+        }),
+      );
+      return task.workflowExecution?.workflowId ?? undefined;
+    });
+  },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  runServer: async ({}, use) => {
+  neverUsable: async ({}, use) => {
+    const notFound = Object.assign(new Error("Namespace not found"), { code: 5 });
+    const spy = vi.spyOn(Connection, "connect").mockResolvedValue({
+      workflowService: {
+        registerNamespace: () => Promise.resolve({}),
+        countWorkflowExecutions: () => Promise.reject(notFound),
+      },
+      close: () => Promise.resolve(),
+    } as unknown as Connection);
+    await use("never-usable:7233");
+    spy.mockRestore();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  onFakeClock: async ({}, use) => {
+    await use(async <T>(work: () => Promise<T>): Promise<FakeClockRun<T>> => {
+      vi.useFakeTimers();
+      const startedAt = Date.now();
+      let run: FakeClockRun<T> | undefined;
+      void Promise.allSettled([work()]).then(([settled]) => {
+        run = { settled, elapsedMs: Date.now() - startedAt };
+      });
+      while (run === undefined) await vi.advanceTimersByTimeAsync(10);
+      vi.useRealTimers();
+      return run;
+    });
+    vi.useRealTimers();
+  },
+  runServer: async ({ onFakeClock }, use) => {
     await use(async (options, attempts = ["starts"]) => {
       const fake = fakeContainersOf(attempts);
       vi.doMock("testcontainers", () => fake.module);
@@ -63,38 +128,24 @@ export const it = test.extend<TemporalTestingFixtures>({
           provided[key] = value;
         },
       } as unknown as TestProject;
-      vi.useFakeTimers();
-      const startedAt = Date.now();
-      let elapsedMs: number | undefined;
-      const outcome = temporalServer(options)(project)
-        .finally(() => {
-          elapsedMs = Date.now() - startedAt;
-        })
-        .then(
-          (teardown) =>
-            teardown === undefined
-              ? "ok, left running"
-              : teardown().then(
-                  () => "ok, stopped",
-                  (cause: Error) => `teardown failed: ${cause.message}`,
-                ),
-          (cause: Error) => `failed: ${cause.message}`,
-        );
-      while (elapsedMs === undefined) await vi.advanceTimersByTimeAsync(10);
-      vi.useRealTimers();
-      return {
-        outcome: await outcome,
-        elapsedMs,
-        provided,
-        events: fake.events,
-        configured: fake.configured,
-      };
+      const { settled, elapsedMs } = await onFakeClock(() => temporalServer(options)(project));
+      const outcome =
+        settled.status === "rejected"
+          ? `failed: ${(settled.reason as Error).message}`
+          : settled.value === undefined
+            ? "ok, left running"
+            : await settled.value().then(
+                () => "ok, stopped",
+                (cause: Error) => `teardown failed: ${cause.message}`,
+              );
+      return { outcome, elapsedMs, provided, events: fake.events, configured: fake.configured };
     });
-    vi.useRealTimers();
     vi.doUnmock("testcontainers");
     vi.unstubAllEnvs();
   },
 });
+
+const POLL_MS = 5_000;
 
 /**
  * `testcontainers` as `temporalServer` reaches it, recording what each
