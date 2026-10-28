@@ -87,6 +87,11 @@ with the code in the same commit.
   specs a value the suite's own setup already holds, and that setup provides
   it anyway, beside the rest of what its workers were started with.
 
+  It answers a `Promise`, not an `AsyncResult`, like `temporalServer` and
+  the fixture: its callers are Vitest's `globalSetup` and fixture protocols,
+  where a failure must reject to fail the run, and the package peers on no
+  `unthrown`.
+
 - **The namespace is the isolation, never the task queue**: the starter reads
   its queue off the contract, so two spec files booting one worker poll one
   queue, and suites listing workflows on a shared server would see each

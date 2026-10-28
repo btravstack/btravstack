@@ -157,15 +157,18 @@ registers `<prefix>-<uuid>` and waits until it is usable, as
 a global setup:
 
 <!-- doctest: isolate
-import { temporalNamespace, type TemporalEnvironment } from "@btravstack/temporal-testing";
-import type { TestProject } from "vitest/node";
-// The suite's own: boots its workers in this environment, answering their stop.
 declare const startWorkers: (temporal: TemporalEnvironment) => Promise<() => Promise<void>>;
 -->
 
 ```ts
 // workers-setup.ts:
 // globalSetup: ["@btravstack/temporal-testing", "./workers-setup.ts"]
+import {
+  temporalNamespace,
+  type TemporalEnvironment,
+} from "@btravstack/temporal-testing";
+import type { TestProject } from "vitest/node";
+
 declare module "vitest" {
   interface ProvidedContext {
     workers: TemporalEnvironment;
@@ -183,8 +186,10 @@ export default async (project: TestProject) => {
 };
 ```
 
-Vitest runs global setups in order, so the server's address is provided
-before this setup reads it, and its teardown, the workers' stop, runs first.
+`startWorkers` is the suite's own: it boots the workers with `temporal` in
+their `env` and answers their stop. Vitest runs global setups in order, so
+the server's address is provided before this setup reads it, and its
+teardown, the workers' stop, runs first.
 A spec reads the run's environment with `inject("workers")`, to start
 workflows its shared workers serve.
 
