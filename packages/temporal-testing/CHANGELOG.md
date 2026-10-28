@@ -1,5 +1,15 @@
 # @btravstack/temporal-testing
 
+## 0.53.0
+
+### Minor Changes
+
+- 627d880: Export `temporalNamespace(address, prefix = "spec")`, the namespace registration `temporalEnvironment` uses, with no test context. It registers `<prefix>-<uuid>`, waits until every Temporal service can use it, and resolves to its name, so a Vitest `globalSetup` that starts workers shared across spec files can register one namespace for the run instead of polling `default` on the shared server. A namespace still unusable after a minute, or a server that stops answering its reads, now rejects with an error naming it, the server's last answer as its `cause`; this applies to `temporalEnvironment` too.
+
+### Patch Changes
+
+- 0b0ff5f: `temporalServer` now waits for a concurrent run's container for up to `startupTimeoutMs`, with a backoff from 100 ms to 1 s, instead of ten attempts 100 ms apart. On a loaded Docker host, such as a CI Docker-in-Docker that has just pulled the image, Docker can list the winner's container more than a second after it reserves the name, and the refused run failed its global setup with Docker's `409`.
+
 ## 0.52.0
 
 No changes in this release.
