@@ -92,7 +92,10 @@ const BUDGET = 1.5;
  * one this run never packed, fails as stale, so an exemption cannot outlive
  * the growth it was for.
  */
-const accepted: Readonly<Record<string, string>> = {};
+const accepted: Readonly<Record<string, string>> = {
+  "@btravstack/temporal-client":
+    "connection security (#693): TLS, mTLS and API key settings and their rotation, on an 8 kB package",
+};
 
 const staleAcceptance = (name: string): string =>
   `size: ${name} is in \`accepted\` but no longer over budget, or no longer packed — drop the entry`;
