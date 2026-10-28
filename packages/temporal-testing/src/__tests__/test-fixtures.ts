@@ -45,8 +45,8 @@ export type TemporalTestingFixtures = {
   readonly connection: Connection;
   /** One workflow task poll of `queue` in `namespace`, answering the polled workflow's id, or `undefined` once the poll times out empty. */
   readonly pollOnce: (namespace: string, queue: string) => Promise<string | undefined>;
-  /** The address of a server that registers a namespace but never serves it: `Connection.connect` faked until the test ends. */
-  readonly neverUsable: string;
+  /** The address of a server that registers a namespace, then answers every read of it as `answer` says: `Connection.connect` faked until the test ends. */
+  readonly unusableServer: (answer: "not found" | "nothing") => string;
   /** `work` settled on a fake clock, and how long it took on that clock. */
   readonly onFakeClock: <T>(work: () => Promise<T>) => Promise<FakeClockRun<T>>;
   /** `temporalServer` run over a fake `testcontainers` and a fake clock, each `start()` going as `attempts` say, then torn down. */
@@ -91,16 +91,12 @@ export const it = test.extend<TemporalTestingFixtures>({
     });
   },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  neverUsable: async ({}, use) => {
-    const notFound = Object.assign(new Error("Namespace not found"), { code: 5 });
-    const spy = vi.spyOn(Connection, "connect").mockResolvedValue({
-      workflowService: {
-        registerNamespace: () => Promise.resolve({}),
-        countWorkflowExecutions: () => Promise.reject(notFound),
-      },
-      close: () => Promise.resolve(),
-    } as unknown as Connection);
-    await use("never-usable:7233");
+  unusableServer: async ({}, use) => {
+    const spy = vi.spyOn(Connection, "connect");
+    await use((answer) => {
+      spy.mockResolvedValue(unusableConnection(answer));
+      return "unusable:7233";
+    });
     spy.mockRestore();
   },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
@@ -152,6 +148,31 @@ export const it = test.extend<TemporalTestingFixtures>({
 });
 
 const POLL_MS = 5_000;
+
+/**
+ * A connection whose namespace reads fail with "not found" or never answer,
+ * and whose `withDeadline` rejects at the deadline as the SDK's does.
+ */
+const unusableConnection = (answer: "not found" | "nothing"): Connection =>
+  ({
+    workflowService: {
+      registerNamespace: () => Promise.resolve({}),
+      countWorkflowExecutions: () =>
+        answer === "not found"
+          ? Promise.reject(new Error("Namespace not found"))
+          : new Promise(() => undefined),
+    },
+    withDeadline: <R>(deadline: number, call: () => Promise<R>): Promise<R> =>
+      Promise.race([
+        call(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Deadline exceeded"));
+          }, deadline - Date.now());
+        }),
+      ]),
+    close: () => Promise.resolve(),
+  }) as unknown as Connection;
 
 /**
  * `testcontainers` as `temporalServer` reaches it, recording what each

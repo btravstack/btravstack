@@ -73,8 +73,9 @@ would take the others' tasks. `temporalNamespace(address, prefix)` is the
 registration the fixture uses, with neither `inject` nor `vi`: a setup reads
 the address with `project.getProvidedContext()`, registers, starts its
 workers in that namespace and provides the environment to its specs under a
-key of its own. A namespace still unusable after a minute rejects with an
-error naming it, the server's last answer as its `cause`.
+key of its own. A namespace still unusable after a minute, or a server that
+stops answering, rejects with an error naming it, the server's last answer
+as its `cause`.
 [Test a Temporal worker](/how-to/test-a-temporal-worker#workers-a-global-setup-shares-a-namespace-per-run)
 has the setup.
 

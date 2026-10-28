@@ -159,9 +159,10 @@ const sharedName = (startupTimeoutMs: number): string => {
  *
  * Registering a namespace is not the same as being able to use one: each
  * Temporal service refreshes its namespace registry on its own interval, so a
- * namespace-scoped read is retried for up to a minute. A namespace that never
- * becomes usable rejects with an error naming it, the server's last answer as
- * its `cause`.
+ * namespace-scoped read is retried for up to a minute, each read under that
+ * deadline. A namespace that never becomes usable, or a server that stops
+ * answering, rejects with an error naming the namespace, the server's last
+ * answer as its `cause`.
  *
  * @example
  * ```ts
@@ -188,8 +189,8 @@ export const temporalNamespace = async (address: string, prefix = "spec"): Promi
 };
 
 const usable = (connection: Connection, namespace: string, deadline: number): Promise<unknown> =>
-  connection.workflowService
-    .countWorkflowExecutions({ namespace })
+  connection
+    .withDeadline(deadline, () => connection.workflowService.countWorkflowExecutions({ namespace }))
     .catch((cause: unknown) =>
       Date.now() < deadline
         ? pause(NAMESPACE_RETRY_MS).then(() => usable(connection, namespace, deadline))

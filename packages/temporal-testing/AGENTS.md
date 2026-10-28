@@ -79,7 +79,10 @@ with the code in the same commit.
   `temporalNamespace(address, prefix)` is the registration
   `temporalEnvironment` itself uses, so there is one implementation, and it
   imports nothing from Vitest: its readiness retry is its own, a minute at
-  250 ms, rejecting with an error that names the namespace. A setup that
+  250 ms, rejecting with an error that names the namespace. Each read runs
+  under that minute's deadline, because a Temporal call without one can wait
+  forever: `vi.waitFor` bounded a read that never answered, and a retry that
+  only runs after a read fails would not. A setup that
   registered and provided one under a key of this package's would hand the
   specs a value the suite's own setup already holds, and that setup provides
   it anyway, beside the rest of what its workers were started with.

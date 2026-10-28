@@ -200,28 +200,33 @@ describe("temporalNamespace", () => {
     });
   });
 
-  it("names the namespace that never became usable, with the server's last answer", async ({
-    neverUsable,
-    onFakeClock,
-  }) => {
-    // GIVEN a server that registers a namespace but never serves it
-    // WHEN a namespace is registered on it
-    const { settled, elapsedMs } = await onFakeClock(() => temporalNamespace(neverUsable, "stuck"));
+  it.for([
+    { answer: "not found", lastAnswer: "Namespace not found" },
+    { answer: "nothing", lastAnswer: "Deadline exceeded" },
+  ] as const)(
+    "names the namespace a server answering $answer never made usable",
+    async ({ answer, lastAnswer }, { unusableServer, onFakeClock }) => {
+      // GIVEN a server that registers a namespace, then answers its reads with this
+      const address = unusableServer(answer);
 
-    // THEN it gave up after a minute, naming the namespace
-    expect({ settled, seconds: Math.round(elapsedMs / 1_000) }).toEqual({
-      settled: {
-        status: "rejected",
-        reason: expect.objectContaining({
-          message: expect.stringMatching(
-            /^Temporal namespace stuck-[0-9a-f-]{36} was registered but not usable within 60000 ms$/,
-          ),
-          cause: expect.objectContaining({ message: "Namespace not found" }),
-        }),
-      },
-      seconds: 60,
-    });
-  });
+      // WHEN a namespace is registered on it
+      const { settled, elapsedMs } = await onFakeClock(() => temporalNamespace(address, "stuck"));
+
+      // THEN it gave up after a minute, naming the namespace
+      expect({ settled, seconds: Math.round(elapsedMs / 1_000) }).toEqual({
+        settled: {
+          status: "rejected",
+          reason: expect.objectContaining({
+            message: expect.stringMatching(
+              /^Temporal namespace stuck-[0-9a-f-]{36} was registered but not usable within 60000 ms$/,
+            ),
+            cause: expect.objectContaining({ message: lastAnswer }),
+          }),
+        },
+        seconds: 60,
+      });
+    },
+  );
 });
 
 describe("temporalEnvironment", () => {
