@@ -50,6 +50,7 @@ const packages: readonly string[] = [
   "temporal-worker",
   "amqp-worker",
   "temporal-client",
+  "temporal-testing",
   "amqp-client",
   "http-client",
   "oauth-client",

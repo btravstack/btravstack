@@ -30,12 +30,12 @@ import {
   StorageBackend,
   type StorageService,
 } from "@btravstack/storage";
+import { temporalEnvironment, type TemporalEnvironment } from "@btravstack/temporal-testing";
 import {
   TemporalModule,
   type TemporalInfo,
   type TemporalUnreachable,
 } from "@btravstack/temporal-worker";
-import { temporalEnvironment, type TemporalEnvironment } from "@btravstack/temporal-worker/testing";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import {
@@ -327,7 +327,7 @@ export type TemporalFixtures = {
    * id placed again — freshly — between the sweep's listing and its removal.
    */
   readonly racedStore: ReturnType<typeof staleStoreOf>;
-  /** `@btravstack/temporal-worker/testing`'s environment: the shared server and this file's namespace. */
+  /** `@btravstack/temporal-testing`'s environment: the shared server and this file's namespace. */
   readonly temporal: TemporalEnvironment;
   /** Where the shared server is, and the namespace this spec file owns on it. */
   readonly server: Server;

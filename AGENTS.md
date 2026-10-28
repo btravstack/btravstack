@@ -31,7 +31,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twenty-five published packages,
+pnpm workspace + turbo monorepo. `packages/` holds twenty-six published packages,
 `entity` (optional domain modelling on Zod; sealed entities and aggregates, derived schemas, and Result-returning construction), `contract` (the contract tier: markers and normed shapes a client and the
 server that implements it both need — the `authenticated` marker and a cursor
 page, with the page's schema behind a `/zod` subpath so the root keeps its
@@ -39,6 +39,9 @@ zero dependencies and zero required peers), `di` (the container), `config`
 (configuration from the environment, as
 providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
 `tapped`, the in-memory runtime, the fake clock; peers on `core`),
+`temporal-testing` (a Temporal server for specs — one development-server
+container per Docker host, shared across processes, and a namespace per spec
+file; peers on no package here, so a worker's and a client's specs share it),
 `observability` (the observability starter — `createLogger` correlated with
 the ambient unit, a JSON sink, the kernel's events as lines, and the OTel
 adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
@@ -158,9 +161,9 @@ pnpm dev              # the four example deployments, one process each, watching
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twenty-five packages move as one
+## Versioning: all twenty-six packages move as one
 
-The twenty-five published packages share **one version number**, enforced by a
+The twenty-six published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/AGENTS.md`.
@@ -881,26 +884,27 @@ the doc-samples gate — and in the source TSDoc behind it. A package's
 what it deliberately leaves out. The surface is not restated there or here: a
 copy with no gate is the copy that lies.
 
-| Package                       | Decisions and gotchas                                                        | Reference page               |
-| ----------------------------- | ---------------------------------------------------------------------------- | ---------------------------- |
-| `@btravstack/entity`          | `packages/entity/AGENTS.md`                                                  | `/entity/`                   |
-| `@btravstack/contract`        | `packages/contract/AGENTS.md`                                                | `/reference/contract`        |
-| `@btravstack/di`              | `packages/di/AGENTS.md`                                                      | `/reference/di/`             |
-| `@btravstack/config`          | `packages/config/AGENTS.md`                                                  | `/reference/config`          |
-| `@btravstack/core`            | `packages/core/AGENTS.md`                                                    | `/reference/core/`           |
-| `@btravstack/testing`         | `packages/testing/AGENTS.md`                                                 | `/reference/testing`         |
-| `@btravstack/observability`   | `packages/observability/AGENTS.md`                                           | `/reference/observability`   |
-| `@btravstack/cache`           | `packages/cache/AGENTS.md`                                                   | `/reference/cache`           |
-| `@btravstack/mailer`          | `packages/mailer/AGENTS.md`                                                  | `/reference/mailer`          |
-| `@btravstack/storage`         | `packages/storage/AGENTS.md`                                                 | `/reference/storage`         |
-| `@btravstack/keys`            | `packages/keys/AGENTS.md`                                                    | `/reference/keys`            |
-| `@btravstack/prisma`          | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`          |
-| `@btravstack/outbox`          | `packages/outbox/AGENTS.md`                                                  | `/reference/outbox`          |
-| `@btravstack/http-client`     | `packages/http-client/AGENTS.md`                                             | `/reference/http-client`     |
-| `@btravstack/oauth-client`    | `packages/oauth-client/AGENTS.md`                                            | `/reference/oauth-client`    |
-| `@btravstack/http-server`     | `packages/http-server/AGENTS.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
-| `@btravstack/temporal-worker` | `packages/temporal-worker/AGENTS.md`                                         | `/reference/temporal-worker` |
-| `@btravstack/amqp-worker`     | `packages/amqp-worker/AGENTS.md`                                             | `/reference/amqp-worker`     |
+| Package                        | Decisions and gotchas                                                        | Reference page                |
+| ------------------------------ | ---------------------------------------------------------------------------- | ----------------------------- |
+| `@btravstack/entity`           | `packages/entity/AGENTS.md`                                                  | `/entity/`                    |
+| `@btravstack/contract`         | `packages/contract/AGENTS.md`                                                | `/reference/contract`         |
+| `@btravstack/di`               | `packages/di/AGENTS.md`                                                      | `/reference/di/`              |
+| `@btravstack/config`           | `packages/config/AGENTS.md`                                                  | `/reference/config`           |
+| `@btravstack/core`             | `packages/core/AGENTS.md`                                                    | `/reference/core/`            |
+| `@btravstack/testing`          | `packages/testing/AGENTS.md`                                                 | `/reference/testing`          |
+| `@btravstack/observability`    | `packages/observability/AGENTS.md`                                           | `/reference/observability`    |
+| `@btravstack/cache`            | `packages/cache/AGENTS.md`                                                   | `/reference/cache`            |
+| `@btravstack/mailer`           | `packages/mailer/AGENTS.md`                                                  | `/reference/mailer`           |
+| `@btravstack/storage`          | `packages/storage/AGENTS.md`                                                 | `/reference/storage`          |
+| `@btravstack/keys`             | `packages/keys/AGENTS.md`                                                    | `/reference/keys`             |
+| `@btravstack/prisma`           | `packages/prisma/AGENTS.md`                                                  | `/reference/prisma`           |
+| `@btravstack/outbox`           | `packages/outbox/AGENTS.md`                                                  | `/reference/outbox`           |
+| `@btravstack/http-client`      | `packages/http-client/AGENTS.md`                                             | `/reference/http-client`      |
+| `@btravstack/oauth-client`     | `packages/oauth-client/AGENTS.md`                                            | `/reference/oauth-client`     |
+| `@btravstack/http-server`      | `packages/http-server/AGENTS.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`      |
+| `@btravstack/temporal-worker`  | `packages/temporal-worker/AGENTS.md`                                         | `/reference/temporal-worker`  |
+| `@btravstack/temporal-testing` | `packages/temporal-testing/AGENTS.md`                                        | `/reference/temporal-testing` |
+| `@btravstack/amqp-worker`      | `packages/amqp-worker/AGENTS.md`                                             | `/reference/amqp-worker`      |
 
 **Four ports are declared in `@btravstack/core` and implemented elsewhere:
 `Logger`, `Tracer`, `Meter` and `Observers`.** That is the one place the table's
@@ -920,7 +924,10 @@ the contracts a runtime owes, and the conventions below.
 `packages/core/src/index.ts` is the one place the kernel's API is decided —
 one entry point. The test doubles are `@btravstack/testing`, a package of its
 own that peers on the kernel (the `@nestjs/testing` shape), so a production
-bundle never pulls the fakes in and the kernel ships none.
+bundle never pulls the fakes in and the kernel ships none. The Temporal test
+server is `@btravstack/temporal-testing` on the same terms: a subpath of the
+worker would make `testcontainers` and `vitest` peers of a runtime package and
+put test code in its tarball.
 
 There is **no** `Defect` construction, no accumulation
 of runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
@@ -976,9 +983,8 @@ in its place.
   `else` was taken. Measured when it was added, the gap was widest exactly
   where it mattered — `@btravstack/http-server` at 91.79%, 42 untested arms,
   in the package that owns authentication, CSRF and redirects. The default is
-  `90`; `@btravstack/temporal-worker` passes `{ branches: 86 }`, with the two
-  arms named at the call and the reason they are unreachable from a real
-  worker. Every number is a RATCHET: raise it by testing arms, never lower it
+  `90`; a package that cannot clear it passes its own number, with the arms
+  named at the call and the reason they are unreachable. Every number is a RATCHET: raise it by testing arms, never lower it
   to fit code that regressed.
 
   **The `covered()` call sites are what a threshold ratchets against**, so a
@@ -1119,7 +1125,7 @@ in its place.
 - **`packages/core`'s specs use `@btravstack/testing` without depending on
   it** — that would be a package-graph cycle turbo refuses — so four configs
   carry the wiring and move together: see `packages/testing/AGENTS.md`.
-- `declarationMap: false` on all twenty-five published packages — the published
+- `declarationMap: false` on all twenty-six published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **tsdown's declaration plugin must support the installed compiler.**
   `tsdown@0.23.2` pulls `rolldown-plugin-dts@0.29.0-beta.2`, whose native
@@ -1157,8 +1163,8 @@ in its place.
   `pnpm typecheck` with TS2835.
 - Published packages state the lowest Node version their required dependencies
   and entry points support: most claim `>=22`, while `http-server`, `prisma`,
-  `oauth-client`, `outbox` and `mcp-server` claim `>=22.12`, and `amqp-worker` and `temporal-worker` claim
-  `>=22.22`.
+  `oauth-client`, `outbox` and `mcp-server` claim `>=22.12`, and `amqp-worker`, `temporal-worker` and
+  `temporal-testing` claim `>=22.22`.
   The root claims `>=22.22` for the dev toolchain. A package's floor is a
   compatibility promise to consumers; the consumer check tests each package
   on its own floor. Do not align them for tidiness — raising a published floor

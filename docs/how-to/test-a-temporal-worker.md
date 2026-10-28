@@ -1,6 +1,6 @@
 ---
 title: Test a Temporal worker
-description: Run a worker's specs against one real Temporal server per test run, a namespace per spec file, with @btravstack/temporal-worker/testing — no time-skipping binary and no pinned testing beta.
+description: Run a worker's specs against one real Temporal server per Docker host, shared across test processes, and a namespace per spec file, with @btravstack/temporal-testing — no time-skipping binary and no pinned testing beta.
 ---
 
 # Test a Temporal worker
@@ -10,26 +10,28 @@ description: Run a worker's specs against one real Temporal server per test run,
 > [Run a Temporal worker](/how-to/run-a-temporal-worker); for specs in general,
 > [Test an application](/how-to/test-an-application).
 
-`@btravstack/temporal-worker/testing` gives a spec suite two things:
+`@btravstack/temporal-testing` gives a spec suite two things:
 
-- `temporalServer` — a Vitest `globalSetup` that starts one PostgreSQL and one
-  `temporalio/auto-setup` container for the whole run, through
-  `testcontainers`, and stops them when the run ends;
+- `temporalServer` — a Vitest `globalSetup` that starts the Temporal CLI's
+  development server in one container, through `testcontainers`, and
+  provides its address. By default every run on the Docker host shares it,
+  concurrent processes included;
 - `temporalEnvironment` — a file-scoped fixture that registers a namespace for
   the spec file and answers `{ TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE }`, the two
   variables the starter reads.
 
-Install the two optional peers the subpath needs, beside the starter:
+Install it and its peers as dev dependencies, beside the starter:
 
 ```sh
-pnpm add -D vitest testcontainers @btravstack/testing
+pnpm add -D @btravstack/temporal-testing @btravstack/testing vitest testcontainers \
+  @temporalio/client @temporalio/common
 ```
 
 The suite needs a **Docker daemon**. It needs no network at test time beyond
-the image pulls: Temporal's time-skipping test server is not used, because it
+the image pull: Temporal's time-skipping test server is not used, because it
 downloads a binary on first use.
 
-## Step 1 — start the server once per run
+## Step 1 — one server for every suite
 
 <!-- doctest: isolate
 import { defineConfig } from "vitest/config";
@@ -39,31 +41,34 @@ import { defineConfig } from "vitest/config";
 // vitest.config.ts
 export default defineConfig({
   test: {
-    globalSetup: ["@btravstack/temporal-worker/testing"],
-    // The first run pulls two images and creates Temporal's schemas.
-    hookTimeout: 300_000,
-    // A fixture runs inside the first test that names it, and registering
-    // its namespace may take most of a minute on a loaded server.
-    testTimeout: 90_000,
+    globalSetup: ["@btravstack/temporal-testing"],
+    // The first run pulls the image.
+    hookTimeout: 180_000,
   },
 });
 ```
 
-The entry's default export is `temporalServer()` with its defaults. Each
-container may take up to `startupTimeoutMs` (default `300_000`) to report
-healthy — the Docker health check's start period and `testcontainers`' own
-wait both get the whole budget, because `auto-setup` creating its schemas on a
-loaded host is what a shorter budget fails on. A host that needs more passes
-it through a setup module of its own:
+The default export is `temporalServer()` with its defaults. The container is
+**reused**: a second Vitest process, in this workspace or another, attaches to
+the server the first one started rather than starting its own, and the server
+outlives the run, so the next run attaches in well under a second. Processes
+that start together converge on one container too. Remove it with
+`docker rm -f $(docker ps -aq --filter name=btravstack-temporal-)`.
+
+A run that should own its server, and stop it when the run ends, passes
+`reuse: false` through a setup module of its own:
 
 <!-- doctest: isolate
-import { temporalServer } from "@btravstack/temporal-worker/testing";
+import { temporalServer } from "@btravstack/temporal-testing";
 -->
 
 ```ts
 // temporal-setup.ts, named in `globalSetup` instead
-export default temporalServer({ startupTimeoutMs: 600_000 });
+export default temporalServer({ reuse: false });
 ```
+
+`startupTimeoutMs` (default `60_000`) is how long the container may take to
+report healthy, for a host loaded enough to need more.
 
 ## Step 2 — a namespace per spec file
 
@@ -72,7 +77,7 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import {
   temporalEnvironment,
   type TemporalEnvironment,
-} from "@btravstack/temporal-worker/testing";
+} from "@btravstack/temporal-testing";
 import { test } from "vitest";
 -->
 
@@ -88,8 +93,9 @@ export const it = test.extend<{ temporal: TemporalEnvironment; boot: Boot }>({
 and waits until every Temporal service can use it. The namespace is the
 isolation boundary, not the task queue: the starter reads its queue off the
 contract, so two spec files booting the same worker poll the same queue, and
-their namespaces are what keep their workflows apart. Nothing is cleaned up;
-the run's end disposes of the server and everything in it.
+their namespaces are what keep their workflows apart — and suites that list
+workflows on the shared server see only their own. Nothing is cleaned up: a
+namespace lives as long as the server.
 
 ## Step 3 — boot the worker from that environment
 
@@ -100,7 +106,7 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import {
   temporalEnvironment,
   type TemporalEnvironment,
-} from "@btravstack/temporal-worker/testing";
+} from "@btravstack/temporal-testing";
 import { test } from "vitest";
 import type { StartEnvironment } from "@btravstack/core";
 import { OrderTemporalWorker } from "../../module.js";
@@ -140,9 +146,8 @@ the root over `{ ...contract, taskQueue }` with a fresh queue name.
 
 ## What it does not do
 
-- **Reuse a server across runs.** One server starts per `vitest run`; a
-  long-lived one a CI job provides is reached by passing its address as
-  `TEMPORAL_ADDRESS` to `boot` directly.
 - **Advance time.** The server's clock is real. A workflow that sleeps for a
   day is tested by its activities and a shorter timer in the spec's contract,
-  or by Temporal's own `TestWorkflowEnvironment`, outside this entry.
+  or by Temporal's own `TestWorkflowEnvironment`, outside this package.
+- **Persist across a restart.** The development server keeps its state in
+  memory, and a namespace lives as long as the container does.

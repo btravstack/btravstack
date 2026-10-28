@@ -235,12 +235,12 @@ the next.
 ## Running the specs
 
 The suite needs a **Docker daemon**. It runs against a real Temporal server —
-one `temporalio/auto-setup` container shared by the whole repository
+one `temporalio/temporal` development-server container shared by the whole repository
 ([`internal/test-infra`](../../internal/test-infra/README.md)) — with a
 **namespace of this spec file's own**, real Workflow Tasks and real Activity
 Tasks. A per-test task queue separates the tests inside the file, and a
 per-test **tenant** separates their rows in the application database on the
-same PostgreSQL the Temporal server uses.
+repository's shared PostgreSQL.
 
 `tenantId` rides every workflow's arguments and every activity's input, because
 the **contract** declares it — `@btravstack/temporal-worker` knows nothing about

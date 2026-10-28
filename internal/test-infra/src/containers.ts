@@ -19,8 +19,6 @@ export const TEST_INFRA_LABEL = "com.btravstack.test-infra";
  */
 export const POSTGRES_USER = "btravstack";
 export const POSTGRES_PASSWORD = "btravstack";
-/** Temporal's own persistence, created by `temporalio/auto-setup`'s schema tool. */
-export const TEMPORAL_DATABASE = "temporal";
 /** The example application's, created by {@link sharedPostgres} and migrated by {@link migrateOrders}. */
 export const ORDERS_DATABASE = "orders";
 
@@ -43,16 +41,13 @@ export const shared = (
       .start(),
   );
 
-/**
- * The one database server: Temporal's persistence and the example application's
- * schema, side by side. Two databases on one server rather than two servers.
- */
+/** The one database server, and the example application's schema on it. */
 export const sharedPostgres = async (): Promise<StartedTestContainer> => {
   const postgres = await shared("postgres", () =>
     new GenericContainer("postgres:18.1")
       .withExposedPorts(5432)
       .withEnvironment({
-        POSTGRES_DB: TEMPORAL_DATABASE,
+        POSTGRES_DB: ORDERS_DATABASE,
         POSTGRES_USER,
         POSTGRES_PASSWORD,
       })
@@ -333,32 +328,17 @@ export const sharedLocalStack = (): Promise<StartedTestContainer> =>
   );
 
 /**
- * The Temporal server, backed by {@link sharedPostgres}.
- *
- * It reaches PostgreSQL by container IP on the default bridge rather than a
- * testcontainers `Network`, which is created with a fresh random name every run
- * and torn down with the session — so a REUSED container would be left attached
- * to a network that no longer exists. The IP is also part of the reuse hash, so
- * a PostgreSQL container at a new address produces a matching new Temporal one
- * rather than a silently broken pair.
+ * The Temporal server: the CLI's single-binary development server, in memory.
+ * The same image and command as `@btravstack/temporal-testing`'s setup, so the
+ * gate proves what consumers run.
  */
-export const sharedTemporal = async (
-  postgres: StartedTestContainer,
-): Promise<StartedTestContainer> =>
+export const sharedTemporal = (): Promise<StartedTestContainer> =>
   shared("temporal", () =>
-    new GenericContainer("temporalio/auto-setup:1.29.1")
+    new GenericContainer("temporalio/temporal:1.9.1")
+      .withCommand(["server", "start-dev", "--ip", "0.0.0.0", "--headless"])
       .withExposedPorts(7233)
-      .withEnvironment({
-        DB: "postgres12",
-        DB_PORT: "5432",
-        POSTGRES_SEEDS: postgres.getIpAddress("bridge"),
-        POSTGRES_USER,
-        POSTGRES_PWD: POSTGRES_PASSWORD,
-        BIND_ON_IP: "0.0.0.0",
-        TEMPORAL_BROADCAST_ADDRESS: "127.0.0.1",
-      })
       .withHealthCheck({
-        test: ["CMD-SHELL", "tctl --address 127.0.0.1:7233 workflow list"],
+        test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"],
         interval: 1_000,
         retries: 60,
         startPeriod: 1_000,

@@ -31,6 +31,7 @@
       "@btravstack/temporal-worker",
       "@btravstack/amqp-worker",
       "@btravstack/temporal-client",
+      "@btravstack/temporal-testing",
       "@btravstack/amqp-client",
       "@btravstack/http-client"
     ]

@@ -245,7 +245,10 @@ const GUIDE_SIDEBAR = [
       {
         text: "The harness",
         collapsed: false,
-        items: [{ text: "@btravstack/testing", link: "/reference/testing" }],
+        items: [
+          { text: "@btravstack/testing", link: "/reference/testing" },
+          { text: "@btravstack/temporal-testing", link: "/reference/temporal-testing" },
+        ],
       },
       { text: "Glossary", link: "/reference/glossary" },
       { text: "API reference", link: "/api/" },
@@ -540,6 +543,7 @@ export default defineConfig({
             { text: "@btravstack/prisma", link: "/api/prisma/" },
             { text: "@btravstack/outbox", link: "/api/outbox/" },
             { text: "@btravstack/testing", link: "/api/testing/" },
+            { text: "@btravstack/temporal-testing", link: "/api/temporal-testing/" },
             { text: "@btravstack/http-server", link: "/api/http-server/" },
             { text: "@btravstack/orpc-server", link: "/api/orpc-server/" },
             { text: "@btravstack/htmx-server", link: "/api/htmx-server/" },

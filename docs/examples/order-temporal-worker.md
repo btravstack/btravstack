@@ -34,10 +34,10 @@ pnpm turbo run test --filter=@btravstack/example-order-temporal-worker
 
 ::: warning Needs Docker
 The suite runs a real `@temporalio/worker` Worker against a real Temporal
-server — **one `temporalio/auto-setup` container shared by the whole
-repository** (`internal/test-infra`), with a **namespace of this spec file's
-own** on it, and the example's own PostgreSQL database on the same server it
-uses. Nothing is started per workspace and nothing is cleaned up between
+server — **one `temporalio/temporal` development-server container shared by
+the whole repository** (`internal/test-infra`), with a **namespace of this spec
+file's own** on it, and the example's own PostgreSQL database on the
+repository's shared database server. Nothing is started per workspace and nothing is cleaned up between
 tests: the namespace isolates the file, a per-test task queue isolates the
 tests inside it, and a per-test **tenant** isolates their rows.
 
