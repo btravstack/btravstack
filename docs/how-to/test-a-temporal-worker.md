@@ -18,7 +18,9 @@ description: Run a worker's specs against one real Temporal server per Docker ho
   concurrent processes included;
 - `temporalEnvironment` — a file-scoped fixture that registers a namespace for
   the spec file and answers `{ TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE }`, the two
-  variables the starter reads.
+  variables the starter reads;
+- `temporalNamespace` — the same registration without a test context, for a
+  namespace a `globalSetup` registers for the whole run.
 
 Install it and its peers as dev dependencies, beside the starter:
 
@@ -143,6 +145,53 @@ storage; the fixture supplies only the two Temporal variables. `boot` stops
 the application when the test ends. A test that needs a queue of
 its own — a workflow whose id must not collide with another test's — composes
 the root over `{ ...contract, taskQueue }` with a fresh queue name.
+
+## Workers a global setup shares: a namespace per run
+
+Some suites start their workers once, in a `globalSetup` after the server's,
+and share them across spec files. Those workers must not poll a fixed
+namespace such as `default`: the server is shared, so every run on the Docker
+host would take the others' tasks. `temporalNamespace(address, prefix)`
+registers `<prefix>-<uuid>` and waits until it is usable, as
+`temporalEnvironment` does, but needs neither `inject` nor `vi`, so it runs in
+a global setup:
+
+<!-- doctest: isolate
+declare const startWorkers: (temporal: TemporalEnvironment) => Promise<() => Promise<void>>;
+-->
+
+```ts
+// workers-setup.ts:
+// globalSetup: ["@btravstack/temporal-testing", "./workers-setup.ts"]
+import {
+  temporalNamespace,
+  type TemporalEnvironment,
+} from "@btravstack/temporal-testing";
+import type { TestProject } from "vitest/node";
+
+declare module "vitest" {
+  interface ProvidedContext {
+    workers: TemporalEnvironment;
+  }
+}
+
+export default async (project: TestProject) => {
+  const address = project.getProvidedContext().__BTRAVSTACK_TEMPORAL_ADDRESS__;
+  const temporal: TemporalEnvironment = {
+    TEMPORAL_ADDRESS: address,
+    TEMPORAL_NAMESPACE: await temporalNamespace(address, "workers"),
+  };
+  project.provide("workers", temporal);
+  return startWorkers(temporal);
+};
+```
+
+`startWorkers` is the suite's own: it boots the workers with `temporal` in
+their `env` and answers their stop. Vitest runs global setups in order, so
+the server's address is provided before this setup reads it, and its
+teardown, the workers' stop, runs first.
+A spec reads the run's environment with `inject("workers")`, to start
+workflows its shared workers serve.
 
 ## What it does not do
 

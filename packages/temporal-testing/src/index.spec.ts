@@ -1,6 +1,8 @@
+import { Client } from "@temporalio/client";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { temporalNamespace } from "./index.js";
 
 const IMAGE = "temporalio/temporal:1.9.1";
 const SHARED_NAME = /^btravstack-temporal-[0-9a-f]{12}$/;
@@ -16,6 +18,7 @@ describe("temporalServer", () => {
     // THEN the address reached the specs, and the named, reused server outlived the run
     expect(run).toEqual({
       outcome: "ok, left running",
+      elapsedMs: 0,
       provided: { __BTRAVSTACK_TEMPORAL_ADDRESS__: "localhost:7233" },
       events: ["start"],
       configured: [
@@ -104,18 +107,33 @@ describe("temporalServer", () => {
     },
   );
 
-  it("fails the run once a name stays refused", async ({ runServer }) => {
-    // GIVEN a name Docker refuses on every attempt
-    const refusals = Array.from({ length: 10 }, () => ({ refused: 409 }));
+  it("keeps attaching while Docker has yet to list the winner's container", async ({
+    runServer,
+  }) => {
+    // GIVEN a winner whose container Docker lists only after a dozen refusals, several seconds on
+    const refusals = Array.from({ length: 12 }, () => ({ refused: 409 }));
+
+    // WHEN this run starts
+    const { outcome, events } = await runServer({}, [...refusals, "starts"]);
+
+    // THEN it waited the refusals out and attached
+    expect({ outcome, events }).toEqual({
+      outcome: "ok, left running",
+      events: [...refusals.map(() => "refused 409"), "start"],
+    });
+  });
+
+  it("fails the run with Docker's refusal once the startup budget runs out", async ({
+    runServer,
+  }) => {
+    // GIVEN a name Docker refuses for longer than a 5 s budget
+    const refusals = Array.from({ length: 100 }, () => ({ refused: 409 }));
 
     // WHEN the run starts
-    const run = await runServer({}, refusals);
+    const { outcome, elapsedMs } = await runServer({ startupTimeoutMs: 5_000 }, refusals);
 
-    // THEN it gave up after ten attempts, with Docker's refusal
-    expect(run).toMatchObject({
-      outcome: "failed: HTTP code 409",
-      events: refusals.map(() => "refused 409"),
-    });
+    // THEN it retried for the budget, and no longer
+    expect({ outcome, elapsedMs }).toEqual({ outcome: "failed: HTTP code 409", elapsedMs: 5_000 });
   });
 
   it("fails the run at once on a failure that is not a race", async ({ runServer }) => {
@@ -129,6 +147,83 @@ describe("temporalServer", () => {
       configured: [expect.anything()],
     });
   });
+});
+
+describe("temporalNamespace", () => {
+  it("answers a namespace a global setup registered, usable at once", async ({ run }) => {
+    // GIVEN a workflow started, with no worker, in the namespace the run's global setup registered
+    const workflowId = `run-${run.options.namespace}`;
+    await run.workflow.start("unserved", { taskQueue: "nobody", workflowId, args: [] });
+
+    // WHEN it is described there
+    const described = run.workflow.getHandle(workflowId).describe();
+
+    // THEN the server holds it in that namespace
+    await expect(described).resolves.toMatchObject({
+      workflowId,
+      status: { name: "RUNNING" },
+    });
+  });
+
+  it("keeps two runs registering at once apart, down to the tasks they poll", async ({
+    temporal,
+    connection,
+    pollOnce,
+  }) => {
+    // GIVEN two runs registering on the shared server at once, and a workflow started in the first's namespace
+    const [first, second] = await Promise.all([
+      temporalNamespace(temporal.TEMPORAL_ADDRESS, "run"),
+      temporalNamespace(temporal.TEMPORAL_ADDRESS, "run"),
+    ]);
+    const queue = `shared-${first}`;
+    const workflowId = `first-${first}`;
+    await new Client({ connection, namespace: first }).workflow.start("unserved", {
+      taskQueue: queue,
+      workflowId,
+      args: [],
+    });
+
+    // WHEN each run polls the queue both their workers would serve
+    const [polledByFirst, polledBySecond] = await Promise.all([
+      pollOnce(first, queue),
+      pollOnce(second, queue),
+    ]);
+
+    // THEN the names differ, and only the first run's poller receives its task
+    expect({ distinct: first !== second, polledByFirst, polledBySecond }).toEqual({
+      distinct: true,
+      polledByFirst: workflowId,
+      polledBySecond: undefined,
+    });
+  });
+
+  it.for([
+    { answer: "not found", lastAnswer: "Namespace not found" },
+    { answer: "nothing", lastAnswer: "Deadline exceeded" },
+  ] as const)(
+    "names the namespace a server answering $answer never made usable",
+    async ({ answer, lastAnswer }, { unusableServer, onFakeClock }) => {
+      // GIVEN a server that registers a namespace, then answers its reads with this
+      const address = unusableServer(answer);
+
+      // WHEN a namespace is registered on it
+      const { settled, elapsedMs } = await onFakeClock(() => temporalNamespace(address, "stuck"));
+
+      // THEN it gave up after a minute, naming the namespace
+      expect({ settled, elapsedMs }).toEqual({
+        settled: {
+          status: "rejected",
+          reason: expect.objectContaining({
+            message: expect.stringMatching(
+              /^Temporal namespace stuck-[0-9a-f-]{36} was registered but not usable within 60000 ms$/,
+            ),
+            cause: expect.objectContaining({ message: lastAnswer }),
+          }),
+        },
+        elapsedMs: 60_000,
+      });
+    },
+  );
 });
 
 describe("temporalEnvironment", () => {
