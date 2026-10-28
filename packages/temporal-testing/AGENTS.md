@@ -40,7 +40,7 @@ with the code in the same commit.
   a fixed name, so one create wins and the others get a `409`. A `304` comes
   from starting a container the winner already started. The losers retry,
   find the winner by its reuse hash, and wait for it to be healthy. Only those
-  two statuses are retried, and at most three attempts are made, so a real
+  two statuses are retried, at most ten attempts 100 ms apart, so a real
   failure is not multiplied by the startup budget.
 
   **The name is a digest of what the reuse hash covers that can vary** between

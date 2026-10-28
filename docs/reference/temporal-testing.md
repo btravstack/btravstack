@@ -37,7 +37,7 @@ carries a fixed name derived from the image, `startupTimeoutMs` and the
 installed `testcontainers` version. `testcontainers`' reuse lock is
 per-process, so concurrent first runs all miss the lookup and try to create
 one. Docker accepts the first create with that name and refuses the others.
-Each refused run tries again, up to three attempts, and attaches to the
+Each refused run tries again, up to ten attempts 100 ms apart, and attaches to the
 winner's container. A reused container is not registered with the
 `testcontainers` reaper, so it outlives the run and the next run attaches in
 well under a second. Remove it with:

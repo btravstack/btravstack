@@ -11,7 +11,7 @@ namespace of the spec file's own and answers
 `{ TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE }`, the variables the starters read.
 
 ```sh
-pnpm add -D @btravstack/temporal-testing vitest testcontainers @temporalio/client @temporalio/common
+pnpm add -D @btravstack/temporal-testing @btravstack/testing vitest testcontainers @temporalio/client @temporalio/common
 ```
 
 <!-- doctest: isolate
