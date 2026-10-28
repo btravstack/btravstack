@@ -10,8 +10,8 @@ export type Attempt = { readonly refused: number } | { readonly failed: string }
 /** What one `temporalServer` run did, with its teardown already run when setup succeeded. */
 export type ServerRun = {
   readonly outcome: string;
-  /** How long the setup took on the fake clock. */
-  readonly elapsedMs: number;
+  /** From the first `start()` attempt to the last, on the fake clock. */
+  readonly attemptSpanMs: number;
   readonly provided: Readonly<Record<string, unknown>>;
   readonly events: readonly string[];
   readonly configured: readonly Configured[];
@@ -128,7 +128,7 @@ export const it = test.extend<TemporalTestingFixtures>({
           provided[key] = value;
         },
       } as unknown as TestProject;
-      const { settled, elapsedMs } = await onFakeClock(() => temporalServer(options)(project));
+      const { settled } = await onFakeClock(() => temporalServer(options)(project));
       const outcome =
         settled.status === "rejected"
           ? `failed: ${(settled.reason as Error).message}`
@@ -138,7 +138,13 @@ export const it = test.extend<TemporalTestingFixtures>({
                 () => "ok, stopped",
                 (cause: Error) => `teardown failed: ${cause.message}`,
               );
-      return { outcome, elapsedMs, provided, events: fake.events, configured: fake.configured };
+      return {
+        outcome,
+        attemptSpanMs: (fake.attemptedAt.at(-1) ?? 0) - (fake.attemptedAt[0] ?? 0),
+        provided,
+        events: fake.events,
+        configured: fake.configured,
+      };
     });
     vi.doUnmock("testcontainers");
     vi.unstubAllEnvs();
@@ -154,6 +160,7 @@ const POLL_MS = 5_000;
 const fakeContainersOf = (attempts: readonly Attempt[]) => {
   const events: string[] = [];
   const configured: Configured[] = [];
+  const attemptedAt: number[] = [];
   const pending = [...attempts];
   class GenericContainer {
     readonly #config: Configured;
@@ -188,6 +195,7 @@ const fakeContainersOf = (attempts: readonly Attempt[]) => {
     }
     start() {
       configured.push(this.#config);
+      attemptedAt.push(Date.now());
       const attempt = pending.shift() ?? "starts";
       if (attempt !== "starts" && "refused" in attempt) {
         events.push(`refused ${String(attempt.refused)}`);
@@ -213,5 +221,6 @@ const fakeContainersOf = (attempts: readonly Attempt[]) => {
     module: { GenericContainer, Wait: { forHealthCheck: () => ({}) } },
     events,
     configured,
+    attemptedAt,
   };
 };

@@ -18,7 +18,7 @@ describe("temporalServer", () => {
     // THEN the address reached the specs, and the named, reused server outlived the run
     expect(run).toEqual({
       outcome: "ok, left running",
-      elapsedMs: expect.any(Number),
+      attemptSpanMs: 0,
       provided: { __BTRAVSTACK_TEMPORAL_ADDRESS__: "localhost:7233" },
       events: ["start"],
       configured: [
@@ -130,10 +130,10 @@ describe("temporalServer", () => {
     const refusals = Array.from({ length: 100 }, () => ({ refused: 409 }));
 
     // WHEN the run starts
-    const { outcome, elapsedMs } = await runServer({ startupTimeoutMs: 5_000 }, refusals);
+    const { outcome, attemptSpanMs } = await runServer({ startupTimeoutMs: 5_000 }, refusals);
 
     // THEN it retried for the budget, and no longer
-    expect({ outcome, seconds: Math.round(elapsedMs / 1_000) }).toEqual({
+    expect({ outcome, seconds: Math.round(attemptSpanMs / 1_000) }).toEqual({
       outcome: "failed: HTTP code 409",
       seconds: 5,
     });
