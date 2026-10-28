@@ -10,8 +10,8 @@ export type Attempt = { readonly refused: number } | { readonly failed: string }
 /** What one `temporalServer` run did, with its teardown already run when setup succeeded. */
 export type ServerRun = {
   readonly outcome: string;
-  /** From the first `start()` attempt to the last, on the fake clock. */
-  readonly attemptSpanMs: number;
+  /** How long the setup took on the fake clock. */
+  readonly elapsedMs: number;
   readonly provided: Readonly<Record<string, unknown>>;
   readonly events: readonly string[];
   readonly configured: readonly Configured[];
@@ -47,7 +47,7 @@ export type TemporalTestingFixtures = {
   readonly pollOnce: (namespace: string, queue: string) => Promise<string | undefined>;
   /** The address of a server that registers a namespace, then answers every read of it as `answer` says: `Connection.connect` faked until the test ends. */
   readonly unusableServer: (answer: "not found" | "nothing") => string;
-  /** `work` settled on a fake clock, and how long it took on that clock. */
+  /** `work` settled on a fake clock that moves only from one timer to the next, and how long it took on that clock. */
   readonly onFakeClock: <T>(work: () => Promise<T>) => Promise<FakeClockRun<T>>;
   /** `temporalServer` run over a fake `testcontainers` and a fake clock, each `start()` going as `attempts` say, then torn down. */
   readonly runServer: (
@@ -108,7 +108,12 @@ export const it = test.extend<TemporalTestingFixtures>({
       void Promise.allSettled([work()]).then(([settled]) => {
         run = { settled, elapsedMs: Date.now() - startedAt };
       });
-      while (run === undefined) await vi.advanceTimersByTimeAsync(10);
+      while (run === undefined)
+        await (vi.getTimerCount() > 0
+          ? vi.advanceTimersToNextTimerAsync()
+          : new Promise((resolve) => {
+              realSetTimeout(resolve, 1);
+            }));
       vi.useRealTimers();
       return run;
     });
@@ -124,7 +129,7 @@ export const it = test.extend<TemporalTestingFixtures>({
           provided[key] = value;
         },
       } as unknown as TestProject;
-      const { settled } = await onFakeClock(() => temporalServer(options)(project));
+      const { settled, elapsedMs } = await onFakeClock(() => temporalServer(options)(project));
       const outcome =
         settled.status === "rejected"
           ? `failed: ${(settled.reason as Error).message}`
@@ -136,7 +141,7 @@ export const it = test.extend<TemporalTestingFixtures>({
               );
       return {
         outcome,
-        attemptSpanMs: (fake.attemptedAt.at(-1) ?? 0) - (fake.attemptedAt[0] ?? 0),
+        elapsedMs,
         provided,
         events: fake.events,
         configured: fake.configured,
@@ -148,6 +153,8 @@ export const it = test.extend<TemporalTestingFixtures>({
 });
 
 const POLL_MS = 5_000;
+
+const realSetTimeout = globalThis.setTimeout;
 
 /**
  * A connection whose namespace reads fail with "not found" or never answer,
@@ -181,7 +188,6 @@ const unusableConnection = (answer: "not found" | "nothing"): Connection =>
 const fakeContainersOf = (attempts: readonly Attempt[]) => {
   const events: string[] = [];
   const configured: Configured[] = [];
-  const attemptedAt: number[] = [];
   const pending = [...attempts];
   class GenericContainer {
     readonly #config: Configured;
@@ -216,7 +222,6 @@ const fakeContainersOf = (attempts: readonly Attempt[]) => {
     }
     start() {
       configured.push(this.#config);
-      attemptedAt.push(Date.now());
       const attempt = pending.shift() ?? "starts";
       if (attempt !== "starts" && "refused" in attempt) {
         events.push(`refused ${String(attempt.refused)}`);
@@ -242,6 +247,5 @@ const fakeContainersOf = (attempts: readonly Attempt[]) => {
     module: { GenericContainer, Wait: { forHealthCheck: () => ({}) } },
     events,
     configured,
-    attemptedAt,
   };
 };

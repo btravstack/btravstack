@@ -70,6 +70,7 @@ const NAMESPACE_RETRY_MS = 250;
 export const temporalServer =
   ({ startupTimeoutMs = 60_000, reuse = true }: TemporalServerOptions = {}) =>
   async ({ provide }: TestProject): Promise<(() => Promise<void>) | undefined> => {
+    const deadline = Date.now() + startupTimeoutMs;
     const { GenericContainer, Wait } = await import("testcontainers");
     const define = (): GenericContainer =>
       new GenericContainer(TEMPORAL_IMAGE)
@@ -87,10 +88,7 @@ export const temporalServer =
     // testcontainers' own switch: with reuse off, it reaps the container at exit anyway.
     const shared = reuse && process.env["TESTCONTAINERS_REUSE_ENABLE"] !== "false";
     const server = shared
-      ? await attach(
-          () => define().withReuse().withName(sharedName(startupTimeoutMs)),
-          Date.now() + startupTimeoutMs,
-        )
+      ? await attach(() => define().withReuse().withName(sharedName(startupTimeoutMs)), deadline)
       : await define().start();
     provide("__BTRAVSTACK_TEMPORAL_ADDRESS__", `${server.getHost()}:${server.getMappedPort(7233)}`);
     return shared

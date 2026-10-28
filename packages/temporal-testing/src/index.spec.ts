@@ -18,7 +18,7 @@ describe("temporalServer", () => {
     // THEN the address reached the specs, and the named, reused server outlived the run
     expect(run).toEqual({
       outcome: "ok, left running",
-      attemptSpanMs: 0,
+      elapsedMs: 0,
       provided: { __BTRAVSTACK_TEMPORAL_ADDRESS__: "localhost:7233" },
       events: ["start"],
       configured: [
@@ -130,13 +130,10 @@ describe("temporalServer", () => {
     const refusals = Array.from({ length: 100 }, () => ({ refused: 409 }));
 
     // WHEN the run starts
-    const { outcome, attemptSpanMs } = await runServer({ startupTimeoutMs: 5_000 }, refusals);
+    const { outcome, elapsedMs } = await runServer({ startupTimeoutMs: 5_000 }, refusals);
 
     // THEN it retried for the budget, and no longer
-    expect({ outcome, seconds: Math.round(attemptSpanMs / 1_000) }).toEqual({
-      outcome: "failed: HTTP code 409",
-      seconds: 5,
-    });
+    expect({ outcome, elapsedMs }).toEqual({ outcome: "failed: HTTP code 409", elapsedMs: 5_000 });
   });
 
   it("fails the run at once on a failure that is not a race", async ({ runServer }) => {
@@ -213,7 +210,7 @@ describe("temporalNamespace", () => {
       const { settled, elapsedMs } = await onFakeClock(() => temporalNamespace(address, "stuck"));
 
       // THEN it gave up after a minute, naming the namespace
-      expect({ settled, seconds: Math.round(elapsedMs / 1_000) }).toEqual({
+      expect({ settled, elapsedMs }).toEqual({
         settled: {
           status: "rejected",
           reason: expect.objectContaining({
@@ -223,7 +220,7 @@ describe("temporalNamespace", () => {
             cause: expect.objectContaining({ message: lastAnswer }),
           }),
         },
-        seconds: 60,
+        elapsedMs: 60_000,
       });
     },
   );
