@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/temporal-testing",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "A Temporal server for the specs of @btravstack/temporal-worker and @btravstack/temporal-client consumers: one development server per Docker host, shared across processes, and a namespace per spec file",
   "keywords": [
     "temporal",

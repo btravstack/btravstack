@@ -1,5 +1,12 @@
 # @btravstack/temporal-client
 
+## 0.53.0
+
+### Patch Changes
+
+- @btravstack/config@0.53.0
+  - @btravstack/di@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes
