@@ -1412,6 +1412,9 @@ importers:
       '@btravstack/prisma':
         specifier: workspace:*
         version: link:../../packages/prisma
+      '@btravstack/temporal-testing':
+        specifier: workspace:*
+        version: link:../../packages/temporal-testing
       '@btravstack/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -2726,6 +2729,42 @@ importers:
         specifier: 'catalog:'
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/temporal-testing:
+    devDependencies:
+      '@btravstack/internal-test-infra':
+        specifier: workspace:*
+        version: link:../../internal/test-infra
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.4.0
+      '@temporalio/client':
+        specifier: 'catalog:'
+        version: 1.24.0
+      '@temporalio/common':
+        specifier: 'catalog:'
+        version: 1.24.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.3(vitest@5.0.3)
+      testcontainers:
+        specifier: 'catalog:'
+        version: 12.2.1(supports-color@8.1.1)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/temporal-worker:
     devDependencies:
       '@btravstack/config':
@@ -2740,6 +2779,9 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
+      '@btravstack/temporal-testing':
+        specifier: workspace:*
+        version: link:../temporal-testing
       '@btravstack/testing':
         specifier: workspace:*
         version: link:../testing
@@ -2779,9 +2821,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
-      testcontainers:
-        specifier: 'catalog:'
-        version: 12.2.1(supports-color@8.1.1)
       tsdown:
         specifier: 'catalog:'
         version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)

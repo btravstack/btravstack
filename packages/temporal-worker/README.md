@@ -196,7 +196,7 @@ root's (named by `start`), and an override reaches it under the module's name:
 `overridden(root, providers, { unit: { TenantUnit: [...] } })`.
 
 Its own test suite needs a **Docker daemon**: the specs run against the shared
-`temporalio/auto-setup` container `internal/test-infra` starts once per machine and every
+`temporalio/temporal` development-server container `internal/test-infra` starts once per machine and every
 workspace reuses. Nothing else here does.
 
 ## Schedules
@@ -211,12 +211,10 @@ this stack at all:
 
 ## Testing
 
-`@btravstack/temporal-worker/testing` runs a worker's specs against one real
-Temporal server per test run: `temporalServer` is the Vitest `globalSetup`
-(the entry's default export), and `temporalEnvironment(prefix)` a file-scoped
-fixture answering `{ TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE }` for a namespace of
-the spec file's own. It needs Docker, and `vitest` and `testcontainers` as
-optional peers. See
+[`@btravstack/temporal-testing`](../temporal-testing) runs a worker's specs
+against one real Temporal server per Docker host, shared across test
+processes, with a namespace per spec file. It is a dev dependency of its own,
+so this package ships no test code. See
 [Test a Temporal worker](https://btravstack.github.io/btravstack/how-to/test-a-temporal-worker).
 
 ## Options

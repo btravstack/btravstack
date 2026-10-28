@@ -122,8 +122,8 @@ trigger, the answer is no.
     the umbrella containing both, which is exactly what it is not.
   - **"worker" rather than a uniform `-server`**, because it is Temporal's
     and AMQP's own word, and because `temporal-server` already means the
-    Temporal Service — the cluster `internal/test-infra` runs as
-    `temporalio/auto-setup`. A name that suggests you are booting the
+    Temporal Service — the server `internal/test-infra` runs as
+    `temporalio/temporal`'s development server. A name that suggests you are booting the
     cluster is worse than a suffix that varies.
   - **A client is a PACKAGE, never a subpath.** Peers are per-package,
     so `@btravstack/http-server/client` would drag `@orpc/server` into a

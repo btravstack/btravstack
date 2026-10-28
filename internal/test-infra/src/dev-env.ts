@@ -68,7 +68,7 @@ const main = async (): Promise<void> => {
   const { publicJwk } = await devKeyPair();
   const [rabbitmq, temporal, redis, mailpit, rustfs, jwks, , sessionKeys] = await Promise.all([
     sharedRabbitMq(),
-    sharedTemporal(postgres),
+    sharedTemporal(),
     sharedRedis(),
     sharedMailpit(),
     sharedRustFs(),

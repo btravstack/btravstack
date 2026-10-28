@@ -8,9 +8,9 @@ rather than one per workspace.
 
 | Container                          | Who uses it                                                                                                 |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `postgres:18.1`                    | Temporal, the example application's `orders` database, Hydra and Kratos                                     |
+| `postgres:18.1`                    | the example application's `orders` database, Hydra and Kratos                                               |
 | `rabbitmq:4.2.1-management-alpine` | `packages/amqp-worker`, `examples/order-amqp-worker`                                                        |
-| `temporalio/auto-setup:1.29.1`     | `packages/temporal-worker`, `examples/order-temporal-worker`                                                |
+| `temporalio/temporal:1.9.1`        | `packages/temporal-worker`, `packages/temporal-testing`, `examples/order-temporal-worker`                   |
 | `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                                                      |
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                                                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                                                          |
@@ -39,12 +39,13 @@ finer than "a server of my own":
 
 - **A vhost per test.** `@amqp-contract/testing`'s `it` extension already
   minted one from the management API; only the container was ever duplicated.
-- **A namespace per spec file.** `@btravstack/temporal-worker/testing`'s
-  published `temporalEnvironment` fixture registers one and waits for
-  every Temporal service's registry to catch up before returning it — a
-  `startWorkflow` issued the instant `registerNamespace` resolves fails with
-  `NamespaceNotFound` until they do, and `describeNamespace` answers from the
-  frontend alone, so it is not the wait. Per file rather than per test because
+- **A namespace per spec file.** `@btravstack/temporal-testing`'s
+  published `temporalEnvironment` fixture registers one and waits until a
+  namespace-scoped read answers before returning it. On a multi-service
+  cluster a `startWorkflow` issued the instant `registerNamespace` resolves
+  fails with `NamespaceNotFound` until every service's registry catches up,
+  and `describeNamespace` answers from the frontend alone, so it is not the
+  wait. The development server shared here answers at once. Per file rather than per test because
   registration costs that refresh, and a task queue per test (which both
   suites already mint) is what separates tests inside a file.
 - **A tenant per test.** The example application is multi-tenant, so one
@@ -167,7 +168,7 @@ Node does not expose.
 | Import                                       | What it is                                                                                                                                                                                                              |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                                 |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@btravstack/temporal-worker/testing`'s address key, over the shared server                                                                                                            |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@btravstack/temporal-testing`'s address key, over the shared server                                                                                                                   |
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
 | `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `createServiceClient` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                       |
 | `@btravstack/internal-test-infra/keycloak`   | `sharedKeycloak` / `createExchangeClient`, the native delegation issuer and per-test credentials                                                                                                                        |
@@ -487,13 +488,13 @@ re-provisions on every run regardless, since a wiped database is empty.
 
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and
-`@btravstack/temporal-worker/testing`'s `temporalServer`: they provide the
+`@btravstack/temporal-testing`'s `temporalServer`: they provide the
 **same** inject keys, so `@amqp-contract/testing`'s `it` extension and the
 published `temporalEnvironment` fixture work unchanged against the shared
-servers. The Temporal one is not the published setup itself: a server shared
-across workspaces and runs, on the PostgreSQL the example's database lives on,
-behind the reuse lock, is this repository's shape, and none of it belongs in a
-consumer's suite.
+servers. The Temporal one runs the published setup's image and command, so the
+gate proves what consumers run, but it is not the published setup itself: it
+is the server `pnpm dev` also writes into `.env.dev`, under this workspace's
+label and `withLock`, beside every other shared container.
 
 **Each setup declares the keys it provides**, in its own module, and a
 workspace pulls in the augmentation for exactly the setups it registers — so

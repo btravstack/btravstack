@@ -70,6 +70,7 @@
         "@btravstack/keys#build",
         "@btravstack/temporal-worker#build",
         "@btravstack/temporal-client#build",
+        "@btravstack/temporal-testing#build",
         "@btravstack/testing#build",
         "@btravstack/http-client#build"
       ]
@@ -135,6 +136,7 @@
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build",
         "@btravstack/temporal-client#build",
+        "@btravstack/temporal-testing#build",
         "@btravstack/amqp-client#build",
         "@btravstack/http-client#build"
       ],

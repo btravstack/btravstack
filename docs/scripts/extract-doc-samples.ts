@@ -73,7 +73,12 @@ const ENTITY_GUIDE = join(DOCS_ROOT, "entity");
 const classify = (imports: readonly string[]): Group => {
   const has = (...prefixes: readonly string[]) =>
     imports.some((source) => prefixes.some((prefix) => source.startsWith(prefix)));
-  const temporal = has("@btravstack/temporal-worker", "@temporal-contract/", "@temporalio/");
+  const temporal = has(
+    "@btravstack/temporal-worker",
+    "@btravstack/temporal-testing",
+    "@temporal-contract/",
+    "@temporalio/",
+  );
   const amqp = has("@btravstack/amqp-worker", "@amqp-contract/");
   // oxlint-disable-next-line unthrown/no-throw -- a generator's misconfiguration must fail the generate task loudly
   if (temporal && amqp) throw new Error("a page mixing temporal and amqp needs a group marker");

@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/temporal-testing",
+  "entryPoints": ["../packages/temporal-testing/src/index.ts"],
+  "tsconfig": "../packages/temporal-testing/tsconfig.json",
+  "out": "api/temporal-testing"
+}
