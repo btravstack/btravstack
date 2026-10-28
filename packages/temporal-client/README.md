@@ -12,6 +12,17 @@ Pass a fourth port, `temporalClient(clientPort, connectionPort, settingsPort, da
 to encode payloads with the `DataConverter` it resolves — the same port the
 worker's `dataConverter` option names.
 
+The settings may also carry the connection's security — TLS, a server CA and
+name, an mTLS certificate and key, or an API key — and `temporalSecurity` binds
+them from Temporal's own variables (`TEMPORAL_TLS`,
+`TEMPORAL_TLS_SERVER_CA_CERT_PATH`, `TEMPORAL_TLS_SERVER_NAME`,
+`TEMPORAL_TLS_CLIENT_CERT_PATH`, `TEMPORAL_TLS_CLIENT_KEY_PATH`,
+`TEMPORAL_API_KEY`, `TEMPORAL_API_KEY_PATH`). Mounted files are read again
+every `TEMPORAL_CREDENTIALS_RELOAD_MS`, so a renewed certificate or key is
+used without a restart; a combination it cannot connect with is a
+`ConfigInvalid`. See the
+[reference](https://btravstack.github.io/btravstack/reference/temporal-client#securing-the-connection).
+
 Call `client.for(contract)` to obtain the typed workflow and schedule API.
 The [schedule deployment](../../examples/order-temporal-worker/src/schedules.ts)
 shows the providers in a real module. Workflow arguments and schedule policy

@@ -17,6 +17,8 @@
     "./rustfs": "./src/rustfs.ts",
     "./redis": "./src/redis.ts",
     "./temporal": "./src/temporal.ts",
+    "./temporal-tls": "./src/temporal-tls.ts",
+    "./temporal-tls-files": "./src/temporal-tls-files.ts",
     "./keycloak": "./src/keycloak.ts"
   },
   "scripts": {

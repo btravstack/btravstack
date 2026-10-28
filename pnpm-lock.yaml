@@ -2689,9 +2689,18 @@ importers:
 
   packages/temporal-client:
     devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
       '@btravstack/di':
         specifier: workspace:*
         version: link:../di
+      '@btravstack/internal-test-infra':
+        specifier: workspace:*
+        version: link:../../internal/test-infra
+      '@btravstack/temporal-testing':
+        specifier: workspace:*
+        version: link:../temporal-testing
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.4.0

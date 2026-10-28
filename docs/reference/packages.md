@@ -111,7 +111,7 @@ single copy.
 | `@btravstack/pothos`           | `@pothos/core`, `@pothos/plugin-errors`, `@pothos/plugin-relay`, `@unthrown/pothos`, `graphql`, `@orpc/contract`, `@orpc/client`, `zod`, `unthrown`                                                                                            |
 | `@btravstack/temporal-worker`  | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`                                         |
 | `@btravstack/amqp-worker`      | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                                                          |
-| `@btravstack/temporal-client`  | `@btravstack/di`, `@temporal-contract/client`, `@temporal-contract/contract`, `@temporalio/client`, `@temporalio/common`, `unthrown`                                                                                                           |
+| `@btravstack/temporal-client`  | `@btravstack/config`, `@btravstack/di`, `@temporal-contract/client`, `@temporal-contract/contract`, `@temporalio/client`, `@temporalio/common`, `unthrown`                                                                                     |
 | `@btravstack/http-client`      | `@btravstack/core`, `@btravstack/di`, `unthrown`                                                                                                                                                                                               |
 | `@btravstack/oauth-client`     | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `openid-client`, `unthrown`                                                                                                                                                        |
 | `@btravstack/amqp-client`      | `@btravstack/di`, `@amqp-contract/client`, `@opentelemetry/api`, `unthrown`                                                                                                                                                                    |
@@ -183,7 +183,7 @@ pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack
 ```
 
 ```sh [Temporal client]
-pnpm add @btravstack/temporal-client @btravstack/di unthrown \
+pnpm add @btravstack/temporal-client @btravstack/config @btravstack/di unthrown \
   @temporal-contract/client@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15 \
   @temporalio/client @temporalio/common
 ```

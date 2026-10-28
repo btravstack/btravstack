@@ -33,7 +33,10 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/di": "workspace:*",
+    "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/temporal-testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@temporal-contract/client": "catalog:",
     "@temporal-contract/contract": "catalog:",
@@ -48,6 +51,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@temporal-contract/client": "^8.0.0-beta.15",
     "@temporal-contract/contract": "^8.0.0-beta.15",

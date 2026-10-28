@@ -1,23 +1,17 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import {
-  GenericContainer,
-  Wait,
-  getContainerRuntimeClient,
-  type StartedTestContainer,
-} from "testcontainers";
+import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
 import {
   POSTGRES_PASSWORD,
   POSTGRES_USER,
-  TEST_INFRA_LABEL,
+  digest,
   ensureDatabase,
+  ensureNetwork,
+  joinNetwork,
   shared,
   sharedPostgres,
 } from "./containers.js";
-import { withLock } from "./lock.js";
 import { ORY_ISSUER, ORY_POST_LOGOUT_URI, provisionOry } from "./ory-provision.js";
 
 export {
@@ -61,56 +55,12 @@ const oryDsn = (database: string): string =>
   `postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${database}?sslmode=disable`;
 
 /**
- * Attach the shared Postgres to the Ory network under the alias the DSNs
- * name, without restarting it: a network is joined at runtime, where an
- * option on its definition would change the hash `withReuse()` finds it by.
- */
-const joinNetwork = (postgres: StartedTestContainer): Promise<void> =>
-  withLock("ory-postgres", async () => {
-    const client = await getContainerRuntimeClient();
-    const network = client.network.getById(ORY_NETWORK);
-    const { Containers } = (await network.inspect()) as {
-      readonly Containers?: Record<string, unknown>;
-    };
-    if (Containers?.[postgres.getId()] !== undefined) return;
-
-    await network.connect({
-      Container: postgres.getId(),
-      EndpointConfig: { Aliases: ["postgres"] },
-    });
-  });
-
-/**
  * Content copied into a container is copied AFTER create and is not part of
  * what testcontainers hashes for reuse — so the digest rides a label, and an
  * edited config or handler gets a new container rather than a reused one still
  * running the old copy.
  */
 const CONTENT_LABEL = "com.btravstack.ory-content";
-
-const digest = async (...files: readonly URL[]): Promise<string> => {
-  const contents = await Promise.all(files.map((file) => readFile(file)));
-  return createHash("sha256").update(Buffer.concat(contents)).digest("hex").slice(0, 16);
-};
-
-const ensureNetwork = (): Promise<void> =>
-  withLock("ory-network", async () => {
-    const client = await getContainerRuntimeClient();
-    const exists = await client.network
-      .getById(ORY_NETWORK)
-      .inspect()
-      .then(
-        () => true,
-        () => false,
-      );
-    if (exists) return;
-
-    await client.network.create({
-      Name: ORY_NETWORK,
-      Driver: "bridge",
-      Labels: { [TEST_INFRA_LABEL]: "ory" },
-    });
-  });
 
 /**
  * The OpenID provider. Fixed host ports, because a redirect protocol needs its
@@ -209,10 +159,10 @@ export type Ory = {
  * consent handler follows the pair it calls.
  */
 export const sharedOry = async (): Promise<Ory> => {
-  await ensureNetwork();
+  await ensureNetwork(ORY_NETWORK);
   const postgres = await sharedPostgres();
   await Promise.all([
-    joinNetwork(postgres),
+    joinNetwork(ORY_NETWORK, postgres, "postgres"),
     ensureDatabase(postgres, "hydra"),
     ensureDatabase(postgres, "kratos"),
   ]);

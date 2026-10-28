@@ -158,6 +158,53 @@ page, never this file.
   Temporal's own OpenTelemetry interceptors beside `otel()`, not through this
   package.
 
+## Connection security
+
+`connection-security.ts` binds TLS, mTLS and an API key under Temporal's own
+environment names (`TEMPORAL_TLS`, `TEMPORAL_TLS_SERVER_CA_CERT_PATH`,
+`TEMPORAL_TLS_SERVER_NAME`, `TEMPORAL_TLS_CLIENT_CERT_PATH`,
+`TEMPORAL_TLS_CLIENT_KEY_PATH`, `TEMPORAL_API_KEY`), so a deployment written
+for Temporal's CLI or SDK environment configuration needs no translation. Two
+names are ours: `TEMPORAL_API_KEY_PATH`, because a key that rotates is mounted
+as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
+
+- **The file is duplicated in `temporal-worker` and `temporal-client`, on
+  purpose.** Neither starter may depend on the other (a client consumer must
+  not install the worker, nor the reverse), and the module is too small and
+  too Temporal-specific for a shared package. Change both copies together;
+  each package's spec proves its copy.
+- **`TEMPORAL_TLS` unset follows Temporal**: on exactly when an API key is
+  set. The one departure is `TEMPORAL_TLS=false` with an API key, which
+  Temporal's clients accept and this refuses: a bearer token never goes out
+  in plaintext.
+- **Refusals before reads.** Every combination it cannot connect with is one
+  `ConfigInvalid` naming every variable, before a file is opened; then every
+  unreadable or empty file, all at once. An API key beside a client
+  certificate is refused rather than sent with it: one credential, chosen by
+  the deployment.
+- **Rotation polls, it does not watch.** `fs.watch` follows the file a Kubernetes
+  Secret mount's `..data` symlink swap replaces, and is unreliable on network
+  filesystems; a read every `credentialsReloadMs` (default one minute,
+  `unref`ed) is cheap and always right. A changed reading is applied, and only
+  then becomes the one compared against; a failure keeps the previous one and
+  is retried on the next tick. grpc-js's experimental
+  `FileWatcherCertificateProvider` was declined: it would need our own copy of
+  grpc-js, whose credentials fail `@temporalio/client`'s copy's
+  `instanceof ChannelCredentials` checks, and it serves only the client.
+- **A TLS change is a new connection**, since neither SDK connection can
+  change TLS in place; an API-key change alone is `setApiKey` on the open one.
+- **The worker moves with `worker.connection = fresh`**, the SDK's own
+  supported swap. The setter closes the previous connection only when the SDK
+  created it, so the starter owns every connection a reload opens — one the
+  setter refused (a worker already finalised) included — and closes each one
+  it moved away from — never the
+  graph's `TemporalConnection`, which its finalizer owns and other providers
+  may hold with the boot certificate. Reloading stops when `worker.run()`
+  settles, a defect included, and the last moved connection is closed only
+  after a reload in flight has settled, so none is opened behind the close.
+  Each change applied or refused, and each unreadable file, is the observed
+  operation `temporal` / `reload`; an unchanged tick is not.
+
 ## Activity-only workers
 
 `workflows` is typed by the contract (`WorkflowsOption<C>`): required when

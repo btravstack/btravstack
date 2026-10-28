@@ -449,6 +449,10 @@ field — explicit > environment > default, per field.
 | `TEMPORAL_GRACE_PERIOD_MS` | `10000`          | `Config.integer` | Temporal's `shutdownGraceTime`                                         |
 | `TEMPORAL_FORCE_AFTER_MS`  | `15000`          | `Config.integer` | Temporal's `shutdownForceTime`; keep it at or below `DRAIN_TIMEOUT_MS` |
 
+The connection's security is bound beside them, under Temporal's own
+[environment names](https://docs.temporal.io/references/client-environment-configuration)
+plus two of this starter's — see [Securing the connection](#securing-the-connection).
+
 `TemporalConfig` holds the two shutdown budgets as **milliseconds**: an
 environment carries strings, and a `gracePeriod: "10 seconds"` pin is turned
 into the same number by Temporal's own `msToNumber`, so both routes reach the
@@ -456,6 +460,63 @@ worker identically.
 
 A malformed value is a `ConfigInvalid` — `startFailed` and exit `78` under
 `runMain`.
+
+## Securing the connection
+
+Every variable is optional; with none set the connection is plaintext with no
+key, as before. They are fields of `TemporalConfig`, never options: what
+secures a connection is the deployment's.
+
+| Variable                           | Default | What it is                                                                                                                                                                                                                            |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TEMPORAL_TLS`                     | unset   | TLS on (`true`) or off (`false`); unset, it is on exactly when an API key is set, as Temporal's own clients do. The CA, server name and client certificate require it on. On alone, the server is verified against the system's roots |
+| `TEMPORAL_TLS_SERVER_CA_CERT_PATH` | —       | a PEM file the server's certificate is verified against instead                                                                                                                                                                       |
+| `TEMPORAL_TLS_SERVER_NAME`         | —       | the name the server's certificate is verified for, and sent as SNI                                                                                                                                                                    |
+| `TEMPORAL_TLS_CLIENT_CERT_PATH`    | —       | mTLS: the client certificate, PEM; requires `TEMPORAL_TLS_CLIENT_KEY_PATH`                                                                                                                                                            |
+| `TEMPORAL_TLS_CLIENT_KEY_PATH`     | —       | mTLS: its private key, PEM; requires `TEMPORAL_TLS_CLIENT_CERT_PATH`                                                                                                                                                                  |
+| `TEMPORAL_API_KEY`                 | —       | an API key, sent as `Authorization: Bearer`                                                                                                                                                                                           |
+| `TEMPORAL_API_KEY_PATH`            | —       | a file holding the API key (trimmed), instead of `TEMPORAL_API_KEY`                                                                                                                                                                   |
+| `TEMPORAL_CREDENTIALS_RELOAD_MS`   | `60000` | how often the files above are read again, from `1` to `2147483647` (`setTimeout`'s ceiling)                                                                                                                                           |
+
+**A combination it cannot connect with is refused at boot**, as one
+`ConfigInvalid` against `TemporalConfig` naming every variable to fix: a
+security variable with TLS off — `TEMPORAL_TLS=false`, or unset without an API
+key (`requires TEMPORAL_TLS=true`; an API key is never sent in plaintext),
+a certificate without its key or a key without its certificate (`is required
+with …`), `TEMPORAL_API_KEY` beside `TEMPORAL_API_KEY_PATH`, and an API key
+beside a client certificate (`cannot be combined with a client certificate`:
+choose one credential). A file that cannot be read (`cannot be read (ENOENT)`)
+or is empty (`is empty`) is refused the same way — exit `78`. A server that
+refuses the credentials is `TemporalUnreachable`, exit `1`.
+
+**Rotation.** When any `*_PATH` variable is set, the worker reads the files
+again every `TEMPORAL_CREDENTIALS_RELOAD_MS` and compares them with what it
+connected with:
+
+- **A changed certificate, key or CA** opens a new `NativeConnection` with
+  them and moves the worker onto it through Temporal's own
+  `worker.connection` setter, then closes the connection it replaced. The
+  worker keeps polling throughout; nothing restarts.
+- **A changed API key alone** is set on the open connection with
+  `setApiKey`; the next call carries it.
+- **A reading that fails** — a file missing or empty mid-rotation, or a new
+  certificate the server refuses — keeps the current connection and is tried
+  again on the next tick.
+
+Each applied change, refused change and unreadable file is the observed
+operation `temporal` / `reload`, `ok` or `error`, to the observers the
+application binds; a tick that finds nothing changed is not observed. However
+the worker's run ends, the reloading stops — after a reload in flight
+settles — and every connection a reload opened is closed.
+
+Limits, all the SDK's: a TLS change is a **new** connection — the Rust core
+fixes TLS when it connects — so an in-flight call finishes on the old one.
+`TemporalConnection` stays the connection the graph opened, with the boot
+certificate: a provider that injects it to call the server keeps that
+certificate until the process restarts. An API key given inline in
+`TEMPORAL_API_KEY` never changes; mount it as a file to rotate it. A failed
+reload is retried every tick, so a certificate the server keeps refusing is
+reported, and reconnected to, once per interval until it is fixed.
 
 ## `TemporalConnection` and `TemporalUnreachable`
 

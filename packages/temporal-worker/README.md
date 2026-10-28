@@ -241,6 +241,28 @@ The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/temporal-worker),
 which is this list's one detailed home.
 
+## Securing the connection
+
+TLS, mTLS and an API key are configured from the environment under Temporal's
+own names. For mTLS:
+
+```sh
+export TEMPORAL_TLS=true
+export TEMPORAL_TLS_SERVER_CA_CERT_PATH=/var/run/secrets/temporal/ca.crt
+export TEMPORAL_TLS_SERVER_NAME=temporal.example.internal
+export TEMPORAL_TLS_CLIENT_CERT_PATH=/var/run/secrets/temporal/tls.crt
+export TEMPORAL_TLS_CLIENT_KEY_PATH=/var/run/secrets/temporal/tls.key
+```
+
+or `TEMPORAL_API_KEY_PATH` (or `TEMPORAL_API_KEY`), which turns TLS on unless
+`TEMPORAL_TLS` says otherwise.
+Mounted files are read again every `TEMPORAL_CREDENTIALS_RELOAD_MS` (default
+`60000`): a renewed certificate moves the worker to a new connection without
+a restart, a renewed key is set on the open one. A combination it cannot
+connect with is a `ConfigInvalid` at boot. The
+[reference](https://btravstack.github.io/btravstack/reference/temporal-worker#securing-the-connection)
+has the rules and the limits.
+
 ## The drain
 
 `worker.shutdown()` stops polling at once, but `run()` resolves only when the
