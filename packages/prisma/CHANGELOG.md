@@ -1,5 +1,16 @@
 # @btravstack/prisma
 
+## 0.51.0
+
+### Patch Changes
+
+- ff42b49: Accept Prisma client activity kinds in the observing middleware while continuing
+  to report each SQL statement once. Keep compatibility with the older Prisma 8
+  train and update the example client construction for the current train.
+- @btravstack/config@0.51.0
+  - @btravstack/core@0.51.0
+  - @btravstack/di@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes
