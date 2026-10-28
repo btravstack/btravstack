@@ -39,9 +39,14 @@ with the code in the same commit.
   first runs all miss the label lookup. The shared container is created under
   a fixed name, so one create wins and the others get a `409`. A `304` comes
   from starting a container the winner already started. The losers retry,
-  find the winner by its reuse hash, and wait for it to be healthy. Only those
-  two statuses are retried, at most ten attempts 100 ms apart, so a real
-  failure is not multiplied by the startup budget.
+  find the winner by its reuse hash, and wait for it to be healthy. Docker
+  reserves the name before it lists the container, and on a loaded host (a
+  CI Docker-in-Docker that has just pulled the image) that gap outlasted a
+  fixed ten attempts 100 ms apart, failing the loser with the `409`. So the
+  retry runs until `startupTimeoutMs` from the setup's start, its pause
+  doubling from 100 ms to 1 s. Only those two statuses are retried; any other
+  failure is the run's at once, so a real failure is not multiplied by the
+  budget.
 
   **The name is a digest of what the reuse hash covers that can vary** between
   installs: the image, `startupTimeoutMs` (the health check) and the installed
@@ -57,8 +62,8 @@ with the code in the same commit.
   after the first fail, so the setup owns its server instead.
 
 - **One budget, `startupTimeoutMs`, drives every wait.** The Docker health
-  check's start period and retry count, and `testcontainers`' own startup
-  timeout, all take it, so none of them stays short on a loaded host. The
+  check's start period and retry count, `testcontainers`' own startup
+  timeout and the race retry above all take it, so none of them stays short on a loaded host. The
   default is `60_000`, `testcontainers`' own: the server is healthy in seconds,
   and the image pull is not part of the wait.
 
@@ -78,7 +83,10 @@ with the code in the same commit.
 `index.spec.ts` covers the setup over a fake `testcontainers`, since starting a
 second server in the gate is what root rule 7 forbids. It pins the image and
 command, the shared name, the budget, the owned teardown, the race statuses
-retried and the failures that are not. The fixture runs against the server
+retried for the budget and the failures that are not. The race retry runs on
+Vitest's fake clock, which is why it pauses with the global `setTimeout`:
+`node:timers/promises` is not faked, so a pause through it would wait in real
+time. The fixture runs against the server
 `internal/test-infra` shares, which provides the same inject key. That
 workspace cannot depend on this one, because this one devDepends on it, so it
 restates the key's declaration.

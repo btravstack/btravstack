@@ -16,6 +16,7 @@ describe("temporalServer", () => {
     // THEN the address reached the specs, and the named, reused server outlived the run
     expect(run).toEqual({
       outcome: "ok, left running",
+      elapsedMs: expect.any(Number),
       provided: { __BTRAVSTACK_TEMPORAL_ADDRESS__: "localhost:7233" },
       events: ["start"],
       configured: [
@@ -104,17 +105,35 @@ describe("temporalServer", () => {
     },
   );
 
-  it("fails the run once a name stays refused", async ({ runServer }) => {
-    // GIVEN a name Docker refuses on every attempt
-    const refusals = Array.from({ length: 10 }, () => ({ refused: 409 }));
+  it("keeps attaching while Docker has yet to list the winner's container", async ({
+    runServer,
+  }) => {
+    // GIVEN a winner whose container Docker lists only after a dozen refusals, several seconds on
+    const refusals = Array.from({ length: 12 }, () => ({ refused: 409 }));
+
+    // WHEN this run starts
+    const { outcome, events } = await runServer({}, [...refusals, "starts"]);
+
+    // THEN it waited the refusals out and attached
+    expect({ outcome, events }).toEqual({
+      outcome: "ok, left running",
+      events: [...refusals.map(() => "refused 409"), "start"],
+    });
+  });
+
+  it("fails the run with Docker's refusal once the startup budget runs out", async ({
+    runServer,
+  }) => {
+    // GIVEN a name Docker refuses for longer than a 5 s budget
+    const refusals = Array.from({ length: 100 }, () => ({ refused: 409 }));
 
     // WHEN the run starts
-    const run = await runServer({}, refusals);
+    const { outcome, elapsedMs } = await runServer({ startupTimeoutMs: 5_000 }, refusals);
 
-    // THEN it gave up after ten attempts, with Docker's refusal
-    expect(run).toMatchObject({
+    // THEN it retried for the budget, and no longer
+    expect({ outcome, seconds: Math.round(elapsedMs / 1_000) }).toEqual({
       outcome: "failed: HTTP code 409",
-      events: refusals.map(() => "refused 409"),
+      seconds: 5,
     });
   });
 

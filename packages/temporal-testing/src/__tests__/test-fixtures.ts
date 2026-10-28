@@ -10,6 +10,8 @@ export type Attempt = { readonly refused: number } | { readonly failed: string }
 /** What one `temporalServer` run did, with its teardown already run when setup succeeded. */
 export type ServerRun = {
   readonly outcome: string;
+  /** How long the setup took on the fake clock. */
+  readonly elapsedMs: number;
   readonly provided: Readonly<Record<string, unknown>>;
   readonly events: readonly string[];
   readonly configured: readonly Configured[];
@@ -31,7 +33,7 @@ export type TemporalTestingFixtures = {
   readonly client: Client;
   /** A client in the server's `default` namespace. */
   readonly foreign: Client;
-  /** `temporalServer` run over a fake `testcontainers`, each `start()` going as `attempts` say, then torn down. */
+  /** `temporalServer` run over a fake `testcontainers` and a fake clock, each `start()` going as `attempts` say, then torn down. */
   readonly runServer: (
     options?: Parameters<typeof temporalServer>[0],
     attempts?: readonly Attempt[],
@@ -61,18 +63,34 @@ export const it = test.extend<TemporalTestingFixtures>({
           provided[key] = value;
         },
       } as unknown as TestProject;
-      const outcome = await temporalServer(options)(project).then(
-        (teardown) =>
-          teardown === undefined
-            ? "ok, left running"
-            : teardown().then(
-                () => "ok, stopped",
-                (cause: Error) => `teardown failed: ${cause.message}`,
-              ),
-        (cause: Error) => `failed: ${cause.message}`,
-      );
-      return { outcome, provided, events: fake.events, configured: fake.configured };
+      vi.useFakeTimers();
+      const startedAt = Date.now();
+      let elapsedMs: number | undefined;
+      const outcome = temporalServer(options)(project)
+        .finally(() => {
+          elapsedMs = Date.now() - startedAt;
+        })
+        .then(
+          (teardown) =>
+            teardown === undefined
+              ? "ok, left running"
+              : teardown().then(
+                  () => "ok, stopped",
+                  (cause: Error) => `teardown failed: ${cause.message}`,
+                ),
+          (cause: Error) => `failed: ${cause.message}`,
+        );
+      while (elapsedMs === undefined) await vi.advanceTimersByTimeAsync(10);
+      vi.useRealTimers();
+      return {
+        outcome: await outcome,
+        elapsedMs,
+        provided,
+        events: fake.events,
+        configured: fake.configured,
+      };
     });
+    vi.useRealTimers();
     vi.doUnmock("testcontainers");
     vi.unstubAllEnvs();
   },

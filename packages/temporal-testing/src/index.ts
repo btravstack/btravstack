@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { Connection } from "@temporalio/client";
 import { msToTs } from "@temporalio/common";
@@ -19,8 +18,9 @@ declare module "vitest" {
 export type TemporalServerOptions = {
   /**
    * How long the container may take to report healthy, in milliseconds: the
-   * Docker health check's start period and retry count, and `testcontainers`'
-   * own wait, all take it.
+   * Docker health check's start period and retry count, `testcontainers`' own
+   * wait, and how long a run refused the shared name waits for the winner's
+   * container, all take it.
    *
    * @defaultValue `60_000`
    */
@@ -42,8 +42,8 @@ export type TemporalEnvironment = {
 };
 
 const TEMPORAL_IMAGE = "temporalio/temporal:1.9.1";
-const START_ATTEMPTS = 10;
 const RACE_RETRY_MS = 100;
+const RACE_RETRY_MAX_MS = 1_000;
 const NAMESPACE_READY_MS = 60_000;
 
 /**
@@ -86,7 +86,10 @@ export const temporalServer =
     // testcontainers' own switch: with reuse off, it reaps the container at exit anyway.
     const shared = reuse && process.env["TESTCONTAINERS_REUSE_ENABLE"] !== "false";
     const server = shared
-      ? await attach(() => define().withReuse().withName(sharedName(startupTimeoutMs)))
+      ? await attach(
+          () => define().withReuse().withName(sharedName(startupTimeoutMs)),
+          Date.now() + startupTimeoutMs,
+        )
       : await define().start();
     provide("__BTRAVSTACK_TEMPORAL_ADDRESS__", `${server.getHost()}:${server.getMappedPort(7233)}`);
     return shared
@@ -101,18 +104,30 @@ export default temporalServer();
 /**
  * `testcontainers`' reuse lock is per process, so concurrent first runs all
  * miss the lookup. The name makes Docker the lock: one create wins, the others
- * are refused with `409` (or `304`, starting what the winner created), and
- * an attempt shortly after finds the winner's container — Docker lists it a
- * moment after it reserves the name.
+ * are refused with `409` (or `304`, starting what the winner created), and a
+ * later attempt finds the winner's container. Docker lists it some time after
+ * it reserves the name, longer on a loaded host, so the refused run retries
+ * with backoff until the startup budget runs out.
  */
-const attach = (define: () => GenericContainer, attempt = 1): Promise<StartedTestContainer> =>
+const attach = (
+  define: () => GenericContainer,
+  deadline: number,
+  wait = RACE_RETRY_MS,
+): Promise<StartedTestContainer> =>
   define()
     .start()
     .catch((cause: unknown) =>
-      attempt < START_ATTEMPTS && isRace(cause)
-        ? delay(RACE_RETRY_MS).then(() => attach(define, attempt + 1))
+      isRace(cause) && Date.now() < deadline
+        ? pause(Math.min(wait, deadline - Date.now())).then(() =>
+            attach(define, deadline, Math.min(wait * 2, RACE_RETRY_MAX_MS)),
+          )
         : Promise.reject(cause),
     );
+
+const pause = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const isRace = (cause: unknown): boolean => {
   const status = (cause as { readonly statusCode?: unknown } | undefined)?.statusCode;
