@@ -1,8 +1,15 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
+import {
+  GenericContainer,
+  Wait,
+  getContainerRuntimeClient,
+  type StartedTestContainer,
+} from "testcontainers";
 
 import { withLock } from "./lock.js";
 
@@ -40,6 +47,63 @@ export const shared = (
       .withLabels({ [TEST_INFRA_LABEL]: name })
       .start(),
   );
+
+/**
+ * A bridge network under a fixed name rather than testcontainers' own
+ * `Network`, which mints a random one and registers it with Ryuk: a second
+ * process could neither find it nor rely on it outliving the run that created it.
+ */
+export const ensureNetwork = (name: string): Promise<void> =>
+  withLock(`network-${name}`, async () => {
+    const client = await getContainerRuntimeClient();
+    const exists = await client.network
+      .getById(name)
+      .inspect()
+      .then(
+        () => true,
+        () => false,
+      );
+    if (exists) return;
+
+    await client.network.create({
+      Name: name,
+      Driver: "bridge",
+      Labels: { [TEST_INFRA_LABEL]: name },
+    });
+  });
+
+/**
+ * Attach a shared container to `network` under `alias`, without restarting
+ * it: a network is joined at runtime, where an option on its definition would
+ * change the hash `withReuse()` finds it by.
+ */
+export const joinNetwork = (
+  network: string,
+  container: StartedTestContainer,
+  alias: string,
+): Promise<void> =>
+  withLock(`${network}-${alias}`, async () => {
+    const client = await getContainerRuntimeClient();
+    const { Containers } = (await client.network.getById(network).inspect()) as {
+      readonly Containers?: Record<string, unknown>;
+    };
+    if (Containers?.[container.getId()] !== undefined) return;
+
+    await client.network.getById(network).connect({
+      Container: container.getId(),
+      EndpointConfig: { Aliases: [alias] },
+    });
+  });
+
+/**
+ * A digest of files copied into a container. Copied content is not part of
+ * what testcontainers hashes for reuse, so it rides a label, and an edited
+ * file gets a new container rather than a reused one still serving the old copy.
+ */
+export const digest = async (...files: readonly URL[]): Promise<string> => {
+  const contents = await Promise.all(files.map((file) => readFile(file)));
+  return createHash("sha256").update(Buffer.concat(contents)).digest("hex").slice(0, 16);
+};
 
 /** The one database server, and the example application's schema on it. */
 export const sharedPostgres = async (): Promise<StartedTestContainer> => {
@@ -346,3 +410,37 @@ export const sharedTemporal = (): Promise<StartedTestContainer> =>
       })
       .withWaitStrategy(Wait.forHealthCheck()),
   );
+
+const TEMPORAL_TLS_NETWORK = "btravstack-temporal-tls";
+
+const tlsFile = (name: string): URL => new URL(`./temporal-tls/${name}`, import.meta.url);
+
+/**
+ * nginx terminating TLS in front of {@link sharedTemporal}: port `7233`
+ * requires a client certificate the test CA signed, and port `7234` a bearer
+ * token starting `temporal-test-`. The starters' TLS specs connect through it,
+ * to the same server and namespaces as every other spec — a proxy rather than
+ * a second Temporal server, since the CLI's development server has no TLS.
+ */
+export const sharedTemporalTls = async (): Promise<StartedTestContainer> => {
+  await ensureNetwork(TEMPORAL_TLS_NETWORK);
+  const temporal = await sharedTemporal();
+  await joinNetwork(TEMPORAL_TLS_NETWORK, temporal, "temporal");
+  const files = ["nginx.conf", "ca.pem", "server-cert.pem", "server-key.pem"].map(tlsFile);
+  const content = await digest(...files);
+
+  return shared("temporal-tls", () =>
+    new GenericContainer("nginx:1.29-alpine")
+      .withNetworkMode(TEMPORAL_TLS_NETWORK)
+      .withExposedPorts(7233, 7234)
+      .withLabels({ "com.btravstack.temporal-tls-content": content })
+      .withCopyFilesToContainer([
+        { source: fileURLToPath(tlsFile("nginx.conf")), target: "/etc/nginx/nginx.conf" },
+        ...["ca.pem", "server-cert.pem", "server-key.pem"].map((name) => ({
+          source: fileURLToPath(tlsFile(name)),
+          target: `/etc/nginx/tls/${name}`,
+        })),
+      ])
+      .withWaitStrategy(Wait.forListeningPorts()),
+  );
+};

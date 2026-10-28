@@ -2,6 +2,7 @@ import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/co
 import {
   Observers,
   RuntimePort,
+  observed,
   RuntimeStartFailed,
   noObserverMember,
   releasedBy,
@@ -36,11 +37,21 @@ import {
   TaggedError,
   fromPromise,
   fromSafePromise,
+  fromSafeThrowable,
   fromThrowable,
   type AsyncResult,
 } from "unthrown";
 
 import { activityUnits } from "./activity-units.js";
+import {
+  connectionOptions,
+  credentialsOf,
+  reloading,
+  rotates,
+  temporalSecurity,
+  type Credentials,
+  type TemporalConnectionSecurity,
+} from "./connection-security.js";
 import { taskQueueField } from "./task-queue.js";
 import { forkOf, unitsOf } from "./unit.js";
 import type { ActivityInputInstance } from "./workflow-activities.js";
@@ -65,17 +76,23 @@ export type WorkflowSource =
  * Where the Temporal service is, as a service: the starter binds it from the
  * environment — `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`),
  * `TEMPORAL_NAMESPACE` (default `default`) and the shutdown budgets below —
- * unless pinned, and anything else in the graph may read it.
+ * unless pinned, and anything else in the graph may read it. The connection's
+ * security is read from `TEMPORAL_TLS`, `TEMPORAL_TLS_*`, `TEMPORAL_API_KEY`,
+ * `TEMPORAL_API_KEY_PATH` and `TEMPORAL_CREDENTIALS_RELOAD_MS`, and is never
+ * pinned. `@btravstack/temporal-client`'s `temporalConnection` accepts this
+ * port as its settings, so a client in the worker's process connects alike.
  */
-export class TemporalConfig extends Port("TemporalConfig")<{
-  readonly address: string;
-  readonly namespace: string;
-  readonly taskQueue: string;
-  /** Temporal's `shutdownGraceTime`, in milliseconds. */
-  readonly gracePeriodMs: number;
-  /** Temporal's `shutdownForceTime`, in milliseconds. */
-  readonly forceAfterMs: number;
-}> {}
+export class TemporalConfig extends Port("TemporalConfig")<
+  {
+    readonly address: string;
+    readonly namespace: string;
+    readonly taskQueue: string;
+    /** Temporal's `shutdownGraceTime`, in milliseconds. */
+    readonly gracePeriodMs: number;
+    /** Temporal's `shutdownForceTime`, in milliseconds. */
+    readonly forceAfterMs: number;
+  } & TemporalConnectionSecurity
+> {}
 
 /**
  * The connection, as a resource of the graph: di opens it with the scope and
@@ -84,7 +101,8 @@ export class TemporalConfig extends Port("TemporalConfig")<{
 export class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}
 
 /**
- * The service at `TemporalConfig.address` did not answer. Modeled rather than
+ * The service at `TemporalConfig.address` did not answer — or refused the
+ * connection's TLS or credentials. Modeled rather than
  * left a defect because an operator *can* act on it — the address is wrong or
  * the service is down, and neither is a bug in this code — so `runMain` exits
  * `1`, a startup `Err`, not the `70` a defect earns.
@@ -222,6 +240,18 @@ type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
 
 const workerRuns = new WeakMap<NativeConnection, AsyncResult<void, never>>();
 
+/** The credentials a connection whose files can rotate was opened with; an overridden connection has none. */
+const connectionCredentials = new WeakMap<NativeConnection, Credentials>();
+
+const connect = (
+  address: string,
+  credentials: Credentials,
+): AsyncResult<NativeConnection, TemporalUnreachable> =>
+  fromPromise(
+    NativeConnection.connect({ address, ...connectionOptions(credentials) }),
+    (cause) => new TemporalUnreachable({ address, cause }),
+  );
+
 /**
  * The Temporal starter: a module providing the runtime, its configuration
  * (bound from the `TEMPORAL_*` variables unless pinned) and the connection (a
@@ -249,6 +279,14 @@ export const temporal = <
       | "TEMPORAL_TASK_QUEUE"
       | "TEMPORAL_GRACE_PERIOD_MS"
       | "TEMPORAL_FORCE_AFTER_MS"
+      | "TEMPORAL_TLS"
+      | "TEMPORAL_TLS_SERVER_CA_CERT_PATH"
+      | "TEMPORAL_TLS_SERVER_NAME"
+      | "TEMPORAL_TLS_CLIENT_CERT_PATH"
+      | "TEMPORAL_TLS_CLIENT_KEY_PATH"
+      | "TEMPORAL_API_KEY"
+      | "TEMPORAL_API_KEY_PATH"
+      | "TEMPORAL_CREDENTIALS_RELOAD_MS"
     >
   | Scope
   | ActivitiesInstanceOf<C>
@@ -276,6 +314,7 @@ export const temporal = <
         durationMs(options.forceAfter),
         Config.integer("TEMPORAL_FORCE_AFTER_MS", { default: DEFAULT_FORCE_MS, min: 0 }),
       ),
+      ...temporalSecurity,
     }),
   );
   return Module("Temporal")({
@@ -285,9 +324,10 @@ export const temporal = <
       Provider(TemporalConnection)({
         inject: { config: TemporalConfig },
         acquire: ({ config: bound }) =>
-          fromPromise(
-            NativeConnection.connect({ address: bound.address }),
-            (cause) => new TemporalUnreachable({ address: bound.address, cause }),
+          credentialsOf(TemporalConfig.portId, bound).flatMap((credentials) =>
+            connect(bound.address, credentials).tap((connection) => {
+              if (rotates(bound)) connectionCredentials.set(connection, credentials);
+            }),
           ),
         release: (connection) =>
           connection.close().catch((cause: unknown) => {
@@ -343,6 +383,14 @@ export const temporal = <
         | "TEMPORAL_TASK_QUEUE"
         | "TEMPORAL_GRACE_PERIOD_MS"
         | "TEMPORAL_FORCE_AFTER_MS"
+        | "TEMPORAL_TLS"
+        | "TEMPORAL_TLS_SERVER_CA_CERT_PATH"
+        | "TEMPORAL_TLS_SERVER_NAME"
+        | "TEMPORAL_TLS_CLIENT_CERT_PATH"
+        | "TEMPORAL_TLS_CLIENT_KEY_PATH"
+        | "TEMPORAL_API_KEY"
+        | "TEMPORAL_API_KEY_PATH"
+        | "TEMPORAL_CREDENTIALS_RELOAD_MS"
       >
     | Scope
     | ActivitiesInstanceOf<C>
@@ -406,7 +454,57 @@ const createWorker = <
         startFailed,
       ),
     )
-    .map((worker) => poll(worker, taskQueue, namespace, connection));
+    .map((worker) => {
+      const serving = poll(worker, taskQueue, namespace, connection);
+      const credentials = connectionCredentials.get(connection);
+      if (credentials !== undefined)
+        rotate(worker, connection, config, credentials, observers, workerRuns.get(connection)!);
+      return serving;
+    });
+};
+
+const RELOAD: Operation = { component: "temporal", name: "reload", attributes: {} };
+
+/**
+ * Re-reads the connection's files while the worker runs. Changed TLS files
+ * open a new connection the worker moves to, `Worker.connection`'s own swap,
+ * and the one it left is closed; a changed API key is set on the connection
+ * in use. Each change is observed as `temporal` / `reload`, a refusal
+ * included. Once the run settles, the reloading stops and the last connection
+ * the worker moved to is closed; the one the graph opened stays the graph's.
+ */
+const rotate = (
+  worker: Worker,
+  opened: NativeConnection,
+  config: ServiceOf<TemporalConfig>,
+  credentials: Credentials,
+  observers: readonly ((operation: Operation) => Settle)[],
+  running: AsyncResult<void, never>,
+): void => {
+  let current = opened;
+  const closeMoved = (previous: NativeConnection): AsyncResult<void, never> =>
+    previous === opened ? OkAsync() : fromSafePromise(previous.close());
+  const stop = reloading(TemporalConfig.portId, config, credentials, (next, change) =>
+    observed(observers, RELOAD, () =>
+      change === "tls"
+        ? connect(config.address, next).flatMap((fresh) =>
+            fromSafeThrowable(() => {
+              worker.connection = fresh;
+            })()
+              .toAsync()
+              .flatMap(() => {
+                const previous = current;
+                current = fresh;
+                return closeMoved(previous);
+              }),
+          )
+        : fromSafePromise(current.setApiKey(change.apiKey)),
+    ),
+  );
+  running.flatMap(() => {
+    stop();
+    return closeMoved(current);
+  });
 };
 
 /**

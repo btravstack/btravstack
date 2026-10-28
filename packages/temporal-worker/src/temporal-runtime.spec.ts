@@ -131,6 +131,8 @@ describe("temporal", () => {
       taskQueue: expect.any(String),
       gracePeriodMs: 10_000,
       forceAfterMs: 15_000,
+      tls: false,
+      credentialsReloadMs: 60_000,
     });
   });
 
@@ -150,6 +152,8 @@ describe("temporal", () => {
       taskQueue: expect.any(String),
       gracePeriodMs: 10_000,
       forceAfterMs: 15_000,
+      tls: false,
+      credentialsReloadMs: 60_000,
     });
   });
 
@@ -175,6 +179,8 @@ describe("temporal", () => {
       taskQueue: expect.any(String),
       gracePeriodMs: 10_000,
       forceAfterMs: 15_000,
+      tls: false,
+      credentialsReloadMs: 60_000,
     });
   });
 
@@ -199,6 +205,8 @@ describe("temporal", () => {
       taskQueue: expect.any(String),
       gracePeriodMs: 3_000,
       forceAfterMs: 4_000,
+      tls: false,
+      credentialsReloadMs: 60_000,
     });
   });
 
@@ -221,6 +229,8 @@ describe("temporal", () => {
       taskQueue: expect.any(String),
       gracePeriodMs: 3_000,
       forceAfterMs: 15_000,
+      tls: false,
+      credentialsReloadMs: 60_000,
     });
   });
 

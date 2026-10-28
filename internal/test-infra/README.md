@@ -15,7 +15,7 @@ rather than one per workspace.
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                                                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                                                          |
 | `localstack/localstack:4.4.0`      | `packages/keys`, its KMS alone                                                                              |
-| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, and `src/dev-issuer.spec.ts`                                                  |
+| `nginx:1.29-alpine`                | the dev loop's JWKS endpoint, `src/dev-issuer.spec.ts`, and the Temporal TLS proxy                          |
 | `oryd/hydra:v2.3.0`                | the OpenID provider the backend-for-frontend authorises against, and `packages/oauth-client`'s token issuer |
 | `oryd/kratos:v1.3.1`               | the identity provider Hydra delegates login to                                                              |
 | `quay.io/keycloak/keycloak:26.8.0` | `packages/oauth-client` native RFC 8693 delegation, isolated per realm                                      |
@@ -127,7 +127,7 @@ costs the image pull the issue was about. To remove them:
 
 ```sh
 docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)
-docker network rm btravstack-ory
+docker network rm btravstack-ory btravstack-temporal-tls
 ```
 
 **testcontainers' own reuse lock is in-process**, which does nothing about the
@@ -165,15 +165,34 @@ Node does not expose.
 
 ## Entry points
 
-| Import                                       | What it is                                                                                                                                                                                                              |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                                 |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@btravstack/temporal-testing`'s address key, over the shared server                                                                                                                   |
-| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
-| `@btravstack/internal-test-infra/ory`        | `sharedOry` / `provisionOry` / `createIdentity` / `createServiceClient` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                       |
-| `@btravstack/internal-test-infra/keycloak`   | `sharedKeycloak` / `createExchangeClient`, the native delegation issuer and per-test credentials                                                                                                                        |
-| `@btravstack/internal-test-infra/ory-login`  | `oryClient()`, `headlessLogin({ authorizationUrl, user })`, `browserLogin(origin, user)` and `followRedirects(from, until)`                                                                                             |
-| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                                                                   |
+| Import                                               | What it is                                                                                                                                                                                                              |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@btravstack/internal-test-infra/rabbitmq`           | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                                                                 |
+| `@btravstack/internal-test-infra/temporal`           | a vitest `globalSetup` providing `@btravstack/temporal-testing`'s address key, over the shared server                                                                                                                   |
+| `@btravstack/internal-test-infra/temporal-tls`       | a vitest `globalSetup` providing the TLS proxy's mTLS and API-key addresses in front of the shared server                                                                                                               |
+| `@btravstack/internal-test-infra/temporal-tls-files` | `TEMPORAL_TLS_FILES` (CA, server name, client, rotated and untrusted pairs) and `mountTemporalSecret()`, a Secret-style mount whose files swap at once                                                                  |
+| `@btravstack/internal-test-infra/containers`         | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl`, `provisionApplicationRole`, `migrateOrders` and the credentials each one is started with |
+| `@btravstack/internal-test-infra/ory`                | `sharedOry` / `provisionOry` / `createIdentity` / `createServiceClient` / `registerRedirectUri`, the issuer and client constants, and `ORY_USERS`                                                                       |
+| `@btravstack/internal-test-infra/keycloak`           | `sharedKeycloak` / `createExchangeClient`, the native delegation issuer and per-test credentials                                                                                                                        |
+| `@btravstack/internal-test-infra/ory-login`          | `oryClient()`, `headlessLogin({ authorizationUrl, user })`, `browserLogin(origin, user)` and `followRedirects(from, until)`                                                                                             |
+| `@btravstack/internal-test-infra/lock`               | `withLock(name, run)`                                                                                                                                                                                                   |
+
+## The Temporal TLS proxy
+
+The CLI's development server has no TLS flags, so `src/temporal-tls.ts`
+starts `nginx:1.29-alpine` in front of the shared Temporal, both on the
+`btravstack-temporal-tls` network (Temporal under the alias `temporal`, which
+nginx resolves through Docker's DNS at request time). Port `7233` requires a
+client certificate the test CA signed; port `7234` requires
+`Authorization: Bearer temporal-test-…` and answers `403` otherwise. A
+namespace registered over the plaintext address is served through both.
+
+The certificates under `src/temporal-tls/` are committed, EC P-256, valid ten
+years: `node:crypto` cannot issue X.509, and a reused proxy needs the CA every
+process trusts to be the one it was started with. `rotated-*` is a second
+client pair from the same CA; `untrusted-*` is signed by another CA.
+Regenerate them with `openssl` if they ever expire; the content label
+restarts the proxy on any change to them or to `nginx.conf`.
 
 ## The dev issuer
 

@@ -57,6 +57,14 @@ type TemporalStarter<
       | "TEMPORAL_TASK_QUEUE"
       | "TEMPORAL_GRACE_PERIOD_MS"
       | "TEMPORAL_FORCE_AFTER_MS"
+      | "TEMPORAL_TLS"
+      | "TEMPORAL_TLS_SERVER_CA_CERT_PATH"
+      | "TEMPORAL_TLS_SERVER_NAME"
+      | "TEMPORAL_TLS_CLIENT_CERT_PATH"
+      | "TEMPORAL_TLS_CLIENT_KEY_PATH"
+      | "TEMPORAL_API_KEY"
+      | "TEMPORAL_API_KEY_PATH"
+      | "TEMPORAL_CREDENTIALS_RELOAD_MS"
     >
   | Scope
   | ActivitiesInstanceOf<C>

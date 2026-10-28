@@ -14,6 +14,10 @@ import {
   type UnitRecord,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
+import {
+  TEMPORAL_TLS_FILES,
+  mountTemporalSecret,
+} from "@btravstack/internal-test-infra/temporal-tls-files";
 import { temporalEnvironment, type TemporalEnvironment } from "@btravstack/temporal-testing";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { TypedClient } from "@temporal-contract/client";
@@ -27,7 +31,7 @@ import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@te
 import type { DataConverter, Duration, Payload, PayloadCodec } from "@temporalio/common";
 import type { NativeConnection, Worker } from "@temporalio/worker";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
-import { test, vi } from "vitest";
+import { inject, test, vi } from "vitest";
 import { z } from "zod";
 
 import { ensureSchedule } from "../schedule.js";
@@ -602,6 +606,16 @@ const countingUnit = (): {
   return { module, counts: () => counts };
 };
 
+/** What {@link TemporalFixtures.secured} hands a spec. */
+export type Secured = {
+  readonly mtls: Environment;
+  readonly apiKey: Environment;
+  /** Replaces the mounted client certificate and key with `pair`'s. */
+  readonly install: (pair: { readonly cert: string; readonly key: string }) => Promise<void>;
+  /** Replaces the mounted API key. */
+  readonly writeApiKey: (value: string) => Promise<void>;
+};
+
 /** One stubbed worker and the three handles a `stopped` test drives it through. */
 export type Stubbed = {
   /** Settles the worker's `run()` — with a cause to reject it, without one to end it. */
@@ -666,7 +680,16 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
   }>;
   /** The starter served over an observer that records what it was handed. */
-  readonly serveObserved: (failing?: boolean) => Promise<{
+  /**
+   * Client credentials in a directory of this test's own, as a deployment
+   * mounts them, and the environment connecting through the shared TLS proxy
+   * with them: `mtls` presents the client certificate, `apiKey` the key file.
+   */
+  readonly secured: Secured;
+  readonly serveObserved: (
+    failing?: boolean,
+    env?: Environment,
+  ) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
@@ -764,6 +787,7 @@ const composeObserved = (
   boot: Boot,
   member: (operation: Operation) => Settle,
   failing: boolean,
+  env: Environment = { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
 ) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Observed")({
@@ -775,9 +799,7 @@ const composeObserved = (
       Provider.member(Observers)({ inject: {}, value: member }),
     ],
   });
-  const app: App = boot(worker, {
-    env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
-  });
+  const app: App = boot(worker, { env });
   return { app, taskQueue };
 };
 
@@ -910,10 +932,36 @@ export const it = test.extend<TemporalFixtures>({
       return { client: encoded, taskQueue };
     });
   },
+  secured: async ({ server }, use) => {
+    const mounted = await mountTemporalSecret();
+    const tls = {
+      TEMPORAL_NAMESPACE: server.namespace,
+      TEMPORAL_TLS: "true",
+      TEMPORAL_TLS_SERVER_CA_CERT_PATH: TEMPORAL_TLS_FILES.ca,
+      TEMPORAL_TLS_SERVER_NAME: TEMPORAL_TLS_FILES.serverName,
+      TEMPORAL_CREDENTIALS_RELOAD_MS: "10",
+    };
+    await use({
+      mtls: {
+        ...tls,
+        TEMPORAL_ADDRESS: inject("__BTRAVSTACK_TEMPORAL_TLS_ADDRESS__"),
+        TEMPORAL_TLS_CLIENT_CERT_PATH: mounted.cert,
+        TEMPORAL_TLS_CLIENT_KEY_PATH: mounted.key,
+      },
+      apiKey: {
+        ...tls,
+        TEMPORAL_ADDRESS: inject("__BTRAVSTACK_TEMPORAL_API_KEY_ADDRESS__"),
+        TEMPORAL_API_KEY_PATH: mounted.apiKey,
+      },
+      install: (pair) => mounted.publish({ pair }),
+      writeApiKey: (apiKey) => mounted.publish({ apiKey }),
+    });
+    await mounted.remove();
+  },
   serveObserved: async ({ server, client, boot }, use) => {
-    await use(async (failing = false) => {
+    await use(async (failing = false, env?: Environment) => {
       const observer = recordingObserver();
-      const { app, taskQueue } = composeObserved(server, boot, observer.member, failing);
+      const { app, taskQueue } = composeObserved(server, boot, observer.member, failing, env);
       await app.runtimeInfo();
       return { app, client, taskQueue, taken: observer.taken };
     });

@@ -252,6 +252,14 @@ composition root.
 | `TEMPORAL_NAMESPACE`                  | `default`               | `TemporalModule`                                                                                                                                                                                                                    |
 | `TEMPORAL_GRACE_PERIOD_MS`            | `10000`                 | `TemporalModule` — `shutdownGraceTime`                                                                                                                                                                                              |
 | `TEMPORAL_FORCE_AFTER_MS`             | `15000`                 | `TemporalModule` — `shutdownForceTime`                                                                                                                                                                                              |
+| `TEMPORAL_TLS`                        | `false`                 | `TemporalModule`, `temporalSecurity` — TLS on; the variables below require it                                                                                                                                                       |
+| `TEMPORAL_TLS_SERVER_CA_CERT_PATH`    | —                       | the server CA, PEM                                                                                                                                                                                                                  |
+| `TEMPORAL_TLS_SERVER_NAME`            | —                       | the server name verified and sent as SNI                                                                                                                                                                                            |
+| `TEMPORAL_TLS_CLIENT_CERT_PATH`       | —                       | mTLS client certificate, with its key                                                                                                                                                                                               |
+| `TEMPORAL_TLS_CLIENT_KEY_PATH`        | —                       | mTLS client key, with its certificate                                                                                                                                                                                               |
+| `TEMPORAL_API_KEY`                    | —                       | API key, sent as a bearer token                                                                                                                                                                                                     |
+| `TEMPORAL_API_KEY_PATH`               | —                       | a file holding the API key, reloaded as it rotates                                                                                                                                                                                  |
+| `TEMPORAL_CREDENTIALS_RELOAD_MS`      | `60000`                 | how often the files above are read again — see [Securing the connection](/reference/temporal-worker#securing-the-connection)                                                                                                        |
 | `AMQP_URL`                            | `amqp://127.0.0.1:5672` | [`AmqpModule`](/reference/amqp-worker)                                                                                                                                                                                              |
 | `AMQP_CONNECT_TIMEOUT_MS`             | `5000`                  | `AmqpModule`                                                                                                                                                                                                                        |
 | `OUTBOX_TENANTS`                      | required                | [`outbox()`](/reference/outbox) — the tenants this relay serves, comma-separated; pinned by `tenants`                                                                                                                               |
@@ -302,7 +310,11 @@ secret-store client, no reload. Each is something the platform already does:
   validated and what was in the environment are one surface.
 - **Secrets** reach the pod as environment variables from a Secret, which a
   secret store (Vault, AWS Secrets Manager, SSM) syncs into.
-- **Refresh is a restart.** A live-reloaded configuration is a consistency
+- **Refresh is a restart** — with one exception, credentials a connection
+  presents: a mounted certificate or API key rotates on a schedule its issuer
+  sets, so Temporal's starters read those files again
+  ([Securing the connection](/reference/temporal-worker#securing-the-connection)).
+  Everything else: A live-reloaded configuration is a consistency
   problem at every reader; a restart drains in three beats and revalidates,
   and a bad value fails the new pod's boot. The old pods keep serving only
   under a `RollingUpdate` that keeps them available until replacements are
