@@ -30,8 +30,10 @@ describe("temporal workflow slices", () => {
     serveContractSlice,
   }) => {
     // GIVEN
-    const first = await serveContractSlice(contractSlices.first);
-    const second = await serveContractSlice(contractSlices.second);
+    const [first, second] = await Promise.all([
+      serveContractSlice(contractSlices.first),
+      serveContractSlice(contractSlices.second),
+    ]);
 
     // WHEN
     const answers = await Promise.all([
