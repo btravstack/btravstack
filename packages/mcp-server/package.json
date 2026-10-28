@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/mcp-server",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "The Model Context Protocol answerer for @btravstack/http-server, over the official SDK",
   "keywords": [
     "http",
