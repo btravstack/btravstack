@@ -502,8 +502,11 @@ connected with:
   certificate the server refuses — keeps the current connection and is tried
   again on the next tick.
 
-Each applied or failed reload is the observed operation `temporal` /
-`reload`, `ok` or `error`, to the observers the application binds.
+Each applied change, refused change and unreadable file is the observed
+operation `temporal` / `reload`, `ok` or `error`, to the observers the
+application binds; a tick that finds nothing changed is not observed. However
+the worker's run ends, the reloading stops — after a reload in flight
+settles — and the last connection it moved to is closed.
 
 Limits, all the SDK's: a TLS change is a **new** connection — the Rust core
 fixes TLS when it connects — so an in-flight call finishes on the old one.

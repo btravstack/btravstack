@@ -55,5 +55,7 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
 - **The provided `Connection` is a `Proxy` over the current one** when a file
   can rotate. `Client` and `WorkflowClient` read `connection.workflowService`
   on every call, so swapping the target moves them to the new connection;
-  `close` is intercepted to stop the reloading and close the current one. The
-  replaced connection is closed at once: grpc-js lets started calls finish.
+  `close` is intercepted to stop the reloading, wait for a reload in flight,
+  then close the current one. The replaced connection is closed at once:
+  grpc-js lets started calls finish. An unreadable file is retried silently:
+  this package has no observers.

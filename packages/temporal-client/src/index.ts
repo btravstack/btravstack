@@ -126,8 +126,8 @@ const rotating = (
         })
       : OkAsync(current.setApiKey(change.apiKey)),
   );
-  const close = (): Promise<void> => {
-    stop();
+  const close = async (): Promise<void> => {
+    await stop();
     return current.close();
   };
   return new Proxy(first, {

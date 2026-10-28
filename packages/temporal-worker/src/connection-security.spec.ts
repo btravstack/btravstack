@@ -152,6 +152,30 @@ describe("the worker's connection security", () => {
     });
   });
 
+  it("reports a credential file it can no longer read, and keeps its connection", async ({
+    secured,
+    serveObserved,
+  }) => {
+    // GIVEN a worker authenticating with a mounted API key, whose file is emptied
+    const { client, taskQueue, taken } = await serveObserved(false, secured.apiKey);
+    const reloads = () => taken().filter(({ name }) => name === "reload");
+    await secured.writeApiKey("");
+    await vi.waitUntil(() => reloads().length > 0, { timeout: 10_000 });
+
+    // WHEN a workflow runs on its queue
+    const result = await client.workflow.execute("runEcho", {
+      taskQueue,
+      workflowId: `wf-unreadable-${taskQueue}`,
+      args: ["kept"],
+    });
+
+    // THEN the unreadable file was observed as an error, and the worker still served
+    expect({ reload: reloads()[0], result }).toEqual({
+      reload: { component: "temporal", name: "reload", attributes: {}, outcome: "error" },
+      result: "kept",
+    });
+  });
+
   it("refuses a key without its certificate, and an API key beside a client certificate", async () => {
     // GIVEN a client key with no certificate, and an API key
     const security = { tls: true, clientKeyPath: TEMPORAL_TLS_FILES.client.key, apiKey: "key" };

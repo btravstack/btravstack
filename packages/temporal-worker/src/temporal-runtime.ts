@@ -470,7 +470,7 @@ const RELOAD: Operation = { component: "temporal", name: "reload", attributes: {
  * open a new connection the worker moves to, `Worker.connection`'s own swap,
  * and the one it left is closed; a changed API key is set on the connection
  * in use. Each change is observed as `temporal` / `reload`, a refusal
- * included. Once the run settles, the reloading stops and the last connection
+ * or an unreadable file included. Once the run settles, the reloading stops and the last connection
  * the worker moved to is closed; the one the graph opened stays the graph's.
  */
 const rotate = (
@@ -484,27 +484,35 @@ const rotate = (
   let current = opened;
   const closeMoved = (previous: NativeConnection): AsyncResult<void, never> =>
     previous === opened ? OkAsync() : fromSafePromise(previous.close());
-  const stop = reloading(TemporalConfig.portId, config, credentials, (next, change) =>
-    observed(observers, RELOAD, () =>
-      change === "tls"
-        ? connect(config.address, next).flatMap((fresh) =>
-            fromSafeThrowable(() => {
-              worker.connection = fresh;
-            })()
-              .toAsync()
-              .flatMap(() => {
-                const previous = current;
-                current = fresh;
-                return closeMoved(previous);
-              }),
-          )
-        : fromSafePromise(current.setApiKey(change.apiKey)),
-    ),
+  const stop = reloading(
+    TemporalConfig.portId,
+    config,
+    credentials,
+    (next, change) =>
+      observed(observers, RELOAD, () =>
+        change === "tls"
+          ? connect(config.address, next).flatMap((fresh) =>
+              fromSafeThrowable(() => {
+                worker.connection = fresh;
+              })()
+                .toAsync()
+                .flatMap(() => {
+                  const previous = current;
+                  current = fresh;
+                  return closeMoved(previous);
+                }),
+            )
+          : fromSafePromise(current.setApiKey(change.apiKey)),
+      ),
+    (failure) => {
+      void observed(observers, RELOAD, () => failure.toAsync());
+    },
   );
-  running.flatMap(() => {
-    stop();
-    return closeMoved(current);
-  });
+  // However the run settles, the connection the worker moved to last is ours to close.
+  const settle = (): void => {
+    void fromSafePromise(Promise.resolve(stop())).flatMap(() => closeMoved(current));
+  };
+  running.tap(settle).tapFailure(settle);
 };
 
 /**

@@ -10,6 +10,7 @@ import {
   fromPromise,
   validateAllAsync,
   type AsyncResult,
+  type FailureView,
 } from "unthrown";
 
 /**
@@ -141,23 +142,28 @@ const changeOf = (previous: Credentials, next: Credentials): CredentialsChange =
 /**
  * Reads `security`'s files every `credentialsReloadMs` and hands `apply` each
  * reading that changed; a reading that failed, or that `apply` refused, leaves
- * the previous one current and is tried again on the next tick. Answers the stop.
+ * the previous one current and is tried again on the next tick. A file that
+ * cannot be read is also handed to `unreadable`. Answers the stop, which
+ * settles once a reload in flight has: a reload never applies after it.
  */
 export const reloading = <E>(
   port: string,
   security: TemporalConnectionSecurity,
   initial: Credentials,
   apply: (next: Credentials, change: Exclude<CredentialsChange, undefined>) => AsyncResult<void, E>,
-): (() => void) => {
+  unreadable?: (failure: FailureView<ConfigInvalid, Credentials>) => void,
+): (() => PromiseLike<unknown>) => {
   let current = initial;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: PromiseLike<unknown> = OkAsync();
   const schedule = (): void => {
     timer = setTimeout(() => {
-      credentialsOf(port, security)
+      const read = credentialsOf(port, security);
+      inFlight = (unreadable === undefined ? read : read.tapFailure(unreadable))
         .flatMap((next) => {
           const change = changeOf(current, next);
-          return change === undefined
+          return change === undefined || stopped
             ? OkAsync()
             : apply(next, change).map(() => {
                 current = next;
@@ -176,6 +182,7 @@ export const reloading = <E>(
   return () => {
     stopped = true;
     clearTimeout(timer);
+    return inFlight;
   };
 };
 

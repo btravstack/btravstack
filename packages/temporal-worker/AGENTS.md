@@ -194,7 +194,10 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   created it, so the starter closes each one it moved away from — never the
   graph's `TemporalConnection`, which its finalizer owns and other providers
   may hold with the boot certificate. Reloading stops when `worker.run()`
-  settles. Each reload is the observed operation `temporal` / `reload`.
+  settles, a defect included, and the last moved connection is closed only
+  after a reload in flight has settled, so none is opened behind the close.
+  Each change applied or refused, and each unreadable file, is the observed
+  operation `temporal` / `reload`; an unchanged tick is not.
 
 ## Activity-only workers
 
