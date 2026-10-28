@@ -19,8 +19,12 @@ import {
  * connection with no key.
  */
 export type TemporalConnectionSecurity = {
-  /** `TEMPORAL_TLS`: TLS on. Every other field here requires it. */
-  readonly tls?: boolean;
+  /**
+   * `TEMPORAL_TLS`: TLS on or off. Unset, it is on exactly when an API key is
+   * set, as Temporal's own clients do. The server and client certificate
+   * fields require it on.
+   */
+  readonly tls?: boolean | undefined;
   /** `TEMPORAL_TLS_SERVER_CA_CERT_PATH`: the PEM bundle the server's certificate is verified against, instead of the system's roots. */
   readonly serverCaCertPath?: string | undefined;
   /** `TEMPORAL_TLS_SERVER_NAME`: the name the server's certificate is verified for, and sent as SNI. */
@@ -50,12 +54,12 @@ const VARIABLES = {
 
 const DEFAULT_RELOAD_MS = 60_000;
 
-const optional = <const V extends string>(
-  variable: V,
-): ConfigField<string | undefined, V, "optional"> => {
-  const field = Config.string(variable);
-  return { variable, parse: (raw) => (raw === undefined ? Ok(undefined) : field.parse(raw)) };
-};
+const optional = <T, const V extends string>(
+  field: ConfigField<T, V>,
+): ConfigField<T | undefined, V, "optional"> => ({
+  variable: field.variable,
+  parse: (raw) => (raw === undefined ? Ok(undefined) : field.parse(raw)),
+});
 
 /**
  * The `Config` fields of {@link TemporalConnectionSecurity}, Temporal's own
@@ -63,16 +67,18 @@ const optional = <const V extends string>(
  * settings beside `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE`.
  */
 export const temporalSecurity = {
-  tls: Config.boolean(VARIABLES.tls, { default: false }),
-  serverCaCertPath: optional(VARIABLES.serverCaCertPath),
-  serverName: optional(VARIABLES.serverName),
-  clientCertPath: optional(VARIABLES.clientCertPath),
-  clientKeyPath: optional(VARIABLES.clientKeyPath),
-  apiKey: optional(VARIABLES.apiKey),
-  apiKeyPath: optional(VARIABLES.apiKeyPath),
+  tls: optional(Config.boolean(VARIABLES.tls)),
+  serverCaCertPath: optional(Config.string(VARIABLES.serverCaCertPath)),
+  serverName: optional(Config.string(VARIABLES.serverName)),
+  clientCertPath: optional(Config.string(VARIABLES.clientCertPath)),
+  clientKeyPath: optional(Config.string(VARIABLES.clientKeyPath)),
+  apiKey: optional(Config.string(VARIABLES.apiKey)),
+  apiKeyPath: optional(Config.string(VARIABLES.apiKeyPath)),
   credentialsReloadMs: Config.integer(VARIABLES.credentialsReloadMs, {
     default: DEFAULT_RELOAD_MS,
     min: 1,
+    // setTimeout's ceiling: Node runs a longer delay after 1 ms.
+    max: 2_147_483_647,
   }),
 };
 
@@ -102,16 +108,13 @@ export const credentialsOf = (
     ],
     (failed) => new ConfigInvalid({ port, issues: failed }),
   ).map(([ca, crt, key, apiKeyFile]) => ({
-    tls:
-      security.tls === true
-        ? {
-            ...(ca === undefined ? {} : { serverRootCACertificate: ca }),
-            ...(security.serverName === undefined
-              ? {}
-              : { serverNameOverride: security.serverName }),
-            ...(crt === undefined || key === undefined ? {} : { clientCertPair: { crt, key } }),
-          }
-        : undefined,
+    tls: tlsOn(security)
+      ? {
+          ...(ca === undefined ? {} : { serverRootCACertificate: ca }),
+          ...(security.serverName === undefined ? {} : { serverNameOverride: security.serverName }),
+          ...(crt === undefined || key === undefined ? {} : { clientCertPair: { crt, key } }),
+        }
+      : undefined,
     apiKey: security.apiKey ?? apiKeyFile,
   }));
 };
@@ -190,13 +193,16 @@ export const reloading = <E>(
   };
 };
 
+const tlsOn = (security: TemporalConnectionSecurity): boolean =>
+  security.tls ?? (security.apiKey !== undefined || security.apiKeyPath !== undefined);
+
 const refusals = (security: TemporalConnectionSecurity): ConfigIssue[] => {
   const issues: ConfigIssue[] = [];
   const set = (key: keyof typeof VARIABLES): boolean => security[key] !== undefined;
   const refuse = (key: keyof typeof VARIABLES, message: string): void => {
     issues.push({ message, path: [VARIABLES[key]] });
   };
-  if (security.tls !== true)
+  if (!tlsOn(security))
     for (const key of [
       "serverCaCertPath",
       "serverName",

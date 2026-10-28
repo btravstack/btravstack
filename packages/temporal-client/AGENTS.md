@@ -36,6 +36,10 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   not install the worker, nor the reverse), and the module is too small and
   too Temporal-specific for a shared package. Change both copies together;
   each package's spec proves its copy.
+- **`TEMPORAL_TLS` unset follows Temporal**: on exactly when an API key is
+  set. The one departure is `TEMPORAL_TLS=false` with an API key, which
+  Temporal's clients accept and this refuses: a bearer token never goes out
+  in plaintext.
 - **Refusals before reads.** Every combination it cannot connect with is one
   `ConfigInvalid` naming every variable, before a file is opened; then every
   unreadable or empty file, all at once. An API key beside a client
@@ -57,5 +61,8 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   on every call, so swapping the target moves them to the new connection;
   `close` is intercepted to stop the reloading, wait for a reload in flight,
   then close the current one. The replaced connection is closed at once:
-  grpc-js lets started calls finish. An unreadable file is retried silently:
+  grpc-js lets started calls finish. A `with*` call-context scope lives in
+  the connection it was opened on (the SDK makes one `AsyncLocalStorage` per
+  connection and offers no way to share it), so a call inside one after a
+  rotation loses it; documented rather than worked around. An unreadable file is retried silently:
   this package has no observers.

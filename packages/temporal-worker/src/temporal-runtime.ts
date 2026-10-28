@@ -482,8 +482,8 @@ const rotate = (
   running: AsyncResult<void, never>,
 ): void => {
   let current = opened;
-  const closeMoved = (previous: NativeConnection): AsyncResult<void, never> =>
-    previous === opened ? OkAsync() : fromSafePromise(previous.close());
+  // Every connection the reloading opened and has not closed: the worker's, or one it refused.
+  const owned = new Set<NativeConnection>();
   const stop = reloading(
     TemporalConfig.portId,
     config,
@@ -491,26 +491,29 @@ const rotate = (
     (next, change) =>
       observed(observers, RELOAD, () =>
         change === "tls"
-          ? connect(config.address, next).flatMap((fresh) =>
-              fromSafeThrowable(() => {
+          ? connect(config.address, next).flatMap((fresh) => {
+              owned.add(fresh);
+              return fromSafeThrowable(() => {
                 worker.connection = fresh;
               })()
                 .toAsync()
                 .flatMap(() => {
                   const previous = current;
                   current = fresh;
-                  return closeMoved(previous);
-                }),
-            )
+                  return owned.delete(previous) ? fromSafePromise(previous.close()) : OkAsync();
+                });
+            })
           : fromSafePromise(current.setApiKey(change.apiKey)),
       ),
     (failure) => {
       void observed(observers, RELOAD, () => failure.toAsync());
     },
   );
-  // However the run settles, the connection the worker moved to last is ours to close.
+  // However the run settles, what the reloading opened is closed, after a reload in flight.
   const settle = (): void => {
-    void fromSafePromise(Promise.resolve(stop())).flatMap(() => closeMoved(current));
+    void fromSafePromise(Promise.resolve(stop())).flatMap(() =>
+      fromSafePromise(Promise.all([...owned].map((connection) => connection.close()))),
+    );
   };
   running.tap(settle).tapFailure(settle);
 };

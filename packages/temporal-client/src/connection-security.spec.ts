@@ -241,6 +241,33 @@ describe("the client's connection security", () => {
     );
   });
 
+  it("turns TLS on for an API key when TEMPORAL_TLS is unset, as Temporal's clients do", async () => {
+    // GIVEN an API key, and TLS neither on nor off
+    const security = { apiKey: "key" };
+
+    // WHEN the credentials are read
+    const credentials = credentialsOf("Settings", security);
+
+    // THEN TLS is on, with the key
+    await expect(credentials).toBeOkWith({ tls: {}, apiKey: "key" });
+  });
+
+  it("refuses an API key with TLS turned off", async () => {
+    // GIVEN an API key and TEMPORAL_TLS=false
+    const security = { tls: false, apiKey: "key" };
+
+    // WHEN the credentials are read
+    const credentials = credentialsOf("Settings", security);
+
+    // THEN the key is refused rather than sent in plaintext
+    await expect(credentials).toBeErrTagged(
+      "ConfigInvalid",
+      expect.objectContaining({
+        issues: [{ message: "requires TEMPORAL_TLS=true", path: ["TEMPORAL_API_KEY"] }],
+      }),
+    );
+  });
+
   it("connects with TLS and the system's roots when it names nothing else", async () => {
     // GIVEN TLS on, with no CA, server name or credential
     const security = { tls: true };

@@ -43,7 +43,12 @@ differences:
   connection, so a `Client` built on it keeps working. The grpc-js
   `Connection` cannot change its TLS in place; the replaced connection is
   closed once its started calls finish. A changed API key alone is set with
-  `setApiKey`.
+  `setApiKey`. A `withDeadline`, `withAbortSignal`, `withMetadata` or
+  `withApiKey` scope belongs to the connection it was opened on: a call made
+  inside one after a rotation goes out without it. Keep such scopes short, or
+  around a single call.
+- An unreadable file is retried on the next tick without being reported: the
+  package has no observers.
 
 ## Standalone activities
 

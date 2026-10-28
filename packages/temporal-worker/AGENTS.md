@@ -173,6 +173,10 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   not install the worker, nor the reverse), and the module is too small and
   too Temporal-specific for a shared package. Change both copies together;
   each package's spec proves its copy.
+- **`TEMPORAL_TLS` unset follows Temporal**: on exactly when an API key is
+  set. The one departure is `TEMPORAL_TLS=false` with an API key, which
+  Temporal's clients accept and this refuses: a bearer token never goes out
+  in plaintext.
 - **Refusals before reads.** Every combination it cannot connect with is one
   `ConfigInvalid` naming every variable, before a file is opened; then every
   unreadable or empty file, all at once. An API key beside a client
@@ -191,7 +195,9 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   change TLS in place; an API-key change alone is `setApiKey` on the open one.
 - **The worker moves with `worker.connection = fresh`**, the SDK's own
   supported swap. The setter closes the previous connection only when the SDK
-  created it, so the starter closes each one it moved away from — never the
+  created it, so the starter owns every connection a reload opens — one the
+  setter refused (a worker already finalised) included — and closes each one
+  it moved away from — never the
   graph's `TemporalConnection`, which its finalizer owns and other providers
   may hold with the boot certificate. Reloading stops when `worker.run()`
   settles, a defect included, and the last moved connection is closed only
