@@ -1,8 +1,10 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./__tests__/test-fixtures.js";
+import { it, prepareContractSliceWorkflows } from "./__tests__/test-fixtures.js";
 
 describe("temporal workflow slices", () => {
+  prepareContractSliceWorkflows();
+
   it("keeps identical activity keys distinct across contract queues", ({ contractSlices }) => {
     // GIVEN
     const { first, second } = contractSlices;

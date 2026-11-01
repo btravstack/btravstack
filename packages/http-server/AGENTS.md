@@ -1650,6 +1650,19 @@ not commit over a deletion. Credentials stay out of session principal data and
 observations. Existing stateless sessions retain their behavior; a cookie with
 a token reference requires the token-aware scheme.
 
+`oidc()`'s optional `postLogoutRedirectUri` pins
+`<variablePrefix>_POST_LOGOUT_REDIRECT_URI` and requires token retention. It must
+be an absolute HTTP(S) URI without credentials or a fragment, registered with
+the provider. `logout(cookie)` obtains the retained ID-token hint in the same
+transaction that deletes the record; both the cookie and record must match the
+manager's issuer/client binding. Refresh may replace the hint only after its
+signature and subject checks pass, and preserves it when omitted. The configured
+return and hint go only to the discovered end-session endpoint, never to a
+destination inferred from request data. Access/refresh tokens never enter a
+redirect. No configured return, or no valid retained hint, keeps provider logout
+parameterless. No end-session endpoint keeps the existing `postLogout` fallback.
+`invalidate(cookie)` retains its void result, including for login replacement.
+
 Authentication dependency outages are modeled by `AuthenticatorUnavailable`,
 short-circuit the shared walk, and answer `503` in every answerer. The request
 adapter reports the scheme to `Observers`; defects remain `500`. See `AUTH.md`.

@@ -219,7 +219,10 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    The OIDC login remains in `@btravstack/http-server/oidc`; opt-in delegated
    browser credentials use `/oidc-tokens` with an application-provided shared
    store, so refresh and logout serialize across replicas without putting
-   credentials in the principal or browser cookie. These packages
+   credentials in the principal or browser cookie. Registered RP-initiated
+   logout returns obtain the issuer/client-bound ID-token hint in that same
+   revocation transaction; the hint goes only to the provider logout redirect,
+   never into cookies or observations. These packages
    declare their peers explicitly. The order API serves oRPC and htmx in one
    process; the GraphQL gateway is another process and calls it through
    `order-api-client`, with no oRPC server dependency. Its Pothos schema emits

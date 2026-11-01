@@ -444,12 +444,14 @@ Two more things the flow needs that reading the OpenID spec does not suggest.
 and again applied to the returned configuration, which the option does not reach
 — and that too is about this issuer being `http://`, not about Hydra. And Hydra
 refuses `post_logout_redirect_uri` **without `id_token_hint`**, answering
-`invalid_request` on its own error page rather than a redirect — which is why
-the logout the design ships, and the logout `ory.spec.ts` proves, is the
-**parameterless** end-session: Hydra ends its own session from its own cookie
-and lands on `URLS_POST_LOGOUT_REDIRECT`, the cookie the application seals
-stays principal-only, and a fresh authorization afterwards reaches Kratos's
-login again rather than the callback.
+`invalid_request` through a redirect to its own error page. The default
+**parameterless** end-session, which `ory.spec.ts` proves, ends Hydra's session
+from its own cookie and lands on `URLS_POST_LOGOUT_REDIRECT`. The application
+cookie stays principal-only, and a fresh authorization afterwards reaches Kratos's
+login again rather than the callback. `http-server`'s token-retention integration
+suite also proves the opt-in registered return with a server-retained ID-token
+hint. It checks the real provider's missing-hint refusal separately, so the
+registered return matching the default cannot hide an omitted parameter.
 
 **`oryClient()` is the configured `openid-client` the phases after this one
 reuse**: discovery against `ORY_ISSUER` with the client's secret, both

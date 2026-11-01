@@ -24,7 +24,8 @@ A browser navigates to a fragment route, is refused, and is sent to
 reads that cookie the same way a marked procedure reads a bearer token — the
 same `resolvePrincipal` walk, the same `context.principal`. By default the application
 holds no session store of its own: the cookie, encrypted and stamped with its
-own lifetime, **is** the session. For delegated downstream API calls, use the
+own lifetime, **is** the session. For delegated downstream API calls or a
+registered logout return, use the
 [server-side token manager](/reference/http-server#server-side-oidc-tokens):
 compose `oidcTokens()`, provide shared `OidcTokenStore` storage and pass its
 port as `tokens` to both the login answerer and session authenticator.
@@ -229,11 +230,34 @@ already completed one. The mechanics — why `303` and not `302`, the
 ## Logging out
 
 `POST /auth/logout` clears `__Host-session` and redirects to the provider's
-own end-session endpoint, or to `postLogout` when it advertises none. It
-takes no parameters: the cookie carries a principal and no token, so there is
-no `id_token_hint` to send and nothing to look up. It is a `POST` because it
-is a state change, so the CSRF check a composed session scheme turns on
-covers it like any other cookie-bearing one.
+own end-session endpoint, or to `postLogout` when it advertises none. By default
+the provider chooses where the browser lands after logout.
+
+To return to your application's signed-out page:
+
+1. Register its absolute HTTP(S) URI with the provider as a post-logout return,
+   for example `https://app.example/signed-out`.
+2. Compose the [server-side token manager](/reference/http-server#server-side-oidc-tokens)
+   with shared storage, passing its port as `tokens` to both `oidc()` and
+   `sessionAuthenticator()`.
+3. Set `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI=https://app.example/signed-out`, or
+   pin `postLogoutRedirectUri` on `oidc()`. A custom `variablePrefix` changes the
+   variable's prefix. The URI must have no credentials or fragment.
+4. Submit the same `POST /auth/logout`; the request needs no destination or
+   token parameters.
+
+The manager retrieves the retained ID-token hint while deleting the credentials
+in one transaction, so a concurrent refresh cannot restore the session. The
+answerer sends that hint and the configured return to the provider. The ID token
+stays out of the principal, session cookie and logs; access/refresh tokens never
+enter the redirect. A storage failure clears the cookie but answers `503`
+without redirecting.
+
+An old or expired session without a retained hint uses the provider's
+parameterless logout. Leaving the return URI unset preserves that behavior for
+every session. `postLogout` remains the local fallback only when discovery has
+no end-session endpoint. Logout is a `POST` because it changes state, and the
+answerer enables CSRF protection for it.
 
 ## Testing it
 

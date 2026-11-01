@@ -16,7 +16,6 @@ import { Provider, type AnyPort, type AnyProvider, type PortClassOf } from "@btr
 import {
   authorizationCodeGrant,
   buildAuthorizationUrl,
-  buildEndSessionUrl,
   calculatePKCECodeChallenge,
   randomNonce,
   randomPKCECodeVerifier,
@@ -29,7 +28,9 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { discoverOidc, type OidcUnreachable } from "./oidc-discovery.js";
-import type { OidcTokensService } from "./oidc-token-store.js";
+import { logoutLocation } from "./oidc-logout-location.js";
+import { logoutRedirectUri } from "./oidc-logout-uri.js";
+import type { OidcLogoutContext, OidcTokensService } from "./oidc-token-store.js";
 import { injectedDeps, injectedServices } from "./options.js";
 import type { Injected, PrefixOf } from "./options.js";
 import { forLocation, returnTo } from "./redirect.js";
@@ -48,6 +49,7 @@ export type OidcPins = {
   readonly clientId?: string | undefined;
   readonly clientSecret?: string | undefined;
   readonly redirectUri?: string | undefined;
+  readonly postLogoutRedirectUri?: string | undefined;
 };
 
 /**
@@ -68,6 +70,8 @@ export type OidcAnswerer<Pre extends string = string, O = OidcPins, Needs = neve
       | MaybePinned<O, "clientId", `${Pre}_CLIENT_ID`>
       | MaybePinned<O, "clientSecret", `${Pre}_CLIENT_SECRET`>
       | MaybePinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>
+      | Unpinned<O, "postLogoutRedirectUri", `${Pre}_POST_LOGOUT_REDIRECT_URI`>
+      | MaybePinned<O, "postLogoutRedirectUri", `${Pre}_POST_LOGOUT_REDIRECT_URI`>
     >
   | SessionCodec
   | Observers
@@ -110,8 +114,15 @@ export type OidcOptions<
    */
   readonly redirectUri?: string | undefined;
   /**
-   * The prefix of the four variables this login reads: `<prefix>_ISSUER`,
+   * Pins `<prefix>_POST_LOGOUT_REDIRECT_URI`, an absolute HTTP(S) URI registered
+   * with the provider. Requires `tokens`; its server-only ID token is retrieved
+   * while revoking credentials. Without a retained hint, logout stays parameterless.
+   */
+  readonly postLogoutRedirectUri?: string | undefined;
+  /**
+   * The prefix of the variables this login reads: `<prefix>_ISSUER`,
    * `<prefix>_CLIENT_ID`, `<prefix>_CLIENT_SECRET` and `<prefix>_REDIRECT_URI`.
+   * The optional return URI uses `<prefix>_POST_LOGOUT_REDIRECT_URI`.
    * Default `HTTP_OIDC`. A second login names its own — `HTTP_OIDC_STAFF` — the
    * way a second `jwtAuthenticator` does.
    */
@@ -176,6 +187,7 @@ type Bound<P> = {
   readonly redirectUri: string;
   readonly scope: string;
   readonly postLogout: string;
+  readonly postLogoutRedirectUri?: string;
   readonly principal: (claims: IDToken) => P | undefined;
   readonly observers: readonly ((operation: Operation) => Settle)[];
 };
@@ -385,23 +397,21 @@ const logout = async <P>(
   bound: Bound<P>,
 ): Promise<void> => {
   observed(bound.observers, "logout", response);
+  let context: OidcLogoutContext | undefined;
   if (bound.tokens !== undefined) {
-    const invalidated = await bound.tokens.invalidate(
-      cookieValue(request.headers.cookie, SESSION_COOKIE),
-    );
+    const cookie = cookieValue(request.headers.cookie, SESSION_COOKIE);
+    const invalidated = await (bound.postLogoutRedirectUri === undefined
+      ? bound.tokens.invalidate(cookie).map(() => undefined)
+      : bound.tokens.logout(cookie));
     if (!invalidated.isOk()) {
       invalidated.getOrUndefined();
       send(response, 503, { "set-cookie": clearCookie(SESSION_COOKIE) });
       return;
     }
+    context = invalidated.value;
   }
-  const advertised = bound.config.serverMetadata().end_session_endpoint;
   send(response, 303, {
-    // Parameterless: no `id_token_hint`, because the cookie holds a principal
-    // and no token, and no `post_logout_redirect_uri`, which a provider is
-    // entitled to refuse without one.
-    location:
-      advertised === undefined ? bound.postLogout : buildEndSessionUrl(bound.config, {}).href,
+    location: logoutLocation(bound.config, bound.postLogout, bound.postLogoutRedirectUri, context),
     "set-cookie": clearCookie(SESSION_COOKIE),
   });
 };
@@ -443,7 +453,8 @@ const handlerFor =
  *   transient in the same answer.
  * - `POST <prefix>/logout` clears the session and sends the browser to the
  *   provider's `end_session_endpoint`, or to `postLogout` when it advertises
- *   none.
+ *   none. A configured `postLogoutRedirectUri` adds the registered return and
+ *   the bound server-side ID-token hint while invalidating credentials atomically.
  *
  * Each of the three routes is an OPERATION reported to {@link Observers}, the
  * way a cache read is: a refusal settles `error` carrying its own `reason`,
@@ -494,6 +505,10 @@ export const oidc =
         Config.string(`${variables}_CLIENT_SECRET`),
       ),
       redirectUri: Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`)),
+      postLogoutRedirectUri: Config.pinned(
+        options.postLogoutRedirectUri,
+        logoutRedirectUri(`${variables}_POST_LOGOUT_REDIRECT_URI`),
+      ),
     });
 
     // Cast for the needs alone: over a generic prefix the schema's own needs type
@@ -517,6 +532,18 @@ export const oidc =
           "HttpOidc",
           schema,
         )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
+          if (bound.postLogoutRedirectUri !== undefined && tokens === undefined)
+            return ErrAsync(
+              new ConfigInvalid({
+                port: "HttpOidc",
+                issues: [
+                  {
+                    message: "a post-logout return URI requires a server-side token manager",
+                    path: [`${variables}_POST_LOGOUT_REDIRECT_URI`],
+                  },
+                ],
+              }),
+            );
           if (
             tokens !== undefined &&
             (tokens.issuer !== bound.issuer || tokens.clientId !== bound.clientId)
@@ -555,6 +582,9 @@ export const oidc =
                   redirectUri: bound.redirectUri,
                   scope: options.scope ?? DEFAULT_SCOPE,
                   postLogout: options.postLogout ?? DEFAULT_POST_LOGOUT,
+                  ...(bound.postLogoutRedirectUri === undefined
+                    ? {}
+                    : { postLogoutRedirectUri: bound.postLogoutRedirectUri }),
                   principal: (claims) =>
                     options.principal(claims, injectedServices(services) as Injected<D>),
                   observers,

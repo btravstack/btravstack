@@ -23,10 +23,17 @@ The HTTP runtime is composed by `HttpModule` (`@btravstack/orpc-server`) or
 `GraphqlModule` (`@btravstack/graphql-server`); its `HttpHandler` members route
 by longest matching prefix. `defineAuth()` names shared schemes without choosing a
 protocol. JWT, session and OIDC helpers remain on `/jwt`, `/session` and
-`/oidc`. Opt-in `/oidc-tokens` retains delegated access and refresh tokens in
+`/oidc`. Opt-in `/oidc-tokens` retains delegated access, refresh and ID tokens in
 application-supplied shared storage, with refresh and logout serialized across
 replicas. Pass its manager port to both the login and session authenticator;
-credentials stay server-side. `protectedResource()` publishes Protected Resource Metadata (RFC 9728)
+credentials stay out of the principal and session cookie. Set
+`oidc()`'s `postLogoutRedirectUri` or `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` to a
+provider-registered absolute return URI to enable RP-initiated logout. The login
+uses the retained ID token only as the provider's logout hint, after atomically
+deleting the credentials. Without that setting, logout keeps its existing
+parameterless behavior. See [server-side OIDC tokens](https://btravstack.github.io/btravstack/reference/http-server#server-side-oidc-tokens).
+
+`protectedResource()` publishes Protected Resource Metadata (RFC 9728)
 for one resource, `protectedResourcePerHost()` for one per served host. See [the HTTP reference](https://btravstack.github.io/btravstack/reference/http-server)
 for request units, security, configuration and shutdown behavior.
 

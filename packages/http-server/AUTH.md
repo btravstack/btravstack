@@ -416,7 +416,7 @@ The two rules this half exists to state, before the detail:
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
-- **`oidc()({ principal, issuer?, clientId?, clientSecret?, redirectUri?, variablePrefix?, prefix?, scope?, postLogout?, allowInsecureIssuer? })`
+- **`oidc()({ principal, issuer?, clientId?, clientSecret?, redirectUri?, postLogoutRedirectUri?, variablePrefix?, prefix?, scope?, tokens?, postLogout?, allowInsecureIssuer? })`
   and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
   **the one thing in this package on the ISSUING side of the line above, and
   the exception that proves it.** It mints no credential: it walks a browser
@@ -559,13 +559,18 @@ The two rules this half exists to state, before the detail:
   default computed from the graph has to see every cookie surface in it, and
   this was the one it could not.
 
-  **Logout is parameterless and is a `POST`.** No `id_token_hint`, because the
-  cookie carries a principal and no token — and therefore no
-  `post_logout_redirect_uri`, which a provider is entitled to refuse without a
-  hint. `POST` because it is a state change, which also means the CSRF check a
-  composed session scheme turns on covers it, exactly as it covers any other
-  cookie-bearing state change. Every redirect it writes is a `303`, `htmx()`'s
-  own ruling.
+  **Logout is a `POST`, parameterless unless a registered return is configured.**
+  `postLogoutRedirectUri` pins optional `<variablePrefix>_POST_LOGOUT_REDIRECT_URI`.
+  It requires `tokens` and an absolute HTTP(S) URI without credentials or a
+  fragment; invalid configuration fails boot. With a retained ID token, logout
+  atomically deletes the credentials and obtains their issuer/client-bound hint,
+  then sends `id_token_hint` and `post_logout_redirect_uri` to the discovered
+  end-session endpoint. The cookie still carries no token. Neither destination
+  comes from request parameters or `Host`, and access/refresh tokens never enter
+  the redirect. Without the setting or an available hint, provider logout keeps
+  its parameterless behavior. An issuer without an end-session endpoint still
+  uses `postLogout`, default `/`. `POST` makes the state change subject to the
+  CSRF protection the answerer itself enables. Every redirect is a `303`.
 
 - **`protectedResource({ resource?, authorizationServers?, scopes?, allowInsecure? })`**
   (`protected-resource.ts`, on the main entry point — no peer) — discovery for a
@@ -952,6 +957,16 @@ forgotten `tokens` option fail closed instead of bypassing logout. Refresh
 rotation and invalidation share one store transaction; neither extends the
 absolute session lifetime. Local deletion cannot recall an access token already
 handed to an in-flight call. The provider-wide revocation protocol is not used.
+
+The store also retains the optional ID token. A validated refresh replaces it
+only for the same subject; an omitted ID token preserves the previous hint.
+`logout(cookie)` returns `OidcLogoutContext` (`{ idToken }`) only after the same
+transaction deletes the matching live record. Missing, expired, stateless and
+legacy sessions without a hint return `undefined`; a foreign issuer/client
+reveals no hint and cannot delete another login's record. `invalidate(cookie)`
+keeps its void result. Storage failure clears the cookie and answers `503`
+without a redirect. The hint leaves the server only in the configured
+provider logout redirect, never in principal data, cookies or observations.
 
 The framework-neutral factory accepts an already-discovered client, the codec
 and store; it owns the same lifecycle without a Node listener. Its caller must

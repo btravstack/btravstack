@@ -569,19 +569,21 @@ export const BrowserApi = HttpModule("BrowserApi")({
 });
 ```
 
-| Option                | Required | Default                             | What it is                                                                                       |
-| --------------------- | -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `principal`           | **yes**  | —                                   | `(claims, services)` — what the ID token's claims make the caller; `undefined` refuses the login |
-| `inject`              | no       | none                                | the ports `principal` reads, as `jwtAuthenticator`'s `inject`                                    |
-| `issuer`              | no       | read from `HTTP_OIDC_ISSUER`        | the provider, as its discovery document names itself                                             |
-| `clientId`            | no       | read from `HTTP_OIDC_CLIENT_ID`     | this deployment's client                                                                         |
-| `clientSecret`        | no       | read from `HTTP_OIDC_CLIENT_SECRET` | its secret — this is a confidential client                                                       |
-| `redirectUri`         | no       | read from `HTTP_OIDC_REDIRECT_URI`  | the URI **registered** with the provider                                                         |
-| `prefix`              | no       | `/auth`                             | where the three routes are mounted                                                               |
-| `scope`               | no       | `openid`                            | what the authorization request asks for                                                          |
-| `postLogout`          | no       | `/`                                 | where a logout lands when the provider advertises no end-session endpoint                        |
-| `allowInsecureIssuer` | no       | `false`                             | talk to an `http:` issuer that is not on a loopback host                                         |
-| `variablePrefix`      | no       | `HTTP_OIDC`                         | the prefix of the four variables, so a second login reads its own                                |
+| Option                  | Required | Default                                                 | What it is                                                                                            |
+| ----------------------- | -------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `principal`             | **yes**  | —                                                       | `(claims, services)` — what the ID token's claims make the caller; `undefined` refuses the login      |
+| `inject`                | no       | none                                                    | the ports `principal` reads, as `jwtAuthenticator`'s `inject`                                         |
+| `issuer`                | no       | read from `HTTP_OIDC_ISSUER`                            | the provider, as its discovery document names itself                                                  |
+| `clientId`              | no       | read from `HTTP_OIDC_CLIENT_ID`                         | this deployment's client                                                                              |
+| `clientSecret`          | no       | read from `HTTP_OIDC_CLIENT_SECRET`                     | its secret — this is a confidential client                                                            |
+| `redirectUri`           | no       | read from `HTTP_OIDC_REDIRECT_URI`                      | the URI **registered** with the provider                                                              |
+| `postLogoutRedirectUri` | no       | read from optional `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` | provider-registered absolute HTTP(S) return URI, without credentials or a fragment; requires `tokens` |
+| `tokens`                | no       | none                                                    | server-side token manager port, also passed to the session authenticator                              |
+| `prefix`                | no       | `/auth`                                                 | where the three routes are mounted                                                                    |
+| `scope`                 | no       | `openid`                                                | what the authorization request asks for                                                               |
+| `postLogout`            | no       | `/`                                                     | where a logout lands when the provider advertises no end-session endpoint                             |
+| `allowInsecureIssuer`   | no       | `false`                                                 | talk to an `http:` issuer that is not on a loopback host                                              |
+| `variablePrefix`        | no       | `HTTP_OIDC`                                             | the prefix of the login's environment variables, so a second login reads its own                      |
 
 **`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
 `state` and a `nonce`, seals them and `return` into the five-minute
@@ -600,8 +602,10 @@ anything at all.
 
 **`POST <prefix>/logout`** clears the session cookie and `303`s to the
 provider's `end_session_endpoint`, or to `postLogout` when it advertises none.
-It is a `POST` because it is a state change, and the CSRF check a composed
-session scheme turns on applies to it like any other cookie-bearing one.
+With `tokens`, it deletes the retained credentials before redirecting. A store
+failure clears the cookie and answers `503` without a redirect. It is a `POST`
+because it is a state change; the answerer enables the same CSRF protection as
+other cookie-bearing operations.
 
 Anything else under the mount is a `404` from this answerer: it owns every path
 below its prefix.
@@ -653,10 +657,24 @@ configuration also has the ID token's **signature** check enabled explicitly:
 OIDC Core lets a client trust a token that arrived over TLS from the token
 endpoint, which is not a trust this package extends.
 
-**Logout sends no `id_token_hint`.** The cookie holds a principal and no token,
-so there is none to send — which also means no `post_logout_redirect_uri`,
-since a provider is entitled to refuse that parameter without a hint (Ory Hydra
-does). Configure the provider's own post-logout URI instead.
+**A registered logout return is opt-in.** Set `postLogoutRedirectUri`, or
+`<variablePrefix>_POST_LOGOUT_REDIRECT_URI`, to the absolute HTTP(S) URI registered
+with the provider. Credentials and fragments are refused. Configuring a return
+without a `tokens` manager fails boot with `ConfigInvalid`.
+
+When that setting and a retained ID token are present, the answerer obtains the
+issuer/client-bound hint while deleting the credentials, then sends
+`id_token_hint` and `post_logout_redirect_uri` to the discovered end-session
+endpoint. The cookie and principal remain token-free. Access/refresh tokens
+never enter redirects; neither `Host` nor request parameters choose a logout
+destination.
+
+Without the setting, provider logout stays parameterless even when the token
+manager retained an ID token. A missing, invalid, expired, stateless or replayed
+session, and an older record without a hint, also use parameterless provider
+logout: no `id_token_hint` or `post_logout_redirect_uri` is sent. The provider
+then determines where the browser lands. When discovery advertises no end-session
+endpoint, the existing relative `postLogout` fallback still applies.
 
 **It injects `SessionCodec` rather than holding keys**, so the codec that seals
 a session here is by construction the one `sessionAuthenticator` reads it back
@@ -817,9 +835,10 @@ them.
 
 ## Server-side OIDC tokens
 
-`@btravstack/http-server/oidc-tokens` adds opt-in delegated API calls to the
-existing login. Compose `oidcTokens()`, provide `OidcTokenStore`, and pass the
-manager's port as `tokens` to both `oidc()` and `sessionAuthenticator()`.
+`@btravstack/http-server/oidc-tokens` adds opt-in delegated API calls and retained
+logout hints to the existing login. Compose `oidcTokens()`, provide
+`OidcTokenStore`, and pass the manager's port as `tokens` to both `oidc()` and
+`sessionAuthenticator()`.
 The default port is `OidcTokens`; `oidcTokens({ port: StaffTokens })` binds a
 second login to an application-declared port of `OidcTokensService`.
 
@@ -842,7 +861,11 @@ const browserAuth = defineAuth({
     session: sessionAuthenticator<Identity>()({ tokens: tokens.port }),
   },
 });
-const login = oidc<Identity>()({ principal, tokens: tokens.port });
+const login = oidc<Identity>()({
+  principal,
+  tokens: tokens.port,
+  postLogoutRedirectUri: "https://app.example/signed-out",
+});
 const BrowserSessions = Module("BrowserSessions")({
   provides: [
     sessionCodec(),
@@ -857,6 +880,9 @@ const BrowserSessions = Module("BrowserSessions")({
 An application root imports this infrastructure and composes its answerer
 using `browserAuth`. As with ordinary login, it supplies the OIDC variables,
 `HTTP_SESSION_KEYS`, and the HTTP runtime's observer contributions.
+Register the sample's `https://app.example/signed-out` URI with the provider,
+or omit the pin and set `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` per deployment.
+Leave both unset to retain parameterless logout.
 `oidcTokens` reads `<variablePrefix>_ISSUER`, `_CLIENT_ID` and `_CLIENT_SECRET`,
 with `HTTP_OIDC` as the default prefix. Options pin those values. Discovery and
 the token manager are built once per provider; the login answerer separately
@@ -881,21 +907,36 @@ Protect credentials at rest and expire rows at `sessionExpiresAt`. Expired or
 missing records never authenticate; storage failures use
 `OidcTokenStoreUnavailable`, containing no driver details or credentials.
 
+`StoredOidcTokens.idToken` is optional so existing records remain readable.
+Persist it with the access/refresh credentials when supplied; adapters that
+select stored fields explicitly must include it to support a hinted logout.
+
 ### Request capabilities and lifetime
 
 `OidcTokensService.session(cookie)` validates a raw `__Host-session` cookie and
 checks server-side revocation without refreshing. `accessToken(cookie)` resolves
-the bearer for a downstream call; `invalidate(cookie)` deletes retained
-credentials before returning success. Neither accepts a reference from a URL or
-form. The service validates the cookie's signature, lifetime, issuer and client
+the bearer for a downstream call. `invalidate(cookie)` deletes retained
+credentials before returning success and keeps its `AsyncResult<void,
+OidcTokenStoreUnavailable>` result. `logout(cookie)` deletes in the same store
+transaction that obtains its hint, returning `AsyncResult<OidcLogoutContext |
+undefined, OidcTokenStoreUnavailable>`. `OidcLogoutContext` contains only
+`{ idToken: string }`; absent or unusable sessions return `undefined`.
+These methods accept a raw cookie, never a reference from a URL or form.
+The service validates the cookie's signature, lifetime, issuer and client
 before using its opaque reference. A session from a different login is refused.
+Logout also checks the stored record's issuer/client before returning its hint
+or deleting it. Custom implementations of `OidcTokensService` must provide the
+new atomic `logout` operation; existing `invalidate` callers need no change.
 A stateless authenticator refuses a cookie carrying a server-side reference,
 so omitting `tokens` cannot bypass revocation.
 
 The encrypted cookie retains the application principal and a random 256-bit
 `tokenRef`; it contains no access token, refresh token or ID token. The callback
-stores only the access and refresh credentials, their absolute lifetimes and
-the verified subject. A successful re-login invalidates the previous session.
+stores access and refresh credentials, an optional ID token, absolute lifetimes,
+issuer/client binding and the verified subject. `OidcTokenResponse.id_token` is
+optional; an older response or record without one still supports API calls and
+uses parameterless provider logout. A successful re-login invalidates the
+previous session.
 Logout clears the cookie and deletes the record. A deletion failure answers
 `503` instead of reporting a successful logout; a shared-store outage cannot
 silently fall back to trusting the cookie alone.
@@ -903,7 +944,9 @@ silently fall back to trusting the cookie alone.
 Access tokens are refreshed before expiry, with skew capped at half their
 lifetime. Refresh rotation is committed under the shared lock, and an omitted
 refresh token keeps the previous one. A refused refresh or an invalid replacement
-invalidates the retained session. A returned ID token cannot change its subject.
+invalidates the retained session. A returned ID token replaces the stored hint
+only after signature validation and the same-subject check; an omitted ID token
+keeps the previous hint.
 Refresh never extends the absolute browser-session lifetime. An access token
 already handed to an in-flight caller cannot be recalled by local deletion;
 provider-wide token revocation is not performed.
@@ -912,12 +955,15 @@ provider-wide token revocation is not performed.
 the same capability without an HTTP listener. A framework adapter supplies an
 already-discovered `openid-client` configuration with signature validation and
 its registered issuer/client binding, then passes the raw session cookie per
-request. Keep returned tokens on the server: never return them from a page loader,
-serialize them with principal data, or put them in public configuration.
+request. Keep access/refresh tokens on the server: never return them from a page
+loader, serialize them with principal data, or put them in public configuration.
+Use the logout context's ID token only as the bound provider's `id_token_hint`
+in the dedicated logout redirect; do not expose it in ordinary page data,
+cookies or logs.
 
 Operations use `component: "oidc-tokens"` and bounded names `create`, `session`,
-`access`, `refresh`, `invalidate`. No reference, subject or credential is an
-observation attribute. Failures carry only their bounded `Err`/`Defect` reason, without the
+`access`, `refresh`, `invalidate`, `logout`. No reference, subject or credential
+is an observation attribute. Failures carry only their bounded `Err`/`Defect` reason, without the
 provider's raw body, message or cause. The original result still reaches the caller.
 
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`

@@ -224,6 +224,13 @@ its callers. This package's own specs use that fixture over the server
 `internal/test-infra` shares; its decisions are in
 `packages/temporal-testing/AGENTS.md`.
 
+The overlapping-contract dispatch fixture shares one file-scoped workflow bundle
+between its two workers. Compiling the same source concurrently took 47 and 53
+seconds under CI load, exhausting the dispatch test's 60-second budget before
+both workers could poll. The spec initializes that fixture in `beforeAll` under
+the existing 180-second hook budget; dispatch keeps its existing timeout, and
+each worker retains its own contract, queue and teardown through `bootFixture`.
+
 ## `ensureSchedule` — from `@btravstack/temporal-worker/schedule`
 
 `ensureSchedule(schedules, workflowName, options)` →

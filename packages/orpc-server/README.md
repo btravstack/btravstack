@@ -373,19 +373,21 @@ authenticates the principal that codec seals: an answerer serving
 authorization-code flow with PKCE. It needs `openid-client`, an optional peer
 behind that subpath.
 
-| Option                | What it is                                                                                                      |
-| --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `principal`           | **required** — `(claims, services)`; what the ID token's claims make the caller; `undefined` refuses the login  |
-| `inject`              | the ports `principal` reads, resolved as the graph is built; each joins the answerer's needs                    |
-| `issuer`              | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                  |
-| `clientId`            | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                           |
-| `clientSecret`        | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                |
-| `redirectUri`         | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against |
-| `prefix`              | where the three routes are mounted (default `/auth`)                                                            |
-| `scope`               | what the authorization request asks for (default `openid`)                                                      |
-| `postLogout`          | where a logout lands when the provider advertises no end-session endpoint (default `/`)                         |
-| `allowInsecureIssuer` | talk to an `http:` issuer that is not on a loopback host (default `false`, and a boot failure without it)       |
-| `variablePrefix`      | the prefix of the four variables (default `HTTP_OIDC`), so a second login reads its own                         |
+| Option                  | What it is                                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `principal`             | **required** — `(claims, services)`; what the ID token's claims make the caller; `undefined` refuses the login                                         |
+| `inject`                | the ports `principal` reads, resolved as the graph is built; each joins the answerer's needs                                                           |
+| `issuer`                | pins `HTTP_OIDC_ISSUER` — the provider, as its discovery document names itself                                                                         |
+| `clientId`              | pins `HTTP_OIDC_CLIENT_ID` — this deployment's client                                                                                                  |
+| `clientSecret`          | pins `HTTP_OIDC_CLIENT_SECRET` — its secret; the flow is a confidential client's                                                                       |
+| `redirectUri`           | pins `HTTP_OIDC_REDIRECT_URI` — the URI **registered** with the provider, and what the grant is checked against                                        |
+| `postLogoutRedirectUri` | pins optional `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` — provider-registered absolute HTTP(S) return, without credentials or a fragment; requires `tokens` |
+| `tokens`                | server-side token manager port, also passed to the session authenticator                                                                               |
+| `prefix`                | where the three routes are mounted (default `/auth`)                                                                                                   |
+| `scope`                 | what the authorization request asks for (default `openid`)                                                                                             |
+| `postLogout`            | where a logout lands when the provider advertises no end-session endpoint (default `/`)                                                                |
+| `allowInsecureIssuer`   | talk to an `http:` issuer that is not on a loopback host (default `false`, and a boot failure without it)                                              |
+| `variablePrefix`        | the prefix of the login's environment variables (default `HTTP_OIDC`), so a second login reads its own                                                 |
 
 An `http:` issuer is refused at boot unless its host is loopback —
 `localhost`, `127.0.0.1`, `[::1]` — or `allowInsecureIssuer: true` is pinned at

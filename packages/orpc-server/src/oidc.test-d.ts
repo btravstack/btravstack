@@ -42,7 +42,7 @@ expectTypeOf(oidc()({ principal: identityOf })).toEqualTypeOf<
           | "HTTP_OIDC_CLIENT_ID"
           | "HTTP_OIDC_CLIENT_SECRET"
           | "HTTP_OIDC_REDIRECT_URI",
-          never
+          "HTTP_OIDC_POST_LOGOUT_REDIRECT_URI"
         >
       | SessionCodec
       | Observers
@@ -71,7 +71,7 @@ expectTypeOf(
     Provider<
       HttpHandler,
       ConfigInvalid | OidcUnreachable,
-      EnvReading<never, never> | SessionCodec | Observers
+      EnvReading<never, "HTTP_OIDC_POST_LOGOUT_REDIRECT_URI"> | SessionCodec | Observers
     > & {
       readonly port: typeof HttpHandler;
     },
@@ -179,7 +179,7 @@ expectTypeOf(gated).toEqualTypeOf<
         | "HTTP_OIDC_CLIENT_ID"
         | "HTTP_OIDC_CLIENT_SECRET"
         | "HTTP_OIDC_REDIRECT_URI",
-        never
+        "HTTP_OIDC_POST_LOGOUT_REDIRECT_URI"
       >
     | SessionCodec
     | Observers

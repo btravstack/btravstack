@@ -1,12 +1,15 @@
-import { Env } from "@btravstack/config";
+import { Env, type EnvironmentFor, type EnvReading } from "@btravstack/config";
 import { noObserverMember } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { OkAsync } from "unthrown";
+import { OkAsync, type AsyncResult } from "unthrown";
+import { expectTypeOf } from "vitest";
 
 import {
   oidcTokens,
   OidcTokens,
   OidcTokenStore,
+  type OidcLogoutContext,
+  type OidcTokenStoreUnavailable,
   type OidcTokensService,
   type OidcTokenStoreService,
   type OidcTokensOptions,
@@ -54,3 +57,41 @@ declare const options: OidcTokensOptions;
 const dynamic = oidcTokens(options);
 // @ts-expect-error an optional custom port cannot promise the default port identity
 const assumedDefault: typeof OidcTokens = dynamic.port;
+
+declare const lifecycle: OidcTokensService;
+expectTypeOf(lifecycle.logout(undefined)).toEqualTypeOf<
+  AsyncResult<OidcLogoutContext | undefined, OidcTokenStoreUnavailable>
+>();
+expectTypeOf(lifecycle.invalidate(undefined)).toEqualTypeOf<
+  AsyncResult<void, OidcTokenStoreUnavailable>
+>();
+
+const [login] = oidc()({
+  ...pins,
+  redirectUri: "https://app.example/auth/callback",
+  principal: (claims) => claims,
+  tokens: StaffTokens,
+});
+const [customLogin] = oidc()({
+  ...pins,
+  redirectUri: "https://app.example/auth/callback",
+  principal: (claims) => claims,
+  tokens: StaffTokens,
+  variablePrefix: "STAFF_OIDC",
+});
+const [pinnedLogin] = oidc()({
+  ...pins,
+  redirectUri: "https://app.example/auth/callback",
+  postLogoutRedirectUri: "https://app.example/signed-out",
+  principal: (claims) => claims,
+  tokens: StaffTokens,
+});
+expectTypeOf<EnvironmentFor<NeedsOf<typeof login>>>().toEqualTypeOf<
+  EnvironmentFor<EnvReading<never, "HTTP_OIDC_POST_LOGOUT_REDIRECT_URI">>
+>();
+expectTypeOf<EnvironmentFor<NeedsOf<typeof customLogin>>>().toEqualTypeOf<
+  EnvironmentFor<EnvReading<never, "STAFF_OIDC_POST_LOGOUT_REDIRECT_URI">>
+>();
+expectTypeOf<EnvironmentFor<NeedsOf<typeof pinnedLogin>>>().toEqualTypeOf<Record<never, never>>();
+
+type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;

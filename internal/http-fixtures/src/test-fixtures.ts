@@ -76,7 +76,7 @@ import {
   type HttpInfo,
 } from "@btravstack/http-server/internal";
 import { jwtAuthenticator } from "@btravstack/http-server/jwt";
-import { oidc, type OidcUnreachable } from "@btravstack/http-server/oidc";
+import { oidc, type OidcOptions, type OidcUnreachable } from "@btravstack/http-server/oidc";
 import {
   oidcTokens,
   OidcTokens,
@@ -714,6 +714,7 @@ const bffAppOf = (
   member: (operation: Operation) => Settle,
   allowInsecureIssuer = false,
   tokenStore?: OidcTokenStoreService,
+  options: Pick<OidcOptions<OidcIdentity>, "postLogoutRedirectUri" | "postLogout"> = {},
 ) =>
   HttpModule("OidcBff")({
     fragments: tokenStore === undefined ? bffFragments : tokenBffFragments,
@@ -729,6 +730,7 @@ const bffAppOf = (
         principal,
         scope: ORY_SCOPE,
         allowInsecureIssuer,
+        ...options,
         ...(tokenStore === undefined ? {} : { tokens: OidcTokens }),
       }),
       Provider.member(Observers)({ inject: {}, value: member }),
@@ -2547,6 +2549,7 @@ export type HttpFixtures = {
   readonly bff: (
     principal?: (claims: IDToken) => OidcIdentity | undefined,
     tokenStore?: OidcTokenStoreService,
+    options?: Pick<OidcOptions<OidcIdentity>, "postLogoutRedirectUri" | "postLogout">,
   ) => Promise<Bff>;
   /**
    * The same provider, but a root composing `oidc()` and `sessionCodec()` with
@@ -3661,9 +3664,11 @@ export const it = test.extend<HttpFixtures>({
   ],
 
   bff: async ({ boot, ory: _ory }, use) => {
-    await use(async (principal = oidcPrincipal, tokenStore) => {
+    await use(async (principal = oidcPrincipal, tokenStore, options) => {
       const observer = recordingObserver();
-      const app = boot(bffAppOf(principal, observer.member, false, tokenStore), { env: oidcEnv });
+      const app = boot(bffAppOf(principal, observer.member, false, tokenStore, options), {
+        env: oidcEnv,
+      });
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return bffOf(`http://127.0.0.1:${info.port}`, observer.taken);
