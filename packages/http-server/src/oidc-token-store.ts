@@ -14,6 +14,7 @@ export type StoredOidcTokens = {
   readonly subject: string;
   readonly accessToken: string;
   readonly refreshToken?: string;
+  readonly idToken?: string;
   readonly accessExpiresAt: number;
   readonly refreshAfter: number;
   readonly sessionExpiresAt: number;
@@ -46,12 +47,18 @@ export type OidcTokenStoreService = {
 /** Server-side OIDC credentials; no in-process production adapter is supplied. */
 export class OidcTokenStore extends Port("HttpOidcTokenStore")<OidcTokenStoreService> {}
 
-/** The token endpoint fields retained by the server; ID tokens are never persisted. */
+/** Token endpoint fields retained only in protected server-side storage. */
 export type OidcTokenResponse = {
   readonly access_token: string;
   readonly token_type: string;
   readonly expires_in?: number;
   readonly refresh_token?: string;
+  readonly id_token?: string;
+};
+
+/** A validated login's provider logout hint; never session principal or cookie data. */
+export type OidcLogoutContext = {
+  readonly idToken: string;
 };
 
 /**
@@ -75,6 +82,10 @@ export type OidcTokensService = {
     cookie: string | undefined,
   ) => AsyncResult<string, Unauthenticated | OidcTokenStoreUnavailable>;
   readonly invalidate: (cookie: string | undefined) => AsyncResult<void, OidcTokenStoreUnavailable>;
+  /** Deletes credentials and returns their bound logout hint in the same store transaction. */
+  readonly logout: (
+    cookie: string | undefined,
+  ) => AsyncResult<OidcLogoutContext | undefined, OidcTokenStoreUnavailable>;
 };
 
 /** The default delegated-login capability; another login may declare its own port of the same type. */

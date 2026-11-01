@@ -25,7 +25,7 @@ import {
   OidcTokenStoreUnavailable,
   type OidcTokensOptions,
 } from "../oidc-tokens.js";
-import { oidc } from "../oidc.js";
+import { oidc, type OidcOptions } from "../oidc.js";
 import { SessionCodec, sessionCodec } from "../session.js";
 
 type TokenFixtures = {
@@ -68,6 +68,12 @@ async function tokenFixture() {
   };
   let status = 200;
   let unavailable = false;
+  let refreshGate:
+    | {
+        entered: ReturnType<typeof deferred>;
+        release: ReturnType<typeof deferred>;
+      }
+    | undefined;
   const signer = await generateKeyPair("ES256");
   const jwk = await exportJWK(signer.publicKey);
   const configuration = new Configuration(
@@ -84,6 +90,9 @@ async function tokenFixture() {
   configuration[customFetch] = async (url, init) => {
     if (String(url).endsWith("/jwks")) return Response.json({ keys: [jwk] });
     calls.push(String(init?.body));
+    const gate = refreshGate;
+    gate?.entered.resolve();
+    if (gate !== undefined) await gate.release.promise;
     return Response.json(response, { status });
   };
   const store: OidcTokenStoreService = {
@@ -115,7 +124,7 @@ async function tokenFixture() {
       return result;
     },
   };
-  const manager = (clientId = "staff") =>
+  const manager = (clientId = "staff", issuer = "https://issuer.example") =>
     createOidcTokens(
       configuration,
       codec,
@@ -126,10 +135,10 @@ async function tokenFixture() {
         },
       ],
       clock,
-      { issuer: "https://issuer.example", clientId },
+      { issuer, clientId },
     );
   const service = manager();
-  const login = (subject = "alice", refresh = true) =>
+  const login = (subject = "alice", refresh = true, idToken?: string) =>
     service
       .create(
         { principal: { userId: subject }, iss: "https://issuer.example", clientId: "staff" },
@@ -139,12 +148,53 @@ async function tokenFixture() {
           token_type: "Bearer",
           expires_in: 60,
           ...(refresh ? { refresh_token: `refresh-${subject}` } : {}),
+          ...(idToken === undefined ? {} : { id_token: idToken }),
         },
       )
       .getOrThrow();
   return {
     codec,
     clock,
+    pauseRefresh: () => {
+      const entered = deferred();
+      const release = deferred();
+      refreshGate = { entered, release };
+      return {
+        entered: entered.promise,
+        release: () => {
+          release.resolve();
+        },
+      };
+    },
+    loginProvider: (
+      options: Pick<
+        OidcOptions<unknown>,
+        "postLogoutRedirectUri" | "variablePrefix" | "postLogout"
+      > = {},
+      withoutTokens = false,
+      environment: Record<string, string | undefined> = {},
+    ) =>
+      Module.scoped(
+        Module("LogoutConfigurationFixture")({
+          provides: [
+            Provider(Env)({ inject: {}, value: environment }),
+            noObserverMember,
+            Provider(SessionCodec)({ inject: {}, value: codec }),
+            Provider(OidcTokens)({ inject: {}, value: service }),
+            ...oidc()({
+              issuer: "https://issuer.example",
+              clientId: "staff",
+              clientSecret: "secret",
+              redirectUri: "https://app.example/auth/callback",
+              ...options,
+              ...(withoutTokens ? {} : { tokens: OidcTokens }),
+              principal: (claims) => claims,
+            }),
+          ],
+          exports: [HttpHandler],
+        }),
+        (ctx) => OkAsync(ctx.get(HttpHandler)),
+      ),
     idToken: async (subject: string, trusted = true) => {
       const key = trusted ? signer.privateKey : (await generateKeyPair("ES256")).privateKey;
       return await new SignJWT({})
@@ -206,4 +256,12 @@ async function tokenFixture() {
       status = code;
     },
   };
+}
+
+function deferred() {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
 }

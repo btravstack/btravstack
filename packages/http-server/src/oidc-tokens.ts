@@ -34,6 +34,7 @@ import { discoverOidc, type OidcUnreachable } from "./oidc-discovery.js";
 import {
   OidcTokenStore,
   OidcTokens,
+  type OidcLogoutContext,
   type OidcTokenStoreUnavailable,
   type OidcTokenResponse,
   type OidcTokensService,
@@ -46,6 +47,7 @@ import { SessionCodec, type SessionCodecService } from "./session.js";
 
 export { OidcTokenStore, OidcTokenStoreUnavailable, OidcTokens } from "./oidc-token-store.js";
 export type {
+  OidcLogoutContext,
   OidcTokenResponse,
   OidcTokensService,
   OidcTokenStoreService,
@@ -169,6 +171,22 @@ export const createOidcTokens = (
           ? { ...session, tokenRef: session.tokenRef }
           : undefined,
       );
+  const revoke = (
+    cookie: string | undefined,
+  ): AsyncResult<OidcLogoutContext | undefined, OidcTokenStoreUnavailable> =>
+    opened(cookie).flatMap((session) =>
+      session === undefined
+        ? OkAsync(undefined)
+        : store.transact(session.tokenRef, (record) =>
+            OkAsync({
+              record: owns(record) ? undefined : record,
+              value:
+                live(record) && record.idToken !== undefined
+                  ? { idToken: record.idToken }
+                  : undefined,
+            }),
+          ),
+    );
   const service: OidcTokensService = {
     ...binding,
     create: (session, subject, tokens) =>
@@ -251,16 +269,8 @@ export const createOidcTokens = (
             );
         }),
       ),
-    invalidate: (cookie) =>
-      operation("invalidate", () =>
-        opened(cookie).flatMap((session) =>
-          session === undefined
-            ? OkAsync()
-            : store.transact(session.tokenRef, (record) =>
-                OkAsync({ record: owns(record) ? undefined : record, value: undefined }),
-              ),
-        ),
-      ),
+    invalidate: (cookie) => operation("invalidate", () => revoke(cookie).discard()),
+    logout: (cookie) => operation("logout", () => revoke(cookie)),
   };
   return service;
 };
@@ -275,6 +285,7 @@ function stored(
   issuedAt: number,
   previous: Pick<StoredOidcTokens, "issuer" | "clientId" | "subject" | "sessionExpiresAt"> & {
     readonly refreshToken?: string;
+    readonly idToken?: string;
   },
 ): StoredOidcTokens | undefined {
   const lifetime = response.expires_in;
@@ -297,6 +308,9 @@ function stored(
     ...((response.refresh_token ?? previous.refreshToken) === undefined
       ? {}
       : { refreshToken: response.refresh_token ?? previous.refreshToken }),
+    ...((response.id_token ?? previous.idToken) === undefined
+      ? {}
+      : { idToken: response.id_token ?? previous.idToken }),
     accessExpiresAt: issuedAt + duration,
     refreshAfter: issuedAt + duration - Math.min(REFRESH_SKEW_MS, duration / 2),
   };
