@@ -29,7 +29,7 @@ import {
 } from "@temporal-contract/contract";
 import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@temporalio/client";
 import type { DataConverter, Duration, Payload, PayloadCodec } from "@temporalio/common";
-import type { NativeConnection, Worker } from "@temporalio/worker";
+import { bundleWorkflowCode, type NativeConnection, type Worker } from "@temporalio/worker";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { inject, test, vi } from "vitest";
 import { z } from "zod";
@@ -860,7 +860,17 @@ const schedulesOf = async (client: Client, contract: typeof echoContract) => {
   };
 };
 
-export const it = test.extend<TemporalFixtures>({
+const bundledTest = test.extend("contractSliceWorkflows", { scope: "file" }, async () => ({
+  workflowBundle: await bundleWorkflowCode(echoWorkflows),
+}));
+
+export function prepareContractSliceWorkflows(): void {
+  bundledTest.beforeAll(({ contractSliceWorkflows }) => {
+    void contractSliceWorkflows;
+  });
+}
+
+export const it = bundledTest.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   stubbed: async ({}, use) => {
     await use(() => {
@@ -1118,13 +1128,13 @@ export const it = test.extend<TemporalFixtures>({
   counting: async ({}, use) => {
     await use(countingUnit());
   },
-  serveContractSlice: async ({ server, client, boot }, use) => {
+  serveContractSlice: async ({ server, client, boot, contractSliceWorkflows }, use) => {
     await use(async (slice) => {
       const app = boot(
         TemporalModule("ContractSlice")({
           contract: slice.contract,
           activities: slice.activities,
-          workflows: echoWorkflows,
+          workflows: contractSliceWorkflows,
           provides: [slice.piece],
         }),
         { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
