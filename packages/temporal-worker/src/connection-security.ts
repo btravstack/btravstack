@@ -7,6 +7,7 @@ import {
   ErrAsync,
   Ok,
   OkAsync,
+  TaggedError,
   fromPromise,
   validateAllAsync,
   type AsyncResult,
@@ -37,9 +38,19 @@ export type TemporalConnectionSecurity = {
   readonly apiKey?: string | undefined;
   /** `TEMPORAL_API_KEY_PATH`: a file holding the API key, read again as it rotates. */
   readonly apiKeyPath?: string | undefined;
-  /** `TEMPORAL_CREDENTIALS_RELOAD_MS` (default `60000`): how often the files above are read again. */
+  /** `TEMPORAL_CREDENTIALS_RELOAD_MS` (default `60000`): how often the files above and a composed credential source are read again. */
   readonly credentialsReloadMs?: number;
 };
+
+/** An application-owned source of renewable bearer credentials; it owns caching and expiry. */
+export type TemporalApiKeySource = {
+  readonly read: () => AsyncResult<string, TemporalApiKeyUnavailable>;
+};
+
+/** A renewable credential could not be obtained; its value is never diagnostic data. */
+export class TemporalApiKeyUnavailable extends TaggedError("TemporalApiKeyUnavailable") {
+  override message = "the Temporal API key is unavailable";
+}
 
 const VARIABLES = {
   tls: "TEMPORAL_TLS",
@@ -89,11 +100,21 @@ export type Credentials = {
  * combination it cannot connect with, and every file it cannot read, as one
  * `ConfigInvalid` against `port`.
  */
-export const credentialsOf = (
+export function credentialsOf(
   port: string,
   security: TemporalConnectionSecurity,
-): AsyncResult<Credentials, ConfigInvalid> => {
-  const issues = refusals(security);
+): AsyncResult<Credentials, ConfigInvalid>;
+export function credentialsOf(
+  port: string,
+  security: TemporalConnectionSecurity,
+  source: TemporalApiKeySource | undefined,
+): AsyncResult<Credentials, ConfigInvalid | TemporalApiKeyUnavailable>;
+export function credentialsOf(
+  port: string,
+  security: TemporalConnectionSecurity,
+  source?: TemporalApiKeySource,
+): AsyncResult<Credentials, ConfigInvalid | TemporalApiKeyUnavailable> {
+  const issues = refusals(security, source);
   if (issues.length > 0) return ErrAsync(new ConfigInvalid({ port, issues }));
   return validateAllAsync(
     [
@@ -103,17 +124,30 @@ export const credentialsOf = (
       fileOf("apiKeyPath", security),
     ],
     (failed) => new ConfigInvalid({ port, issues: failed }),
-  ).map(([ca, crt, key, apiKeyFile]) => ({
-    tls: tlsOn(security)
-      ? {
-          ...(ca === undefined ? {} : { serverRootCACertificate: ca }),
-          ...(security.serverName === undefined ? {} : { serverNameOverride: security.serverName }),
-          ...(crt === undefined || key === undefined ? {} : { clientCertPair: { crt, key } }),
-        }
-      : undefined,
-    apiKey: security.apiKey ?? apiKeyFile,
-  }));
-};
+  ).flatMap(([ca, crt, key, apiKeyFile]) => {
+    const credentials: Credentials = {
+      tls: tlsOn(security, source)
+        ? {
+            ...(ca === undefined ? {} : { serverRootCACertificate: ca }),
+            ...(security.serverName === undefined
+              ? {}
+              : { serverNameOverride: security.serverName }),
+            ...(crt === undefined || key === undefined ? {} : { clientCertPair: { crt, key } }),
+          }
+        : undefined,
+      apiKey: security.apiKey ?? apiKeyFile,
+    };
+    return source === undefined
+      ? OkAsync(credentials)
+      : source
+          .read()
+          .flatMap((apiKey) =>
+            apiKey.trim() === ""
+              ? Err(new TemporalApiKeyUnavailable())
+              : Ok({ ...credentials, apiKey }),
+          );
+  });
+}
 
 /** The connection options `credentials` adds to an address: nothing, for a plaintext connection with no key. */
 export const connectionOptions = (
@@ -123,8 +157,12 @@ export const connectionOptions = (
   ...(credentials.apiKey === undefined ? {} : { apiKey: credentials.apiKey }),
 });
 
-/** Whether `security` names a file that can change while the connection is open. */
-export const rotates = (security: TemporalConnectionSecurity): boolean =>
+/** Whether files or an application credential source can change while the connection is open. */
+export const rotates = (
+  security: TemporalConnectionSecurity,
+  source?: TemporalApiKeySource,
+): boolean =>
+  source !== undefined ||
   [
     security.serverCaCertPath,
     security.clientCertPath,
@@ -146,7 +184,9 @@ const changeOf = (previous: Credentials, next: Credentials): CredentialsChange =
  * Reads `security`'s files every `credentialsReloadMs` and hands `apply` each
  * reading that changed; a reading that failed, or that `apply` refused, leaves
  * the previous one current and is tried again on the next tick. A file that
- * cannot be read is also handed to `unreadable`. Answers the stop, which
+ * cannot be read is also handed to `unreadable`. With an application source,
+ * `unavailable` handles a failed read or apply; recovery rebuilds the connection.
+ * Answers the stop, which
  * settles once a reload in flight has: a reload never applies after it.
  */
 export const reloading = <E>(
@@ -154,26 +194,41 @@ export const reloading = <E>(
   security: TemporalConnectionSecurity,
   initial: Credentials,
   apply: (next: Credentials, change: Exclude<CredentialsChange, undefined>) => AsyncResult<void, E>,
-  unreadable?: (failure: FailureView<ConfigInvalid, Credentials>) => void,
+  unreadable?: (
+    failure: FailureView<ConfigInvalid | TemporalApiKeyUnavailable, Credentials>,
+  ) => void,
+  source?: TemporalApiKeySource,
+  unavailable?: () => AsyncResult<void, never>,
 ): (() => PromiseLike<unknown>) => {
   let current = initial;
   let stopped = false;
+  let retry = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight: PromiseLike<unknown> = OkAsync();
   const schedule = (): void => {
     timer = setTimeout(() => {
-      const read = credentialsOf(port, security);
-      inFlight = (unreadable === undefined ? read : read.tapFailure(unreadable))
-        .flatMap((next) => {
-          const change = changeOf(current, next);
+      const read = credentialsOf(port, security, source);
+      const applying = (unreadable === undefined ? read : read.tapFailure(unreadable)).flatMap(
+        (next) => {
+          const change = retry ? "tls" : changeOf(current, next);
           return change === undefined || stopped
             ? OkAsync()
             : apply(next, change).map(() => {
                 current = next;
+                retry = false;
               });
-        })
-        .tap(again)
-        .tapFailure(again);
+        },
+      );
+      inFlight = applying.then((result) => {
+        if (result.isOk() || source === undefined || stopped) {
+          again();
+          return OkAsync();
+        }
+        retry = true;
+        return unavailable === undefined
+          ? OkAsync().tap(again)
+          : unavailable().tap(again).tapFailure(again);
+      });
     }, security.credentialsReloadMs ?? DEFAULT_RELOAD_MS);
     timer.unref();
   };
@@ -189,16 +244,20 @@ export const reloading = <E>(
   };
 };
 
-const tlsOn = (security: TemporalConnectionSecurity): boolean =>
-  security.tls ?? (security.apiKey !== undefined || security.apiKeyPath !== undefined);
+const tlsOn = (security: TemporalConnectionSecurity, source?: TemporalApiKeySource): boolean =>
+  security.tls ??
+  (source !== undefined || security.apiKey !== undefined || security.apiKeyPath !== undefined);
 
-const refusals = (security: TemporalConnectionSecurity): ConfigIssue[] => {
+const refusals = (
+  security: TemporalConnectionSecurity,
+  source?: TemporalApiKeySource,
+): ConfigIssue[] => {
   const issues: ConfigIssue[] = [];
   const set = (key: keyof typeof VARIABLES): boolean => security[key] !== undefined;
   const refuse = (key: keyof typeof VARIABLES, message: string): void => {
     issues.push({ message, path: [VARIABLES[key]] });
   };
-  if (!tlsOn(security))
+  if (!tlsOn(security, source))
     for (const key of [
       "serverCaCertPath",
       "serverName",
@@ -208,6 +267,11 @@ const refusals = (security: TemporalConnectionSecurity): ConfigIssue[] => {
       "apiKeyPath",
     ] as const)
       if (set(key)) refuse(key, `requires ${VARIABLES.tls}=true`);
+  if (source !== undefined) {
+    if (security.tls === false) refuse("tls", "must be true when an API key source is composed");
+    for (const key of ["apiKey", "apiKeyPath", "clientCertPath", "clientKeyPath"] as const)
+      if (set(key)) refuse(key, "cannot be combined with an API key source");
+  }
   if (set("clientCertPath") && !set("clientKeyPath"))
     refuse("clientKeyPath", `is required with ${VARIABLES.clientCertPath}`);
   if (set("clientKeyPath") && !set("clientCertPath"))

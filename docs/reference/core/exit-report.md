@@ -27,6 +27,7 @@ type ExitReport = {
   readonly teardownErrors: readonly TeardownError[];
   readonly uptimeMs: number;
   readonly abandonedAt?: "build" | "stop";
+  readonly unexpectedRuntimeStop?: true;
 };
 
 type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -39,6 +40,12 @@ type TeardownError = { readonly port: string; readonly cause: unknown };
 | `teardownErrors` | Every finaliser of the **application scope** that failed as it closed — `port` is the provider's port id, `cause` whatever it threw or answered. A per-unit finaliser (a bound `unit` module's) is never recorded here; it is emitted as a `teardownError` event only. Under `runMain` a non-empty array is exit code `2`.                                                                            |
 | `uptimeMs`       | `clock.now()` at exit — once the scope's finalisers have run, or when the kernel stopped waiting for them — minus `clock.now()` at `start`, on whichever `Clock` the app was started with.                                                                                                                                                                                                            |
 | `abandonedAt`    | Absent on an ordinary exit. `"stop"` when `Serving.stop` or a scope finaliser was still running at [`stopTimeoutMs`](/reference/core/start), `"build"` when a graph was given up on before it ever served. It reads "stopped waiting", not "cancelled": nothing can cancel a finaliser, so a wedged one can still hold the event loop past this report. Under `runMain` a set field is exit code `2`. |
+
+`unexpectedRuntimeStop` is present only when the runtime stopped before any
+shutdown request. `runMain` returns `1` for it unless a crash or unclean teardown
+requires a higher-priority code. A caller's `RunningApp.stop()` has the same
+`runtimeStopped` reason but leaves this flag absent and exits `0`. A late runtime
+notification during an already-requested shutdown never sets the flag.
 
 ### `reason`
 
@@ -116,6 +123,7 @@ import type { ExitReport } from "@btravstack/core";
 
 const clean = (report: ExitReport): boolean =>
   report.reason !== "uncaught" &&
+  report.unexpectedRuntimeStop !== true &&
   report.abandonedAt === undefined &&
   (report.drain?.abandoned ?? 0) === 0 &&
   report.teardownErrors.length === 0;

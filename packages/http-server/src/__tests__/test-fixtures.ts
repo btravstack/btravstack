@@ -1,17 +1,23 @@
-import { IncomingMessage } from "node:http";
-import { Socket } from "node:net";
+import { IncomingMessage, createServer } from "node:http";
+import { Socket, type AddressInfo } from "node:net";
 
-import { Env } from "@btravstack/config";
-import { noObserverMember } from "@btravstack/core";
-import { Module, Provider } from "@btravstack/di";
+import { Env, type Environment } from "@btravstack/config";
+import { Observers, noObserverMember } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
 import { it as base, type HttpFixtures } from "@btravstack/internal-http-fixtures";
 import { createFakeClock } from "@btravstack/testing";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { Configuration, customFetch, enableNonRepudiationChecks } from "openid-client";
 import { ErrAsync, Ok, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
-import type { TestAPI } from "vitest";
+import { vi, type TestAPI } from "vitest";
 
 import { HttpHandler } from "../handler.js";
+import {
+  JwtVerifier,
+  jwtVerifier,
+  type JwtVerifierOptions,
+  type JwtVerifierService,
+} from "../jwt.js";
 import type {
   OidcTokenStoreService,
   OidcTokenUpdate,
@@ -31,9 +37,20 @@ import { SessionCodec, sessionCodec } from "../session.js";
 type TokenFixtures = {
   tokens: Awaited<ReturnType<typeof tokenFixture>>;
   incoming: IncomingMessage;
+  verification: Awaited<ReturnType<typeof jwtVerificationFixture>>;
+  rotation: Awaited<ReturnType<typeof rotatingVerificationFixture>>;
 };
 
 export const it: TestAPI<HttpFixtures & TokenFixtures> = base.extend<TokenFixtures>({
+  verification: async ({ issuer }, use) => {
+    await use(await jwtVerificationFixture(issuer));
+  },
+  rotation: async ({ task: _task }, use) => {
+    const fixture = await rotatingVerificationFixture();
+    await use(fixture);
+    vi.useRealTimers();
+    await fixture.close();
+  },
   incoming: async ({ task: _task }, use) => {
     const socket = new Socket();
     await use(new IncomingMessage(socket));
@@ -264,4 +281,90 @@ function deferred() {
     resolve = complete;
   });
   return { promise, resolve };
+}
+
+async function jwtVerificationFixture(issuer: HttpFixtures["issuer"]) {
+  const observations: unknown[] = [];
+  const configured = (options: Omit<JwtVerifierOptions, "port">, environment: Environment = {}) =>
+    Module.scoped(
+      Module("JwtVerificationFixture")({
+        provides: [
+          Provider(Env)({ inject: {}, value: environment }),
+          Provider.member(Observers)({
+            inject: {},
+            value: (operation) => (settled) => {
+              observations.push({ operation, settled });
+            },
+          }),
+          jwtVerifier(options),
+        ],
+        exports: [JwtVerifier],
+      }),
+      (ctx) => OkAsync(ctx.get(JwtVerifier)),
+    );
+  const service = await configured({ jwks: issuer.jwks, issuer: issuer.issuer }).getOrThrow();
+  const custom = await Module.scoped(
+    Module("NamedJwtVerificationFixture")({
+      provides: [
+        Provider(Env)({ inject: {}, value: {} }),
+        noObserverMember,
+        jwtVerifier({ port: NamedJwtVerifier, jwks: issuer.jwks, issuer: issuer.issuer }),
+      ],
+      exports: [NamedJwtVerifier],
+    }),
+    (ctx) => OkAsync(ctx.get(NamedJwtVerifier)),
+  ).getOrThrow();
+  return { service, custom, configured, observations };
+}
+
+class NamedJwtVerifier extends Port("NamedJwtVerifierFixture")<JwtVerifierService> {}
+
+async function rotatingVerificationFixture() {
+  const pairs = await Promise.all([generateKeyPair("ES256"), generateKeyPair("ES256")]);
+  const keys = await Promise.all(
+    pairs.map(async (pair, index) => ({
+      ...(await exportJWK(pair.publicKey)),
+      kid: `key-${index}`,
+      alg: "ES256",
+      use: "sig",
+    })),
+  );
+  let current = 0;
+  let requests = 0;
+  const server = createServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ keys: [keys[current]] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  const issuer = "https://rotating.example";
+  const service = await Module.scoped(
+    Module("RotatingJwtVerificationFixture")({
+      provides: [
+        Provider(Env)({ inject: {}, value: {} }),
+        noObserverMember,
+        jwtVerifier({ issuer, jwks: `http://127.0.0.1:${port}/jwks` }),
+      ],
+      exports: [JwtVerifier],
+    }),
+    (ctx) => OkAsync(ctx.get(JwtVerifier)),
+  ).getOrThrow();
+  return {
+    service,
+    requests: () => requests,
+    sign: (audience: string) =>
+      new SignJWT({ sub: "caller" })
+        .setProtectedHeader({ alg: "ES256", kid: `key-${current}` })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setExpirationTime("5m")
+        .sign(pairs[current]!.privateKey),
+    rotate: () => {
+      current = 1;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 31_000);
+    },
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
 }

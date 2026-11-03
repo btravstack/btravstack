@@ -235,6 +235,7 @@ only way to compose the starter, which is not exported:
 | `gracePeriod`   | pins `TEMPORAL_GRACE_PERIOD_MS` — Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                 |
 | `forceAfter`    | pins `TEMPORAL_FORCE_AFTER_MS` — Temporal's `shutdownForceTime` (default `15_000` ms); keep it under `DRAIN_TIMEOUT_MS`              |
 | `unit`          | `{ activity }` — the module the worker forks around every activity it dispatches, seeded with the validated input                    |
+| `apiKey`        | the application port for renewable `TemporalApiKeySource` bearer credentials                                                         |
 | `dataConverter` | the application's port for the `DataConverter` (payload codecs) the worker and its clients share                                     |
 
 The full table — required/optional, defaults, and the reasoning — lives on
@@ -262,6 +263,13 @@ a restart, a renewed key is set on the open one. A combination it cannot
 connect with is a `ConfigInvalid` at boot. The
 [reference](https://btravstack.github.io/btravstack/reference/temporal-worker#securing-the-connection)
 has the rules and the limits.
+
+An application can supply renewable bearer credentials through an `apiKey` port
+implementing `TemporalApiKeySource.read()`. The source owns token acquisition,
+caching and expiry; the starter polls it with the credentials reload interval.
+A source requires TLS and excludes inline/file API keys and mTLS. See the
+[reference](https://btravstack.github.io/btravstack/reference/temporal-worker#renewable-bearer-credentials)
+for composition and fail-closed behavior.
 
 ## The drain
 

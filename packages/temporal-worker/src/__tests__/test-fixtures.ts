@@ -30,10 +30,11 @@ import {
 import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@temporalio/client";
 import type { DataConverter, Duration, Payload, PayloadCodec } from "@temporalio/common";
 import { bundleWorkflowCode, type NativeConnection, type Worker } from "@temporalio/worker";
-import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { inject, test, vi } from "vitest";
 import { z } from "zod";
 
+import { TemporalApiKeyUnavailable, type TemporalApiKeySource } from "../index.js";
 import { ensureSchedule } from "../schedule.js";
 import { TemporalActivities, TemporalModule } from "../temporal-module.js";
 import { poll } from "../temporal-runtime.js";
@@ -52,6 +53,8 @@ import { ActivityInput, TemporalWorkflowActivities } from "../workflow-activitie
  * nothing in this suite advances a clock.
  */
 type Server = { readonly address: string; readonly namespace: string };
+
+class ApiKeySource extends Port("TestTemporalApiKeySource")<TemporalApiKeySource> {}
 
 export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
@@ -686,6 +689,23 @@ export type TemporalFixtures = {
    * with them: `mtls` presents the client certificate, `apiKey` the key file.
    */
   readonly secured: Secured;
+  readonly renewable: {
+    readonly source: TemporalApiKeySource;
+    readonly set: (value: string | undefined) => void;
+  };
+  readonly serveRenewable: (
+    source: TemporalApiKeySource,
+    env: Environment,
+    activities?: ActivitiesProvider,
+  ) => Promise<{
+    readonly app: RunningApp<
+      ConfigInvalid | TemporalUnreachable | TemporalApiKeyUnavailable,
+      TemporalInfo
+    >;
+    readonly client: Client;
+    readonly taskQueue: string;
+    readonly taken: () => readonly Observation[];
+  }>;
   readonly serveObserved: (
     failing?: boolean,
     env?: Environment,
@@ -967,6 +987,39 @@ export const it = bundledTest.extend<TemporalFixtures>({
       writeApiKey: (apiKey) => mounted.publish({ apiKey }),
     });
     await mounted.remove();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- this fixture has no infrastructure dependency
+  renewable: async ({}, use) => {
+    let value: string | undefined = "temporal-test-first";
+    await use({
+      source: {
+        read: () =>
+          value === undefined ? ErrAsync(new TemporalApiKeyUnavailable()) : OkAsync(value),
+      },
+      set: (next) => {
+        value = next;
+      },
+    });
+  },
+  serveRenewable: async ({ client, boot }, use) => {
+    await use(async (source, env, activities = echoing) => {
+      const observer = recordingObserver();
+      const taskQueue = nextTaskQueue();
+      const worker = TemporalModule("Renewable")({
+        contract: { ...echoContract, taskQueue },
+        activities,
+        workflows: echoWorkflows,
+        apiKey: ApiKeySource,
+        provides: [
+          Provider(ApiKeySource)({ inject: {}, value: source }),
+          Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
+          Provider.member(Observers)({ inject: {}, value: observer.member }),
+        ],
+      });
+      const app = boot(worker, { env });
+      await app.runtimeInfo();
+      return { app, client, taskQueue, taken: observer.taken };
+    });
   },
   serveObserved: async ({ server, client, boot }, use) => {
     await use(async (failing = false, env?: Environment) => {

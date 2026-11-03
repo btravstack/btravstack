@@ -13,7 +13,11 @@ export type {
   TemporalOptions,
   WorkflowSource,
 } from "./temporal-runtime.js";
-export type { TemporalConnectionSecurity } from "./connection-security.js";
+export {
+  TemporalApiKeyUnavailable,
+  type TemporalApiKeySource,
+  type TemporalConnectionSecurity,
+} from "./connection-security.js";
 export { ActivityInput, TemporalWorkflowActivities } from "./workflow-activities.js";
 export type {
   ActivityInputOf,

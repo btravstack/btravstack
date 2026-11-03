@@ -50,6 +50,32 @@ differences:
 - An unreadable file is retried on the next tick without being reported: the
   package has no observers.
 
+## Renewable bearer credentials
+
+Compose an application port implementing `TemporalApiKeySource` through
+`temporalConnection(connectionPort, settingsPort, { apiKey: credentialsPort })`. Both the source type and
+`TemporalApiKeyUnavailable` are exported from this package's root. Its
+`read(): AsyncResult<string, TemporalApiKeyUnavailable>` obtains the current
+credential; the application owns acquisition, expiry and any cache. This works
+with an OAuth token source without making Temporal depend on OAuth.
+
+A source turns TLS on when unset. Explicit TLS off, an inline/file API key, or
+mTLS alongside it is a `ConfigInvalid` before any source read. The server CA
+and server name settings remain available. An unavailable or blank initial
+credential prevents startup with `TemporalApiKeyUnavailable`; its diagnostic
+contains no credential value.
+
+The starter reads the source again every `credentialsReloadMs`
+(`TEMPORAL_CREDENTIALS_RELOAD_MS` through `temporalSecurity`, default `60000`). Choose an interval shorter
+than the source's early-refresh margin so a valid replacement is installed
+before expiry. The starter keeps no token-expiry cache. A changed credential
+is installed with `setApiKey` on the current connection.
+
+If a subsequent read or apply fails, the client closes its current connection.
+Calls fail until a successful source read opens a fresh connection, including
+when the same credential returns. It never falls back to the previous key.
+Closing the DI scope stops polling and waits for a read already in flight.
+
 ## Standalone activities
 
 `client.for(contract)` also runs a contract's global activity with no workflow

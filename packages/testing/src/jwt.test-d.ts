@@ -15,3 +15,6 @@ void issuer.sign(claims);
 
 // @ts-expect-error — claims must be a JWTPayload object, not a primitive
 void issuer.sign("nope");
+
+// Both ordinary and deliberately broad recipient policies can be exercised with signed fixtures.
+void issuer.sign({}, { audience: ["orders-api", "billing-api"] as const });

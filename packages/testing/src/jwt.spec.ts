@@ -51,6 +51,23 @@ describe("localIssuer", () => {
     });
   });
 
+  it("should sign a multiple-audience token for recipient-policy rejection tests", async ({
+    issuer,
+  }) => {
+    // GIVEN a readonly audience list
+    const audience = ["orders-api", "billing-api"] as const;
+    const token = await issuer.sign({ sub: "u" }, { audience }).get();
+
+    // WHEN the real signature is verified against the issuer's JWKS
+    const verified = await jwtVerify(token, createRemoteJWKSet(new URL(issuer.jwks)), {
+      issuer: issuer.issuer,
+      audience: "orders-api",
+    });
+
+    // THEN the signed payload retains the requested recipient list
+    expect(verified.payload.aud).toEqual(["orders-api", "billing-api"]);
+  });
+
   it("answers Ok when its listener closes", async () => {
     // GIVEN a standalone issuer, not the one shared with the other tests
     const built = await localIssuer({

@@ -27,8 +27,8 @@ afterEach(() => vi.restoreAllMocks());
 test("shares the scoped connection with the typed client and closes it", async () => {
   // GIVEN a connection and typed client that expose the wrapper's handoff
   const close = vi.fn(() => Promise.resolve());
-  const connection = { close } as unknown as Connection;
-  const connect = vi.spyOn(Connection, "connect").mockResolvedValue(connection);
+  const connection = { close, ensureConnected: () => Promise.resolve() } as unknown as Connection;
+  const connect = vi.spyOn(Connection, "lazy").mockReturnValue(connection);
   const typed = {} as TypedClient;
   const create = vi.spyOn(TypedClient, "create").mockReturnValue(OkAsync(typed));
 
@@ -61,7 +61,10 @@ test("shares the scoped connection with the typed client and closes it", async (
 test("qualifies a failed native connection with the attempted address and cause", async () => {
   // GIVEN a Temporal endpoint that refuses the connection
   const cause = new Error("connection refused");
-  vi.spyOn(Connection, "connect").mockRejectedValue(cause);
+  vi.spyOn(Connection, "lazy").mockReturnValue({
+    ensureConnected: () => Promise.reject(cause),
+    close: () => Promise.resolve(),
+  } as unknown as Connection);
 
   // WHEN the application scope tries to open
   const result = await Module.scoped(
@@ -81,7 +84,8 @@ test("qualifies a failed native connection with the attempted address and cause"
 
 test("hands the native client the data converter the graph provides", async () => {
   // GIVEN a converter port provided beside the connection and the client
-  vi.spyOn(Connection, "connect").mockResolvedValue({
+  vi.spyOn(Connection, "lazy").mockReturnValue({
+    ensureConnected: () => Promise.resolve(),
     close: () => Promise.resolve(),
   } as unknown as Connection);
   const create = vi.spyOn(TypedClient, "create").mockReturnValue(OkAsync({} as TypedClient));

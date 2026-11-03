@@ -1207,7 +1207,11 @@ describe("runtimeInfo", () => {
     // process stayed alive with `/readyz` answering 200: a pod in a Service's
     // endpoints, serving nothing.
     await expect(app.exited).toBeOkWith(
-      expect.objectContaining({ reason: "runtimeStopped", drain: undefined }),
+      expect.objectContaining({
+        reason: "runtimeStopped",
+        drain: undefined,
+        unexpectedRuntimeStop: true,
+      }),
     );
   });
 
@@ -1239,11 +1243,56 @@ describe("runtimeInfo", () => {
       reason: report.reason,
       drain: report.drain,
       readyAfter: app.ready(),
+      unexpectedRuntimeStop: report.unexpectedRuntimeStop,
     }).toEqual({
       readyBefore: true,
       reason: "runtimeStopped",
+      unexpectedRuntimeStop: true,
       drain: undefined,
       readyAfter: false,
+    });
+  });
+
+  it("keeps a caller shutdown clean when the stopped channel settles during teardown", async () => {
+    // GIVEN a runtime whose stopped notification arrives from its shutdown
+    const ended = Promise.withResolvers<void>();
+    const delivered = Promise.withResolvers<void>();
+    let channelSettled = false;
+    const runtime: Runtime<never, { readonly name: string }> = {
+      name: "lateStopped",
+      resolves: [],
+      start: () =>
+        OkAsync({
+          info: { name: "lateStopped" },
+          drain: () => OkAsync(),
+          stop: () => {
+            ended.resolve();
+            return OkAsync();
+          },
+          stopped: () =>
+            fromSafePromise(ended.promise).tap(() => {
+              channelSettled = true;
+              delivered.resolve();
+            }),
+        }),
+    };
+    const app = start(runtimeModule(runtime), { signals: false, probes: false });
+    (await app.runtimeInfo()).get();
+
+    // WHEN a caller requests shutdown before the notification
+    app.stop();
+    await delivered.promise;
+    const report = (await app.exited).getOrThrow();
+
+    // THEN the delivered late notification does not turn a requested shutdown into a failure
+    expect({
+      reason: report.reason,
+      unexpectedRuntimeStop: report.unexpectedRuntimeStop,
+      channelSettled,
+    }).toEqual({
+      reason: "runtimeStopped",
+      unexpectedRuntimeStop: undefined,
+      channelSettled: true,
     });
   });
 
@@ -1298,8 +1347,14 @@ describe("runtimeInfo", () => {
     // calling `stopped()` at all would leave `channelSettled` false too — so
     // `channelObserved` is what stops this passing on a deleted subscription,
     // and `channelSettled` is the withdrawal obligation itself.
-    expect({ reason: report.getOrThrow().reason, channelObserved, channelSettled }).toEqual({
+    expect({
+      reason: report.getOrThrow().reason,
+      unexpectedRuntimeStop: report.getOrThrow().unexpectedRuntimeStop,
+      channelObserved,
+      channelSettled,
+    }).toEqual({
       reason: "runtimeStopped",
+      unexpectedRuntimeStop: undefined,
       channelObserved: true,
       channelSettled: false,
     });

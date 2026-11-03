@@ -147,8 +147,30 @@ client credentials grant or RFC 8693 exchange (`client_secret_basic`).
 | `OAUTH_CLIENT_SECRET` | `clientSecret` | yes      | its secret — set from a Kubernetes Secret                    |
 
 Each variable is pinned by its option; an unset one is a `ConfigInvalid`
-naming every missing variable, exit `78` under `runMain`. Two options are not
-variables:
+naming every missing variable, exit `78` under `runMain`. `variablePrefix`
+(default `OAUTH`) replaces that prefix for all three variables. For example,
+`oauthClient({ variablePrefix: "BACKGROUND_OAUTH" })` reads
+`BACKGROUND_OAUTH_ISSUER`, `BACKGROUND_OAUTH_CLIENT_ID` and
+`BACKGROUND_OAUTH_CLIENT_SECRET`. Pinned options still replace their own
+variable. The module's typed environment requirements carry the selected prefix.
+
+For multiple identities, give each source a distinct `port` as well as its
+variable prefix. A private module alone does not isolate DI port identities:
+
+```ts
+class BackgroundTokens extends Port("ReferenceBackgroundTokens")<TokenSourceService> {}
+
+export const SeparateIdentities = Module("ReferenceSeparateIdentities")({
+  imports: [oauthClient(), oauthClient({ port: BackgroundTokens, variablePrefix: "BACKGROUND_OAUTH" })],
+  exports: [TokenSource, BackgroundTokens],
+});
+```
+
+The custom port replaces `TokenSource` in that module's exports. Each source
+retains its own credentials, discovery, cache and health state; a custom
+port's health check is named `oauth-client:<port id>`. Reusing a port
+for different configurations is refused as a graph collision. Other options are
+not variables:
 
 - **`allowInsecureIssuer`** (default `false`). An `http:` issuer is refused at
   boot unless it is loopback (`localhost`, `127.0.0.1`, `[::1]`) — the client

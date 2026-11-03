@@ -51,6 +51,8 @@ import {
   temporalSecurity,
   type Credentials,
   type TemporalConnectionSecurity,
+  type TemporalApiKeySource,
+  type TemporalApiKeyUnavailable,
 } from "./connection-security.js";
 import { taskQueueField } from "./task-queue.js";
 import { forkOf, unitsOf } from "./unit.js";
@@ -164,6 +166,7 @@ export type DataConverterPort = PortClassOf<string, DataConverter>;
 export type TemporalTuning<
   Unit extends AnyUnitModule | undefined = undefined,
   Converter extends DataConverterPort = never,
+  ApiKey extends PortClassOf<string, TemporalApiKeySource> = never,
 > = {
   /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
   readonly address?: string;
@@ -200,6 +203,8 @@ export type TemporalTuning<
    * other's payloads as ciphertext. The port joins this module's needs.
    */
   readonly dataConverter?: Converter;
+  /** The application's renewable bearer source. Requires TLS and excludes static credentials and mTLS. */
+  readonly apiKey?: ApiKey;
 };
 
 /**
@@ -215,7 +220,8 @@ export type TemporalOptions<
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined = undefined,
   Converter extends DataConverterPort = never,
-> = TemporalTuning<Unit, Converter> & {
+  ApiKey extends PortClassOf<string, TemporalApiKeySource> = never,
+> = TemporalTuning<Unit, Converter, ApiKey> & {
   /**
    * The contract; the task queue this worker polls is read off it, and the
    * activities port is typed by it. The starter calls
@@ -267,11 +273,14 @@ export const temporal = <
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined = undefined,
   Converter extends DataConverterPort = never,
+  ApiKey extends PortClassOf<string, TemporalApiKeySource> = never,
 >(
-  options: TemporalOptions<C, Unit, Converter>,
+  options: TemporalOptions<C, Unit, Converter, ApiKey>,
 ): Module<
   Provided,
-  ConfigInvalid | TemporalUnreachable,
+  | ConfigInvalid
+  | TemporalUnreachable
+  | ([ApiKey] extends [never] ? never : TemporalApiKeyUnavailable),
   | EnvReading<
       never,
       | "TEMPORAL_ADDRESS"
@@ -292,6 +301,7 @@ export const temporal = <
   | ActivitiesInstanceOf<C>
   | UnitNeedsOf<Unit>
   | InstanceType<Converter>
+  | InstanceType<ApiKey>
 > => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
@@ -322,11 +332,22 @@ export const temporal = <
     provides: [
       config,
       Provider(TemporalConnection)({
-        inject: { config: TemporalConfig },
-        acquire: ({ config: bound }) =>
-          credentialsOf(TemporalConfig.portId, bound).flatMap((credentials) =>
+        inject: {
+          config: TemporalConfig,
+          ...((options.apiKey === undefined ? {} : { apiKey: options.apiKey }) as {
+            apiKey: ApiKey;
+          }),
+        },
+        acquire: ({
+          config: bound,
+          apiKey: source,
+        }: {
+          readonly config: ServiceOf<TemporalConfig>;
+          readonly apiKey?: TemporalApiKeySource;
+        }) =>
+          credentialsOf(TemporalConfig.portId, bound, source).flatMap((credentials) =>
             connect(bound.address, credentials).tap((connection) => {
-              if (rotates(bound)) connectionCredentials.set(connection, credentials);
+              if (rotates(bound, source)) connectionCredentials.set(connection, credentials);
             }),
           ),
         release: (connection) =>
@@ -345,6 +366,9 @@ export const temporal = <
           activities,
           observers: Observers,
           ...(options.dataConverter === undefined ? {} : { dataConverter: options.dataConverter }),
+          ...((options.apiKey === undefined ? {} : { apiKey: options.apiKey }) as {
+            apiKey: ApiKey;
+          }),
         },
         sync: ({
           connection,
@@ -352,18 +376,20 @@ export const temporal = <
           activities: impls,
           observers,
           dataConverter,
+          apiKey,
         }: {
           readonly connection: NativeConnection;
           readonly config: ServiceOf<TemporalConfig>;
           readonly activities: ActivitiesOf<C>;
           readonly observers: readonly ((operation: Operation) => Settle)[];
           readonly dataConverter?: DataConverter;
+          readonly apiKey?: TemporalApiKeySource;
         }): Runtime<never, TemporalInfo> => ({
           name: "temporal",
           resolves: [],
           units: unitsOf(options.unit?.activity, impls as Readonly<Record<string, unknown>>),
           start: (host) =>
-            createWorker(host, connection, bound, impls, options, observers, dataConverter),
+            createWorker(host, connection, bound, impls, options, observers, dataConverter, apiKey),
         }),
       }),
     ],
@@ -375,7 +401,9 @@ export const temporal = <
     // this is what makes di's own `UNSATISFIED DEPENDENCIES` gate say so.
   } as never) as unknown as Module<
     Provided,
-    ConfigInvalid | TemporalUnreachable,
+    | ConfigInvalid
+    | TemporalUnreachable
+    | ([ApiKey] extends [never] ? never : TemporalApiKeyUnavailable),
     | EnvReading<
         never,
         | "TEMPORAL_ADDRESS"
@@ -396,6 +424,7 @@ export const temporal = <
     | ActivitiesInstanceOf<C>
     | UnitNeedsOf<Unit>
     | InstanceType<Converter>
+    | InstanceType<ApiKey>
   >;
 };
 
@@ -409,14 +438,16 @@ const createWorker = <
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined,
   Converter extends DataConverterPort,
+  ApiKey extends PortClassOf<string, TemporalApiKeySource>,
 >(
   host: RuntimeHost<never>,
   connection: NativeConnection,
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
-  options: TemporalOptions<C, Unit, Converter>,
+  options: TemporalOptions<C, Unit, Converter, ApiKey>,
   observers: readonly ((operation: Operation) => Settle)[],
   dataConverter: DataConverter | undefined,
+  apiKey: TemporalApiKeySource | undefined,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { namespace, taskQueue } = config;
 
@@ -445,7 +476,7 @@ const createWorker = <
           connection,
           namespace,
           taskQueue,
-          ...(options.workflows ?? {}),
+          ...options.workflows,
           activities: handler,
           shutdownGraceTime: config.gracePeriodMs,
           shutdownForceTime: config.forceAfterMs,
@@ -457,9 +488,30 @@ const createWorker = <
     .map((worker) => {
       const serving = poll(worker, taskQueue, namespace, connection);
       const credentials = connectionCredentials.get(connection);
-      if (credentials !== undefined)
-        rotate(worker, connection, config, credentials, observers, workerRuns.get(connection)!);
-      return serving;
+      if (credentials === undefined) return serving;
+      let unavailable!: () => void;
+      const unavailablePromise = new Promise<void>((resolve) => {
+        unavailable = resolve;
+      });
+      rotate(
+        worker,
+        connection,
+        config,
+        credentials,
+        observers,
+        workerRuns.get(connection)!,
+        apiKey,
+        unavailable,
+      );
+      return apiKey === undefined
+        ? serving
+        : {
+            ...serving,
+            stopped: () =>
+              fromSafePromise(Promise.race([serving.stopped(), unavailablePromise])).map(
+                () => undefined,
+              ),
+          };
     });
 };
 
@@ -480,6 +532,8 @@ const rotate = (
   credentials: Credentials,
   observers: readonly ((operation: Operation) => Settle)[],
   running: AsyncResult<void, never>,
+  source: TemporalApiKeySource | undefined,
+  unavailable: () => void,
 ): void => {
   let current = opened;
   // Every connection the reloading opened and has not closed: the worker's, or one it refused.
@@ -508,6 +562,14 @@ const rotate = (
     (failure) => {
       void observed(observers, RELOAD, () => failure.toAsync());
     },
+    source,
+    () =>
+      fromSafeThrowable(() => {
+        // This is the reload in flight: withdraw future ticks without awaiting itself.
+        void stop();
+        unavailable();
+        if (worker.getState() === "RUNNING") worker.shutdown();
+      })().toAsync(),
   );
   // However the run settles, what the reloading opened is closed, after a reload in flight.
   const settle = (): void => {
@@ -531,7 +593,7 @@ export const poll = (
   taskQueue: string,
   namespace: string,
   connection?: NativeConnection,
-): Serving<TemporalInfo> => {
+): Serving<TemporalInfo> & { readonly stopped: () => AsyncResult<void, never> } => {
   // `run()` moves the worker to RUNNING synchronously, before its first await,
   // which is what lets `stopPolling` trust `getState()`. The result is HELD,
   // not dropped: `run()` can defect, and an empty error channel is not an empty

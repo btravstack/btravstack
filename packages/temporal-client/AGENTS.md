@@ -21,6 +21,13 @@ and connection error qualification. The worked consumer is
 `examples/order-temporal-worker/src/schedules.ts`, exercised by its real
 Temporal suite.
 
+The starter owns the SDK's lazy connection before verifying connectivity:
+`Connection.connect()` does not close its allocation after a failed handshake.
+Initialization failures close it before returning `TemporalClientUnreachable`,
+including failed renewable-source reconnects. If cleanup itself fails, an
+`AggregateError` preserves both causes as a defect rather than hiding a cleanup
+bug as a network refusal.
+
 ## Connection security
 
 `connection-security.ts` binds TLS, mTLS and an API key under Temporal's own
@@ -66,3 +73,21 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   connection and offers no way to share it), so a call inside one after a
   rotation loses it; documented rather than worked around. An unreadable file is retried silently:
   this package has no observers.
+
+## Application-owned renewable credentials
+
+`TemporalApiKeySource.read()` returns an `AsyncResult<string,
+TemporalApiKeyUnavailable>`. The application's port is composed through `apiKey`;
+the source owns acquisition, caching and expiry. The starter only polls it with
+`credentialsReloadMs`, and never imports an OAuth implementation. A source implies
+TLS and excludes inline/file API keys and mTLS. Configuration refusals precede
+source reads, and an empty answer is unavailable. Successful changes use
+`setApiKey`; credential values never enter diagnostics.
+
+A failed read or apply closes the client connection immediately. The next
+successful reading opens a fresh connection even if the credential is unchanged.
+Scope teardown stops the polling and waits for an in-flight read before closing.
+
+`api-key-source.spec.ts` uses the shared TLS authentication proxy to exercise real
+namespace RPCs and workers, including renewal and credential removal. Existing
+file-only rotation keeps its previous-credential retry behavior.

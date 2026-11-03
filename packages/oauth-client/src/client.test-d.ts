@@ -7,11 +7,11 @@
  */
 import type { ConfigInvalid, EnvReading } from "@btravstack/config";
 import type { HealthChecks } from "@btravstack/core";
-import type { Module } from "@btravstack/di";
+import { Port, type Module } from "@btravstack/di";
 import { expectTypeOf } from "vitest";
 
 import { oauthClient } from "./client.js";
-import type { TokenRequest, TokenSource } from "./token-source.js";
+import type { TokenRequest, TokenSource, TokenSourceService } from "./token-source.js";
 
 expectTypeOf(oauthClient()).toEqualTypeOf<
   Module<
@@ -66,3 +66,53 @@ const untypedActor: TokenRequest = {
 
 void untypedSubject;
 void untypedActor;
+
+expectTypeOf(oauthClient({ variablePrefix: "BACKGROUND_OAUTH" })).toEqualTypeOf<
+  Module<
+    TokenSource | HealthChecks,
+    ConfigInvalid,
+    EnvReading<
+      "BACKGROUND_OAUTH_ISSUER" | "BACKGROUND_OAUTH_CLIENT_ID" | "BACKGROUND_OAUTH_CLIENT_SECRET",
+      never
+    >
+  >
+>();
+
+expectTypeOf(
+  oauthClient({
+    variablePrefix: "BACKGROUND_OAUTH",
+    issuer: "https://issuer.example/",
+    clientId: maybe,
+  }),
+).toEqualTypeOf<
+  Module<
+    TokenSource | HealthChecks,
+    ConfigInvalid,
+    EnvReading<"BACKGROUND_OAUTH_CLIENT_SECRET", "BACKGROUND_OAUTH_CLIENT_ID">
+  >
+>();
+
+declare const optionalPrefix: "BACKGROUND_OAUTH" | undefined;
+expectTypeOf(
+  oauthClient({ variablePrefix: optionalPrefix, clientId: "client", clientSecret: "secret" }),
+).toEqualTypeOf<
+  Module<
+    TokenSource | HealthChecks,
+    ConfigInvalid,
+    EnvReading<"BACKGROUND_OAUTH_ISSUER" | "OAUTH_ISSUER", never>
+  >
+>();
+
+class BackgroundTokens extends Port("TypeBackgroundTokens")<TokenSourceService> {}
+expectTypeOf(
+  oauthClient({ port: BackgroundTokens, variablePrefix: "BACKGROUND_OAUTH" }),
+).toEqualTypeOf<
+  Module<
+    BackgroundTokens | HealthChecks,
+    ConfigInvalid,
+    EnvReading<
+      "BACKGROUND_OAUTH_ISSUER" | "BACKGROUND_OAUTH_CLIENT_ID" | "BACKGROUND_OAUTH_CLIENT_SECRET",
+      never
+    >
+  >
+>();

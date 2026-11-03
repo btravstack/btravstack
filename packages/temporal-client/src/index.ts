@@ -1,21 +1,30 @@
 import type { ConfigInvalid } from "@btravstack/config";
 import { Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { TypedClient } from "@temporal-contract/client";
-import { Client, Connection } from "@temporalio/client";
+import { Client, type Connection } from "@temporalio/client";
 import type { DataConverter } from "@temporalio/common";
-import { OkAsync, TaggedError, fromPromise, fromSafePromise } from "unthrown";
+import { OkAsync, fromSafePromise } from "unthrown";
 import type { AsyncResult } from "unthrown";
 
 import {
-  connectionOptions,
   credentialsOf,
   reloading,
   rotates,
   type Credentials,
   type TemporalConnectionSecurity,
+  type TemporalApiKeySource,
+  type TemporalApiKeyUnavailable,
 } from "./connection-security.js";
+import { connect, type TemporalClientUnreachable } from "./connection.js";
 
-export { temporalSecurity, type TemporalConnectionSecurity } from "./connection-security.js";
+export { TemporalClientUnreachable } from "./connection.js";
+
+export {
+  temporalSecurity,
+  TemporalApiKeyUnavailable,
+  type TemporalApiKeySource,
+  type TemporalConnectionSecurity,
+} from "./connection-security.js";
 
 /**
  * The deployment settings needed to call a Temporal service: where it is, the
@@ -26,14 +35,6 @@ export type TemporalClientSettings = {
   readonly namespace: string;
 } & TemporalConnectionSecurity;
 
-/** The Temporal service did not answer while the client connection opened. */
-export class TemporalClientUnreachable extends TaggedError("TemporalClientUnreachable")<{
-  readonly address: string;
-  readonly cause: unknown;
-}> {
-  override message = `the Temporal service at ${this.address} did not answer`;
-}
-
 /**
  * Acquire and release a Temporal connection with the DI scope, secured as the
  * settings say. A combination the settings cannot connect with, or a file
@@ -42,23 +43,38 @@ export class TemporalClientUnreachable extends TaggedError("TemporalClientUnreac
  * are read again every `credentialsReloadMs`: a changed API key is set on the
  * open connection, and changed TLS files open a new connection that serves
  * every later call, the previous one closing once its calls finish.
+ * `options.apiKey` names an application-owned `TemporalApiKeySource` port. It
+ * requires TLS and excludes static/file keys and mTLS; a failed refresh closes
+ * the connection until a successful source reading reconnects.
  */
 export const temporalConnection = <
   Settings extends TemporalClientSettings,
   const ConnectionId extends string,
   const SettingsId extends string,
+  ApiKey extends PortClassOf<string, TemporalApiKeySource> = never,
 >(
   port: PortClassOf<ConnectionId, Connection>,
   settings: PortClassOf<SettingsId, Settings>,
+  options?: { readonly apiKey: ApiKey },
 ) =>
   Provider(port)({
-    inject: { settings },
-    acquire: ({ settings: bound }) =>
-      credentialsOf(settings.portId, bound).flatMap((credentials) =>
+    inject: {
+      settings,
+      ...((options === undefined ? {} : { apiKey: options.apiKey }) as { apiKey: ApiKey }),
+    },
+    acquire: ({ settings: bound, apiKey: source }) =>
+      credentialsOf(settings.portId, bound, source).flatMap((credentials) =>
         connect(bound.address, credentials).map((connection) =>
-          rotates(bound) ? rotating(settings.portId, bound, connection, credentials) : connection,
+          rotates(bound, source)
+            ? rotating(settings.portId, bound, connection, credentials, source)
+            : connection,
         ),
-      ) as AsyncResult<ServiceOf<typeof port>, TemporalClientUnreachable | ConfigInvalid>,
+      ) as AsyncResult<
+        ServiceOf<typeof port>,
+        | TemporalClientUnreachable
+        | ConfigInvalid
+        | ([ApiKey] extends [never] ? never : TemporalApiKeyUnavailable)
+      >,
     release: (connection) => connection.close(),
   });
 
@@ -95,15 +111,6 @@ export const temporalClient = <
       }) as AsyncResult<ServiceOf<typeof port>, never>,
   });
 
-const connect = (
-  address: string,
-  credentials: Credentials,
-): AsyncResult<Connection, TemporalClientUnreachable> =>
-  fromPromise(
-    Connection.connect({ address, ...connectionOptions(credentials) }),
-    (cause) => new TemporalClientUnreachable({ address, cause }),
-  );
-
 /**
  * A `Connection` forwarding to the one opened with the latest credentials.
  * Temporal's client reads `connection.workflowService` per call, so a call
@@ -115,20 +122,38 @@ const rotating = (
   settings: TemporalClientSettings,
   first: Connection,
   credentials: Credentials,
+  source: TemporalApiKeySource | undefined,
 ): Connection => {
   let current = first;
-  const stop = reloading(port, settings, credentials, (next, change) =>
-    change === "tls"
-      ? connect(settings.address, next).flatMap((opened) => {
-          const previous = current;
-          current = opened;
-          return fromSafePromise(previous.close());
-        })
-      : OkAsync(current.setApiKey(change.apiKey)),
+  let closed = false;
+  const stop = reloading(
+    port,
+    settings,
+    credentials,
+    (next, change) =>
+      change === "tls"
+        ? connect(settings.address, next).flatMap((opened) => {
+            const previous = current;
+            current = opened;
+            const previousClosed = closed;
+            closed = false;
+            return previousClosed ? OkAsync() : fromSafePromise(previous.close());
+          })
+        : OkAsync(current.setApiKey(change.apiKey)),
+    undefined,
+    source,
+    () => {
+      if (closed) return OkAsync();
+      closed = true;
+      return fromSafePromise(current.close());
+    },
   );
   const close = async (): Promise<void> => {
     await stop();
-    return current.close();
+    if (!closed) {
+      closed = true;
+      await current.close();
+    }
   };
   return new Proxy(first, {
     get: (_target, key) => (key === "close" ? close : Reflect.get(current, key, current)),

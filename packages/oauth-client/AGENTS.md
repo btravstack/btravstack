@@ -106,10 +106,14 @@ recipe.
   `require(esm)` — the consumer check's floor run refused `>=22` with
   `ERR_REQUIRE_ESM`. `@btravstack/http-server` pays the same floor for the same
   reason.
-- **No variable prefix option.** `jwtAuthenticator` and `oidc()` take
-  `variablePrefix` because a deployment plausibly trusts two issuers. A
-  service authenticating as two different clients is not yet a case; when it
-  is, the option is the shape to copy.
+- **A variable prefix isolates client identities.** `variablePrefix` defaults
+  to `OAUTH` and selects all three issuer/client credential variables together.
+  A service with distinct outbound identities passes a separate `port` for each
+  source. Internal fetch ports are keyed by that source port ID, so credentials,
+  discovery, caches and health remain independent in one dependency graph.
+  Reusing one port for two different configurations remains a graph collision;
+  a private module alone does not isolate port identities. Pins still remove only their own
+  variable from the typed environment requirements.
 
 ## Deliberately not here
 

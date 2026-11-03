@@ -57,7 +57,7 @@ import { currentUnit } from "@btravstack/core";
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                                     |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows?, address?, namespace?, taskQueue?, gracePeriod?, forceAfter?, unit?, dataConverter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                   |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows?, address?, namespace?, taskQueue?, gracePeriod?, forceAfter?, unit?, dataConverter?, apiKey?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                          |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                                |
 | `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                                    |
 | `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                                     |
@@ -114,6 +114,7 @@ the augmented tuples to di's own `Module(name)`.
 | `gracePeriod`   | no                                    | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                                                                                                                                                                                                                                                    |
 | `forceAfter`    | no                                    | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                                                                                                                                                                                                                                                 |
 | `unit`          | no                                    | unset — dispatch runs unchanged      | `{ activity?: Unit }`, the unit module forked around every activity attempt and **seeded with the validated input on `ActivityInput(contract)`** — built after the activity is invoked, before it runs, torn down when the unit closes; a bound module's own unmet needs join this root's (less the seeded port), refused the same way an unmet activities port is. **Gated** against what the pieces declared — see [The unit](#the-unit) |
+| `apiKey`        | no                                    | unset                                | the application port for `TemporalApiKeySource`; see [Renewable bearer credentials](#renewable-bearer-credentials)                                                                                                                                                                                                                                                                                                                         |
 | `dataConverter` | no                                    | unset — Temporal's default converter | the application's port for a `@temporalio/common` `DataConverter`, handed to `Worker.create` — see [The data converter](#the-data-converter); the port joins this root's needs                                                                                                                                                                                                                                                             |
 | `imports`       | no                                    | `[]`                                 | the application's modules                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `provides`      | no                                    | `[]`                                 | the application's own providers                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -517,6 +518,34 @@ certificate until the process restarts. An API key given inline in
 `TEMPORAL_API_KEY` never changes; mount it as a file to rotate it. A failed
 reload is retried every tick, so a certificate the server keeps refusing is
 reported, and reconnected to, once per interval until it is fixed.
+
+## Renewable bearer credentials
+
+Compose an application port implementing `TemporalApiKeySource` through
+`TemporalModule("Worker")({ ...options, apiKey: credentialsPort })`. Both the source type and
+`TemporalApiKeyUnavailable` are exported from this package's root. Its
+`read(): AsyncResult<string, TemporalApiKeyUnavailable>` obtains the current
+credential; the application owns acquisition, expiry and any cache. This works
+with an OAuth token source without making Temporal depend on OAuth.
+
+A source turns TLS on when unset. Explicit TLS off, an inline/file API key, or
+mTLS alongside it is a `ConfigInvalid` before any source read. The server CA
+and server name settings remain available. An unavailable or blank initial
+credential prevents startup with `TemporalApiKeyUnavailable`; its diagnostic
+contains no credential value.
+
+The starter reads the source again every `credentialsReloadMs`
+(`TEMPORAL_CREDENTIALS_RELOAD_MS`, default `60000`). Choose an interval shorter
+than the source's early-refresh margin so a valid replacement is installed
+before expiry. The starter keeps no token-expiry cache. A changed credential
+is installed with `setApiKey` on the current connection.
+
+If a subsequent read or apply fails, the worker reports `temporal` / `reload`
+with outcome `error`, withdraws readiness immediately, and shuts down. The
+kernel marks `unexpectedRuntimeStop`; `runMain` returns nonzero, allowing the
+orchestrator to restart once credentials recover. It never continues using the
+previous key after source removal. Existing file-only rotation retains its
+retry behavior described above.
 
 ## `TemporalConnection` and `TemporalUnreachable`
 

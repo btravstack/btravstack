@@ -171,8 +171,12 @@ by itself: liveness answers from `building` onward, and readiness is the
 lifecycle's state rather than the transport's.
 
 The kernel races it against its own shutdown deferred and reports
-`reason: "runtimeStopped"`, which `runMain` exits `1` for — a restart, the right
+`reason: "runtimeStopped", unexpectedRuntimeStop: true`, which `runMain` exits `1` for — a restart, the right
 answer to a transport that has given up.
+That holds when `stop()` then answers `Ok`. A `stop()` that returns the
+failure makes `exited` a defect, which `runMain` exits `70` for: a Temporal
+worker whose `run()` rejected recovers the defect for `stopped` but returns it
+again from `stop()`, so that path exits `70`, not `1`.
 
 **A runtime that cannot know omits it, and one with nothing to say withdraws.**
 An HTTP server that is listening is serving; there is no third state, and a
