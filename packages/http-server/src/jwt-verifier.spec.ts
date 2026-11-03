@@ -204,6 +204,28 @@ describe("jwtVerifier", () => {
     expect(result).toBeErrTagged("CredentialRefused");
   });
 
+  it.for([
+    { key_ops: "verify" },
+    { key_ops: ["sign"] },
+    { key_ops: ["verify", "verify"] },
+    { key_ops: [1] },
+    { use: "enc" },
+    { ext: "true" },
+  ])(
+    "should report published key metadata %o that no token can use",
+    async (metadata, { misdeclared }) => {
+      // GIVEN
+      misdeclared.publish(metadata);
+      const token = await misdeclared.sign();
+
+      // WHEN
+      const result = await misdeclared.service.verify({ token, audience: misdeclared.audience });
+
+      // THEN
+      expect(result).toBeErrTagged("AuthenticatorUnavailable");
+    },
+  );
+
   it("should keep an unpublished key id out of observations", async ({
     forgedToken,
     issuer,

@@ -11,7 +11,7 @@ import {
 } from "@btravstack/config";
 import { Observers, observe } from "@btravstack/core";
 import { Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from "jose";
 import { Err, ErrAsync, Ok, fromPromise, type AsyncResult } from "unthrown";
 
 import { AuthenticatorUnavailable, CredentialRefused } from "./auth.js";
@@ -108,7 +108,7 @@ export function remoteJwtVerifier(
           requiredClaims: ["iss", "aud", "exp"],
         }),
         (cause) => {
-          const reason = keySetReason(cause);
+          const reason = keySetReason(cause, token, keys);
           if (reason === undefined) return new CredentialRefused();
           observe(observers, { component: "jwt", name: "verify", attributes: {} })({
             outcome: "error",
@@ -137,8 +137,8 @@ type VerifierEnvironment<O> = EnvReading<
   | MaybePinned<O, "issuer", `${PrefixOf<O, "HTTP_JWT">}_ISSUER`>
 >;
 
-// No key matching the token's `kid` and `alg` is the token's fault, not the issuer's:
-// `createRemoteJWKSet` has already refetched once, so those codes stay refusals.
+// No key matching the token's `kid` and `alg` is the token's fault, not the issuer's,
+// unless the issuer publishes that `kid` with metadata no verification can use.
 const KEY_SET_REASONS: Readonly<Record<string, string>> = {
   ERR_JWKS_TIMEOUT: "keys_unreachable",
   ERR_JWKS_INVALID: "keys_invalid",
@@ -146,7 +146,42 @@ const KEY_SET_REASONS: Readonly<Record<string, string>> = {
   ERR_JOSE_GENERIC: "issuer_unreachable",
 };
 
-function keySetReason(cause: unknown): string | undefined {
+function keySetReason(
+  cause: unknown,
+  token: string,
+  keys: ReturnType<typeof createRemoteJWKSet>,
+): string | undefined {
   const code: unknown = cause instanceof Error ? (cause as { code?: unknown }).code : undefined;
-  return typeof code === "string" ? KEY_SET_REASONS[code] : "issuer_unreachable";
+  if (typeof code !== "string") return "issuer_unreachable";
+  if (code === "ERR_JWKS_NO_MATCHING_KEY")
+    return publishesUnusableKey(token, keys) ? "key_unusable" : undefined;
+  return KEY_SET_REASONS[code];
+}
+
+function publishesUnusableKey(token: string, keys: ReturnType<typeof createRemoteJWKSet>): boolean {
+  const { kid } = decodeProtectedHeader(token);
+  return (
+    kid !== undefined &&
+    (keys.jwks()?.keys ?? []).some((jwk) => jwk.kid === kid && !verifiable(jwk))
+  );
+}
+
+// The checks `jose` applies to a key before any `alg` comparison: a key failing one is
+// unusable for every token, so it is the issuer's fault.
+function verifiable(jwk: {
+  readonly ext?: unknown;
+  readonly use?: unknown;
+  readonly key_ops?: unknown;
+}): boolean {
+  const ops = jwk.key_ops;
+  return (
+    (jwk.ext === undefined || typeof jwk.ext === "boolean") &&
+    (jwk.use === undefined || jwk.use === "sig") &&
+    (ops === undefined ||
+      (Array.isArray(ops) &&
+        ops.includes("verify") &&
+        ops.every(
+          (operation, index) => typeof operation === "string" && ops.indexOf(operation) === index,
+        )))
+  );
 }

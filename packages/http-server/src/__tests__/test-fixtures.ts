@@ -39,6 +39,7 @@ type TokenFixtures = {
   incoming: IncomingMessage;
   verification: Awaited<ReturnType<typeof jwtVerificationFixture>>;
   rotation: Awaited<ReturnType<typeof rotatingVerificationFixture>>;
+  misdeclared: Awaited<ReturnType<typeof misdeclaredKeyFixture>>;
 };
 
 export const it: TestAPI<HttpFixtures & TokenFixtures> = base.extend<TokenFixtures>({
@@ -49,6 +50,11 @@ export const it: TestAPI<HttpFixtures & TokenFixtures> = base.extend<TokenFixtur
     const fixture = await rotatingVerificationFixture();
     await use(fixture);
     vi.useRealTimers();
+    await fixture.close();
+  },
+  misdeclared: async ({ task: _task }, use) => {
+    const fixture = await misdeclaredKeyFixture();
+    await use(fixture);
     await fixture.close();
   },
   incoming: async ({ task: _task }, use) => {
@@ -365,6 +371,46 @@ async function rotatingVerificationFixture() {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(Date.now() + 31_000);
     },
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+async function misdeclaredKeyFixture() {
+  const { publicKey, privateKey } = await generateKeyPair("ES256");
+  const jwk = { ...(await exportJWK(publicKey)), kid: "published", alg: "ES256" };
+  let metadata: Readonly<Record<string, unknown>> = {};
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ keys: [{ ...jwk, ...metadata }] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  const issuer = "https://misdeclared.example";
+  const audience = "service-a";
+  const service = await Module.scoped(
+    Module("MisdeclaredJwtVerificationFixture")({
+      provides: [
+        Provider(Env)({ inject: {}, value: {} }),
+        noObserverMember,
+        jwtVerifier({ issuer, jwks: `http://127.0.0.1:${port}/jwks` }),
+      ],
+      exports: [JwtVerifier],
+    }),
+    (ctx) => OkAsync(ctx.get(JwtVerifier)),
+  ).getOrThrow();
+  return {
+    service,
+    audience,
+    publish: (published: Readonly<Record<string, unknown>>) => {
+      metadata = published;
+    },
+    sign: () =>
+      new SignJWT({ sub: "caller" })
+        .setProtectedHeader({ alg: "ES256", kid: jwk.kid })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setExpirationTime("5m")
+        .sign(privateKey),
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
