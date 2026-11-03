@@ -1,5 +1,13 @@
 # @btravstack/observability
 
+## 0.55.1
+
+### Patch Changes
+
+- @btravstack/config@0.55.1
+  - @btravstack/core@0.55.1
+  - @btravstack/di@0.55.1
+
 ## 0.55.0
 
 ### Patch Changes
