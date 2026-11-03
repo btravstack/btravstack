@@ -159,15 +159,40 @@ function keySetReason(
 }
 
 function publishesUnusableKey(token: string, keys: ReturnType<typeof createRemoteJWKSet>): boolean {
-  const { kid } = decodeProtectedHeader(token);
+  const { alg, kid } = decodeProtectedHeader(token);
+  const type = typeof alg === "string" ? KEY_TYPES[alg] : undefined;
   return (
-    kid !== undefined &&
-    (keys.jwks()?.keys ?? []).some((jwk) => jwk.kid === kid && !verifiable(jwk))
+    type !== undefined &&
+    (keys.jwks()?.keys ?? []).some(
+      (jwk) =>
+        (kid === undefined || jwk.kid === kid) &&
+        jwk.kty === type.kty &&
+        (type.crv === undefined || jwk.crv === type.crv) &&
+        (jwk.alg === undefined ? jwk.kty !== "AKP" : jwk.alg === alg) &&
+        !verifiable(jwk),
+    )
   );
 }
 
-// The checks `jose` applies to a key before any `alg` comparison: a key failing one is
-// unusable for every token, so it is the issuer's fault.
+const KEY_TYPES: Readonly<Record<string, { readonly kty: string; readonly crv?: string }>> = {
+  RS256: { kty: "RSA" },
+  RS384: { kty: "RSA" },
+  RS512: { kty: "RSA" },
+  PS256: { kty: "RSA" },
+  PS384: { kty: "RSA" },
+  PS512: { kty: "RSA" },
+  ES256: { kty: "EC", crv: "P-256" },
+  ES384: { kty: "EC", crv: "P-384" },
+  ES512: { kty: "EC", crv: "P-521" },
+  EdDSA: { kty: "OKP", crv: "Ed25519" },
+  Ed25519: { kty: "OKP", crv: "Ed25519" },
+  "ML-DSA-44": { kty: "AKP" },
+  "ML-DSA-65": { kty: "AKP" },
+  "ML-DSA-87": { kty: "AKP" },
+};
+
+// `jose`'s key selection splits into the token's half above (`kid`, key type, `alg`) and
+// this metadata half: a candidate failing only this one is the issuer's fault.
 function verifiable(jwk: {
   readonly ext?: unknown;
   readonly use?: unknown;

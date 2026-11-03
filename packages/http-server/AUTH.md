@@ -233,7 +233,7 @@ The two rules this half exists to state, before the detail:
     `alg` that select no published key are not on that list: they are a
     header the sender chose, refused in silence like any other bad token
     rather than paging an operator as an outage. The exception is a key set
-    publishing the token's `kid` with metadata no verification can use
+    publishing the key the token selects (by `kid`, `kty` and `alg`) with metadata no verification can use
     (`key_ops`, `use`, `ext`), which is the issuer's fault and reported as
     `key_unusable`. The status does not change: there is genuinely nothing here that
     can authenticate anyone, and widening `Unauthenticated` into a union so a

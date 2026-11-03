@@ -426,7 +426,7 @@ older than `jose`'s 30-second cooldown; within it the evidence is refused
 without a fetch, so evidence signed with a key published in those 30 seconds
 is refused until a later attempt. A key set that cannot be obtained or used
 (unreachable, timed out, non-`200`, malformed), or that publishes the
-evidence's `kid` with metadata no verification can use (`key_ops`, `use`,
+key the evidence selects (by `kid`, `kty` and `alg`) with metadata no verification can use (`key_ops`, `use`,
 `ext`), returns `AuthenticatorUnavailable` and a bounded issuer observation,
 without recording the evidence token. Blank expected audiences are refused.
 `jwtAuthenticator` reuses the same verification implementation and retains its
@@ -1569,7 +1569,7 @@ one — settles an `error` operation carrying a bounded `reason`, because it
 refused every caller at once and a bare `401` per request reads as the whole
 world suddenly sending bad credentials. A `kid` and `alg` that select no
 published key are the token's own fault and stay silent, unless the key set
-publishes that `kid` with metadata no verification can use. An unknown `kid`
+publishes the selected key with metadata no verification can use. An unknown `kid`
 is refetched only outside `jose`'s 30-second cooldown, so a token signed with
 a key published within it is refused until a later attempt.
 

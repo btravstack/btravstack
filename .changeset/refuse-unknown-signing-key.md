@@ -7,7 +7,7 @@ Refuse a JWT whose `kid` and `alg` select no published key (`ERR_JWKS_NO_MATCHIN
 `jwtVerifier()` now answers `CredentialRefused` rather than `AuthenticatorUnavailable`,
 and neither `jwtVerifier()` nor `jwtAuthenticator()` settles an `error` observation for
 it, since the token's sender controls its header. A key set that cannot be fetched or
-parsed, or that publishes the token's `kid` with metadata no verification can use
+parsed, or that publishes the key the token selects (by `kid`, `kty` and `alg`) with metadata no verification can use
 (`key_ops`, `use`, `ext`), remains `AuthenticatorUnavailable` and observed
 (`reason: "key_unusable"` for the latter).
 

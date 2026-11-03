@@ -226,6 +226,20 @@ describe("jwtVerifier", () => {
     },
   );
 
+  it("should report unusable key metadata for a token naming no key id", async ({
+    misdeclared,
+  }) => {
+    // GIVEN
+    misdeclared.publish({ key_ops: ["sign"] });
+    const token = await misdeclared.sign({});
+
+    // WHEN
+    const result = await misdeclared.service.verify({ token, audience: misdeclared.audience });
+
+    // THEN
+    expect(result).toBeErrTagged("AuthenticatorUnavailable");
+  });
+
   it("should keep an unpublished key id out of observations", async ({
     forgedToken,
     issuer,

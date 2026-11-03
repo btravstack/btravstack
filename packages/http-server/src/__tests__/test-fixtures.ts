@@ -404,9 +404,9 @@ async function misdeclaredKeyFixture() {
     publish: (published: Readonly<Record<string, unknown>>) => {
       metadata = published;
     },
-    sign: () =>
+    sign: (header: { readonly kid?: string } = { kid: jwk.kid }) =>
       new SignJWT({ sub: "caller" })
-        .setProtectedHeader({ alg: "ES256", kid: jwk.kid })
+        .setProtectedHeader({ alg: "ES256", ...header })
         .setIssuer(issuer)
         .setAudience(audience)
         .setExpirationTime("5m")
