@@ -37,23 +37,24 @@ describe("oauthClient", () => {
       const answer = await separateSources(env);
 
       // THEN their own credentials, caches and health contributions remain distinct
-      expect(answer).toBeOkWith({
+      expect(
+        answer.map((sources) => ({
+          ...sources,
+          discoveries: scripted.requests.filter(({ path }) =>
+            path.endsWith("/.well-known/openid-configuration"),
+          ).length,
+          credentials: scripted.requests
+            .flatMap(({ authorization }) =>
+              authorization === undefined
+                ? []
+                : [Buffer.from(authorization.slice("Basic ".length), "base64").toString()],
+            )
+            .sort(),
+        })),
+      ).toBeOkWith({
         distinct: 2,
         reused: true,
         healthChecks: 2,
-      });
-      expect({
-        discoveries: scripted.requests.filter(({ path }) =>
-          path.endsWith("/.well-known/openid-configuration"),
-        ).length,
-        credentials: scripted.requests
-          .flatMap(({ authorization }) =>
-            authorization === undefined
-              ? []
-              : [Buffer.from(authorization.slice("Basic ".length), "base64").toString()],
-          )
-          .sort(),
-      }).toStrictEqual({
         discoveries: 2,
         credentials: ["background:background%2Dsecret", "foreground:foreground%2Dsecret"],
       });
