@@ -264,6 +264,13 @@ connect with is a `ConfigInvalid` at boot. The
 [reference](https://btravstack.github.io/btravstack/reference/temporal-worker#securing-the-connection)
 has the rules and the limits.
 
+An application can supply renewable bearer credentials through an `apiKey` port
+implementing `TemporalApiKeySource.read()`. The source owns token acquisition,
+caching and expiry; the starter polls it with the credentials reload interval.
+A source requires TLS and excludes inline/file API keys and mTLS. See the
+[reference](https://btravstack.github.io/btravstack/reference/temporal-worker#renewable-bearer-credentials)
+for composition and fail-closed behavior.
+
 ## The drain
 
 `worker.shutdown()` stops polling at once, but `run()` resolves only when the
@@ -283,10 +290,3 @@ It keeps private infrastructure hidden and business exports explicit.
 ## License
 
 [MIT](./LICENSE) © Benoit TRAVERS
-
-An application can supply renewable bearer credentials through an `apiKey` port
-implementing `TemporalApiKeySource.read()`. The source owns token acquisition,
-caching and expiry; the starter polls it with the credentials reload interval.
-A source requires TLS and excludes inline/file API keys and mTLS. See the
-[reference](../../docs/reference/temporal-worker.md#renewable-bearer-credentials)
-for composition and fail-closed behavior.

@@ -162,7 +162,7 @@ class BackgroundTokens extends Port("ReferenceBackgroundTokens")<TokenSourceServ
 
 export const SeparateIdentities = Module("ReferenceSeparateIdentities")({
   imports: [oauthClient(), oauthClient({ port: BackgroundTokens, variablePrefix: "BACKGROUND_OAUTH" })],
-  exports: [BackgroundTokens],
+  exports: [TokenSource, BackgroundTokens],
 });
 ```
 
