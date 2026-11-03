@@ -68,16 +68,12 @@ describe("renewable worker credentials", () => {
     void app.exited.then(() => {
       exited = true;
     });
-    let exitedBeforeRelease: boolean;
 
     // WHEN
     renewable.set(undefined);
-    try {
-      await vi.waitUntil(() => !app.ready());
-      exitedBeforeRelease = exited;
-    } finally {
-      gate.release();
-    }
+    await vi.waitUntil(() => !app.ready());
+    const exitedBeforeRelease = exited;
+    gate.release();
     const report = (await app.exited).getOrThrow();
 
     // THEN
