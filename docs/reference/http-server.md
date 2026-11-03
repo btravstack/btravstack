@@ -419,8 +419,15 @@ configured issuer has its own provider and cache.
 
 Successful verification returns signed `Claims`; application claim-shape and
 authorization checks still follow. Invalid, expired, mismatched or malformed
-evidence returns `CredentialRefused` without credential details. A failed key
-lookup returns `AuthenticatorUnavailable` and a bounded issuer observation,
+evidence returns `CredentialRefused` without credential details. So does
+evidence whose `kid` and `alg` select no key of the fetched key set: the sender
+chose them. An unknown `kid` triggers a refetch only when the cached set is
+older than `jose`'s 30-second cooldown; within it the evidence is refused
+without a fetch, so evidence signed with a key published in those 30 seconds
+is refused until a later attempt. A key set that cannot be obtained or used
+(unreachable, timed out, non-`200`, malformed), or that publishes the
+key the evidence selects (by `kid`, `kty` and `alg`) with metadata no verification can use (`key_ops`, `use`,
+`ext`), returns `AuthenticatorUnavailable` and a bounded issuer observation,
 without recording the evidence token. Blank expected audiences are refused.
 `jwtAuthenticator` reuses the same verification implementation and retains its
 existing authentication-scheme refusal behavior.
@@ -1558,9 +1565,13 @@ An authenticator that wants to record why reports it to
 caller's own credential caused stays silent, because a line per unauthenticated
 request is how a scanner writes an application's logs for it. A refusal the
 scheme's own DEPENDENCY caused — a JWKS that times out, a key set that is not
-one, a `kid` no published key matches — settles an `error` operation carrying a
-bounded `reason`, because it refused every caller at once and a bare `401` per
-request reads as the whole world suddenly sending bad credentials.
+one — settles an `error` operation carrying a bounded `reason`, because it
+refused every caller at once and a bare `401` per request reads as the whole
+world suddenly sending bad credentials. A `kid` and `alg` that select no
+published key are the token's own fault and stay silent, unless the key set
+publishes the selected key with metadata no verification can use. An unknown `kid`
+is refetched only outside `jose`'s 30-second cooldown, so a token signed with
+a key published within it is refused until a later attempt.
 
 ### `defineHttp({ authenticators })` — what each scheme resolves to
 

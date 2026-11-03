@@ -11,7 +11,7 @@ import {
 } from "@btravstack/config";
 import { Observers, observe } from "@btravstack/core";
 import { Port, Provider, type PortClassOf, type ServiceOf } from "@btravstack/di";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from "jose";
 import { Err, ErrAsync, Ok, fromPromise, type AsyncResult } from "unthrown";
 
 import { AuthenticatorUnavailable, CredentialRefused } from "./auth.js";
@@ -108,7 +108,7 @@ export function remoteJwtVerifier(
           requiredClaims: ["iss", "aud", "exp"],
         }),
         (cause) => {
-          const reason = keySetReason(cause);
+          const reason = keySetReason(cause, token, keys);
           if (reason === undefined) return new CredentialRefused();
           observe(observers, { component: "jwt", name: "verify", attributes: {} })({
             outcome: "error",
@@ -137,16 +137,76 @@ type VerifierEnvironment<O> = EnvReading<
   | MaybePinned<O, "issuer", `${PrefixOf<O, "HTTP_JWT">}_ISSUER`>
 >;
 
+// No key matching the token's `kid` and `alg` is the token's fault, not the issuer's,
+// unless the issuer publishes that `kid` with metadata no verification can use.
 const KEY_SET_REASONS: Readonly<Record<string, string>> = {
   ERR_JWKS_TIMEOUT: "keys_unreachable",
   ERR_JWKS_INVALID: "keys_invalid",
-  ERR_JWKS_NO_MATCHING_KEY: "no_matching_key",
-  ERR_JWKS_MULTIPLE_MATCHING_KEYS: "keys_ambiguous",
   ERR_JWK_INVALID: "key_invalid",
   ERR_JOSE_GENERIC: "issuer_unreachable",
 };
 
-function keySetReason(cause: unknown): string | undefined {
+function keySetReason(
+  cause: unknown,
+  token: string,
+  keys: ReturnType<typeof createRemoteJWKSet>,
+): string | undefined {
   const code: unknown = cause instanceof Error ? (cause as { code?: unknown }).code : undefined;
-  return typeof code === "string" ? KEY_SET_REASONS[code] : "issuer_unreachable";
+  if (typeof code !== "string") return "issuer_unreachable";
+  if (code === "ERR_JWKS_NO_MATCHING_KEY")
+    return publishesUnusableKey(token, keys) ? "key_unusable" : undefined;
+  return KEY_SET_REASONS[code];
+}
+
+function publishesUnusableKey(token: string, keys: ReturnType<typeof createRemoteJWKSet>): boolean {
+  const { alg, kid } = decodeProtectedHeader(token);
+  const type = typeof alg === "string" ? KEY_TYPES[alg] : undefined;
+  return (
+    type !== undefined &&
+    (keys.jwks()?.keys ?? []).some(
+      (jwk) =>
+        (kid === undefined || jwk.kid === kid) &&
+        jwk.kty === type.kty &&
+        (type.crv === undefined || jwk.crv === type.crv) &&
+        (jwk.alg === undefined ? jwk.kty !== "AKP" : jwk.alg === alg) &&
+        !verifiable(jwk),
+    )
+  );
+}
+
+const KEY_TYPES: Readonly<Record<string, { readonly kty: string; readonly crv?: string }>> = {
+  RS256: { kty: "RSA" },
+  RS384: { kty: "RSA" },
+  RS512: { kty: "RSA" },
+  PS256: { kty: "RSA" },
+  PS384: { kty: "RSA" },
+  PS512: { kty: "RSA" },
+  ES256: { kty: "EC", crv: "P-256" },
+  ES384: { kty: "EC", crv: "P-384" },
+  ES512: { kty: "EC", crv: "P-521" },
+  EdDSA: { kty: "OKP", crv: "Ed25519" },
+  Ed25519: { kty: "OKP", crv: "Ed25519" },
+  "ML-DSA-44": { kty: "AKP" },
+  "ML-DSA-65": { kty: "AKP" },
+  "ML-DSA-87": { kty: "AKP" },
+};
+
+// `jose`'s key selection splits into the token's half above (`kid`, key type, `alg`) and
+// this metadata half: a candidate failing only this one is the issuer's fault.
+function verifiable(jwk: {
+  readonly ext?: unknown;
+  readonly use?: unknown;
+  readonly key_ops?: unknown;
+}): boolean {
+  const ops = jwk.key_ops;
+  return (
+    (jwk.ext === undefined || typeof jwk.ext === "boolean") &&
+    (jwk.use === undefined || jwk.use === "sig") &&
+    (ops === undefined ||
+      (Array.isArray(ops) &&
+        ops.includes("verify") &&
+        ops.every(
+          (operation, index) => typeof operation === "string" && ops.indexOf(operation) === index,
+        )))
+  );
 }

@@ -174,6 +174,87 @@ describe("jwtVerifier", () => {
     expect(result).toBeErrTagged("CredentialRefused");
   });
 
+  it("should refuse a key id the fetched key set does not publish", async ({
+    forgedToken,
+    issuer,
+    verification,
+  }) => {
+    // GIVEN
+    const token = await forgedToken({ alg: "RS256", kid: "unpublished" }).get();
+
+    // WHEN
+    const result = await verification.service.verify({ token, audience: issuer.audience });
+
+    // THEN
+    expect(result).toBeErrTagged("CredentialRefused");
+  });
+
+  it("should refuse a published key id under another algorithm", async ({
+    forgedToken,
+    issuer,
+    verification,
+  }) => {
+    // GIVEN
+    const token = await forgedToken({ alg: "ES256" }).get();
+
+    // WHEN
+    const result = await verification.service.verify({ token, audience: issuer.audience });
+
+    // THEN
+    expect(result).toBeErrTagged("CredentialRefused");
+  });
+
+  it.for([
+    { key_ops: "verify" },
+    { key_ops: ["sign"] },
+    { key_ops: ["verify", "verify"] },
+    { key_ops: [1] },
+    { use: "enc" },
+    { ext: "true" },
+  ])(
+    "should report published key metadata %o that no token can use",
+    async (metadata, { misdeclared }) => {
+      // GIVEN
+      misdeclared.publish(metadata);
+      const token = await misdeclared.sign();
+
+      // WHEN
+      const result = await misdeclared.service.verify({ token, audience: misdeclared.audience });
+
+      // THEN
+      expect(result).toBeErrTagged("AuthenticatorUnavailable");
+    },
+  );
+
+  it("should report unusable key metadata for a token naming no key id", async ({
+    misdeclared,
+  }) => {
+    // GIVEN
+    misdeclared.publish({ key_ops: ["sign"] });
+    const token = await misdeclared.sign({});
+
+    // WHEN
+    const result = await misdeclared.service.verify({ token, audience: misdeclared.audience });
+
+    // THEN
+    expect(result).toBeErrTagged("AuthenticatorUnavailable");
+  });
+
+  it("should keep an unpublished key id out of observations", async ({
+    forgedToken,
+    issuer,
+    verification,
+  }) => {
+    // GIVEN
+    const token = await forgedToken({ alg: "RS256", kid: "unpublished" }).get();
+
+    // WHEN
+    await verification.service.verify({ token, audience: issuer.audience });
+
+    // THEN
+    expect(verification.observations).toEqual([]);
+  });
+
   it("should keep refused credentials out of observations", async ({ issuer, verification }) => {
     // GIVEN
     const token = await issuer.sign({ sub: "private-subject" }, { audience: "wrong-target" }).get();

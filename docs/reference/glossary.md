@@ -87,7 +87,7 @@ why `principal(claims)` is the application's. See
 `jwtAuthenticator` verifies a signature against: fetched on demand from the
 configured URL — the `jwks` option, or `HTTP_JWT_JWKS_URI` when it is not
 pinned — cached, and refetched when a token names a `kid` the cache
-has not seen. Because it publishes public keys, the accepted algorithms are
+has not seen, once the cached set is older than `jose`'s 30-second cooldown. Because it publishes public keys, the accepted algorithms are
 asymmetric only — an HMAC one beside them is the algorithm-confusion attack.
 See [@btravstack/http-server](/reference/http-server#the-authenticators-that-ship).
 

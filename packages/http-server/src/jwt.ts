@@ -36,7 +36,8 @@ export type JwtOptions<
   /**
    * The issuer's JWKS endpoint — pins `<prefix>_JWKS_URI` when set, and is read
    * from it when not. Keys are fetched on demand and cached; a `kid` the cache
-   * does not know triggers one refetch, rate-limited by `jose`.
+   * does not know triggers one refetch, unless the cache is under 30 seconds
+   * old (`jose`'s cooldown), in which case the token is refused.
    */
   readonly jwks?: string | undefined;
   /** Required `iss` — pins `<prefix>_ISSUER`. A token from another issuer is refused. */

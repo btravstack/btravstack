@@ -547,6 +547,48 @@ describe("jwtAuthenticator", () => {
     ]);
   });
 
+  it("says nothing about a key id the issuer does not publish", async ({
+    forgedToken,
+    recordedJwt,
+  }) => {
+    // GIVEN a reachable key set, and a token naming a `kid` it does not publish
+    const scheme = await recordedJwt();
+    const token = await forgedToken({ alg: "RS256", kid: "unpublished" }).get();
+
+    // WHEN it is presented
+    const answered = await scheme.resolve(
+      { authorization: `Bearer ${token}` },
+      new URLSearchParams(),
+    );
+
+    // THEN it is refused and nothing was observed: the sender chose that `kid`
+    expect({ refused: answered.isErr(), observed: scheme.taken() }).toEqual({
+      refused: true,
+      observed: [],
+    });
+  });
+
+  it("says nothing about a published key id under another algorithm", async ({
+    forgedToken,
+    recordedJwt,
+  }) => {
+    // GIVEN a reachable key set, and a token naming its RSA key's `kid` over ES256
+    const scheme = await recordedJwt();
+    const token = await forgedToken({ alg: "ES256" }).get();
+
+    // WHEN it is presented
+    const answered = await scheme.resolve(
+      { authorization: `Bearer ${token}` },
+      new URLSearchParams(),
+    );
+
+    // THEN it is refused and nothing was observed
+    expect({ refused: answered.isErr(), observed: scheme.taken() }).toEqual({
+      refused: true,
+      observed: [],
+    });
+  });
+
   it("says nothing about a token the caller got wrong", async ({ issuer, unreachableJwks }) => {
     // GIVEN the same recording scheme, and a request carrying no token at all —
     // the shape a caller controls
