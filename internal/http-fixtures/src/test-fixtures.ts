@@ -291,7 +291,7 @@ const localIssuerFixture = async (
 
 const forgedToken =
   (issuer: LocalIssuer) =>
-  ({ alg, kid = issuer.jwk.kid }: { readonly alg: string; readonly kid?: string }) => {
+  ({ alg, kid = issuer.jwk.kid }: { readonly alg: "RS256" | "ES256"; readonly kid?: string }) => {
     assert.ok(kid !== undefined, "localIssuer served a JWK with no kid");
     return fromSafePromise(
       generateKeyPair(alg).then(({ privateKey }) =>
@@ -2639,7 +2639,7 @@ export type HttpFixtures = {
    * naming `kid` — `issuer`'s published one unless given.
    */
   readonly forgedToken: (header: {
-    readonly alg: string;
+    readonly alg: "RS256" | "ES256";
     readonly kid?: string;
   }) => AsyncResult<string, never>;
   /** The API-key scheme with two issued keys, resolved. */
