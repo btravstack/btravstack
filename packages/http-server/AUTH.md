@@ -202,8 +202,11 @@ The two rules this half exists to state, before the detail:
   never imports the subpath installs nothing. What it owns is the part where
   writing it per application is how CVEs happen:
   - **JWKS fetch, cache and rotation** — `jose`'s `createRemoteJWKSet` fetches
-    on demand and refetches when a token names an unseen `kid`, rate-limited so
-    unknown `kid`s cannot be turned into a request amplifier against the issuer.
+    on demand and refetches when a token names an unseen `kid`, but only once
+    the cached set is older than its 30-second cooldown, so unknown `kid`s
+    cannot be turned into a request amplifier against the issuer. Within the
+    cooldown, a token signed with a just-published key is refused without a
+    fetch, until a later attempt.
   - **An algorithm allowlist that excludes HMAC.** `DEFAULT_ALGORITHMS` is
     `RS*`/`ES*` only. A JWKS publishes PUBLIC keys, so accepting `HS256` beside
     them is the **algorithm-confusion** attack — an attacker signs with the
@@ -225,14 +228,14 @@ The two rules this half exists to state, before the detail:
     `jose` `code` at all — a fetch `TypeError`, a DNS failure, a 5xx — settle
     an `Observers` operation (`component: "jwt"`,
     `name: "verify"`, `outcome: "error"`) carrying a bounded `reason` dimension
-    and the library's own cause. A `kid` and `alg` that select no published
-    key are not on that list: `createRemoteJWKSet` has already refetched the
-    set once for an unknown `kid`, so what remains is a header the sender
-    chose, refused in silence rather than paging an operator as an outage.
-    They used to be the same silent refusal as a
-    bad token, so a key-rotation incident presented as every client in the
-    world suddenly sending bad credentials, with nothing anywhere saying
-    otherwise. The status does not change: there is genuinely nothing here that
+    and the library's own cause, so a key-set incident is not mistaken for
+    every client in the world suddenly sending bad credentials. A `kid` and
+    `alg` that select no published key are not on that list: they are a
+    header the sender chose, refused in silence like any other bad token
+    rather than paging an operator as an outage. The exception is a key set
+    publishing the token's `kid` with metadata no verification can use
+    (`key_ops`, `use`, `ext`), which is the issuer's fault and reported as
+    `key_unusable`. The status does not change: there is genuinely nothing here that
     can authenticate anyone, and widening `Unauthenticated` into a union so a
     `503` could reach the wire would put a transport's status in a seam that
     deliberately names no protocol. What changes is that it is a metric and a
@@ -1000,4 +1003,7 @@ promotes a caller to another scheme. Every HTTP answerer maps it to `503`;
 htmx does not redirect it to login. The request adapter reports an `auth` /
 `authenticate` diagnostic operation with the scheme and `outcome: "error"`
 (`traced: false`, since it is a failure report rather than a timed verifier span). A defect
-remains `500`. JWT's existing JWKS classification is unchanged.
+remains `500`. The JWT scheme does not use this path: it answers an
+unobtainable or unusable key set `Unauthenticated` with its own `jwt` /
+`verify` observation, and a `kid` and `alg` that select no published key
+`Unauthenticated` in silence.
