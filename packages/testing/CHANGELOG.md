@@ -1,5 +1,18 @@
 # @btravstack/testing
 
+## 0.55.0
+
+### Minor Changes
+
+- 3acdfa5: Allow `localIssuer().sign` to accept a readonly audience list for genuine signed multiple-recipient tokens in authorization rejection tests.
+
+### Patch Changes
+
+- Updated dependencies [3acdfa5]
+  - @btravstack/core@0.55.0
+  - @btravstack/config@0.55.0
+  - @btravstack/di@0.55.0
+
 ## 0.54.0
 
 ### Patch Changes

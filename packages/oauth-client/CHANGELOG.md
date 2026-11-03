@@ -1,5 +1,18 @@
 # @btravstack/oauth-client
 
+## 0.55.0
+
+### Minor Changes
+
+- 3acdfa5: Allow `oauthClient({ variablePrefix })` to read an isolated issuer and client credential environment namespace, with matching typed environment requirements. Use a distinct `port` for each client identity; internal discovery/cache state is isolated per source port, and a custom port's health check is named `oauth-client:<port id>`. The defaults remain `OAUTH` and `TokenSource`.
+
+### Patch Changes
+
+- Updated dependencies [3acdfa5]
+  - @btravstack/core@0.55.0
+  - @btravstack/config@0.55.0
+  - @btravstack/di@0.55.0
+
 ## 0.54.0
 
 ### Patch Changes
