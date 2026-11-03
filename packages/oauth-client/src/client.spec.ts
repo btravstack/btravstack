@@ -54,7 +54,7 @@ describe("oauthClient", () => {
       ).toBeOkWith({
         distinct: 2,
         reused: true,
-        healthChecks: 2,
+        healthChecks: ["oauth-client", "oauth-client:OAuthTestSecondaryTokens"],
         discoveries: 2,
         credentials: ["background:background%2Dsecret", "foreground:foreground%2Dsecret"],
       });

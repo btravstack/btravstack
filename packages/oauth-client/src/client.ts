@@ -369,7 +369,10 @@ export const oauthClient = <const O extends OAuthClientOptions = Record<never, n
       }),
       Provider.member(HealthChecks)({
         inject: { fetches: fetchesPort },
-        sync: ({ fetches: built }) => ({ name: "oauth-client", check: built.health }),
+        sync: ({ fetches: built }) => ({
+          name: fetchesPort === TokenFetches ? "oauth-client" : `oauth-client:${sourcePort.portId}`,
+          check: built.health,
+        }),
       }),
     ],
     exports: [sourcePort, HealthChecks],

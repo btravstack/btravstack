@@ -262,7 +262,7 @@ export function separateSources(env: Environment) {
         (cached) => ({
           distinct: new Set(initial.map(({ bearer }) => bearer)).size,
           reused: cached.every((token, index) => token.bearer === initial[index]?.bearer),
-          healthChecks: ctx.get(HealthChecks).length,
+          healthChecks: ctx.get(HealthChecks).map(({ name }) => name),
         }),
       ),
     );

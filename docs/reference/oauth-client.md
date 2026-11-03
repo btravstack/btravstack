@@ -167,7 +167,8 @@ export const SeparateIdentities = Module("ReferenceSeparateIdentities")({
 ```
 
 The custom port replaces `TokenSource` in that module's exports. Each source
-retains its own credentials, discovery, cache and health state. Reusing a port
+retains its own credentials, discovery, cache and health state; a custom
+port's health check is named `oauth-client:<port id>`. Reusing a port
 for different configurations is refused as a graph collision. Other options are
 not variables:
 
