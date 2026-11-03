@@ -22,7 +22,7 @@ import {
   type Operation,
   type Settle,
 } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import {
   ClientSecretBasic,
   ResponseBodyError,
@@ -54,6 +54,10 @@ export type OAuthClientOptions = {
   readonly clientId?: string | undefined;
   /** Pins `OAUTH_CLIENT_SECRET`. A deployment sets the variable, from a Secret. */
   readonly clientSecret?: string | undefined;
+  /** Target port for an independently configured source. Default {@link TokenSource}. */
+  readonly port?: PortClassOf<string, TokenSourceService>;
+  /** Prefix for issuer and client credential variables. Default `OAUTH`. */
+  readonly variablePrefix?: string | undefined;
   /**
    * Talk to an `http:` issuer that is NOT on a loopback host. Default `false`,
    * and a `ConfigInvalid` at boot without it: the client secret and every
@@ -284,7 +288,8 @@ const tokenFetches = (
  *
  * - **Configured from `OAUTH_ISSUER`, `OAUTH_CLIENT_ID` and
  *   `OAUTH_CLIENT_SECRET`**, each pinned by its option, validated as the graph
- *   is built. A cleartext issuer off loopback is a `ConfigInvalid` unless
+ *   is built. `variablePrefix` replaces `OAUTH` for all three variables,
+ *   allowing a private module to use a separate client identity. A cleartext issuer off loopback is a `ConfigInvalid` unless
  *   `allowInsecureIssuer` is pinned.
  * - **Discovery is lazy**: the first token asks for the issuer's metadata, and
  *   a failed discovery is asked again by the next. An authorization server
@@ -307,25 +312,29 @@ export const oauthClient = <const O extends OAuthClientOptions = Record<never, n
   // `{}` only when the argument is omitted, which is when `O` is `{}` too.
   options: O & OptionsAs<O, OAuthClientOptions> = {} as never,
 ): Module<
-  TokenSource | HealthChecks,
+  InstanceType<SourcePort<O>> | HealthChecks,
   ConfigInvalid,
   EnvReading<
-    | Unpinned<O, "issuer", "OAUTH_ISSUER">
-    | Unpinned<O, "clientId", "OAUTH_CLIENT_ID">
-    | Unpinned<O, "clientSecret", "OAUTH_CLIENT_SECRET">,
-    | MaybePinned<O, "issuer", "OAUTH_ISSUER">
-    | MaybePinned<O, "clientId", "OAUTH_CLIENT_ID">
-    | MaybePinned<O, "clientSecret", "OAUTH_CLIENT_SECRET">
+    | Unpinned<O, "issuer", `${PrefixOf<O>}_ISSUER`>
+    | Unpinned<O, "clientId", `${PrefixOf<O>}_CLIENT_ID`>
+    | Unpinned<O, "clientSecret", `${PrefixOf<O>}_CLIENT_SECRET`>,
+    | MaybePinned<O, "issuer", `${PrefixOf<O>}_ISSUER`>
+    | MaybePinned<O, "clientId", `${PrefixOf<O>}_CLIENT_ID`>
+    | MaybePinned<O, "clientSecret", `${PrefixOf<O>}_CLIENT_SECRET`>
   >
 > => {
+  const sourcePort = options.port ?? TokenSource;
+  const fetchesPort =
+    sourcePort.portId === TokenSource.portId ? TokenFetches : fetchesPortFor(sourcePort);
+  const prefix = (options.variablePrefix ?? "OAUTH") as PrefixOf<O>;
   const clock = options.clock ?? systemClock;
   const schema = Config.object({
-    issuer: Config.pinned(options.issuer, Config.url("OAUTH_ISSUER")),
-    clientId: Config.pinned(options.clientId, Config.string("OAUTH_CLIENT_ID")),
-    clientSecret: Config.pinned(options.clientSecret, Config.string("OAUTH_CLIENT_SECRET")),
+    issuer: Config.pinned(options.issuer, Config.url(`${prefix}_ISSUER`)),
+    clientId: Config.pinned(options.clientId, Config.string(`${prefix}_CLIENT_ID`)),
+    clientSecret: Config.pinned(options.clientSecret, Config.string(`${prefix}_CLIENT_SECRET`)),
   });
 
-  const fetches = Provider(TokenFetches)({
+  const fetches = Provider(fetchesPort)({
     inject: { env: Env, observers: Observers },
     make: ({ env, observers }): AsyncResult<Fetches, ConfigInvalid> =>
       Config.parse(
@@ -337,7 +346,7 @@ export const oauthClient = <const O extends OAuthClientOptions = Record<never, n
           ? ErrAsync(
               cleartextRefused({
                 port: "OAuthClient",
-                variable: "OAUTH_ISSUER",
+                variable: `${prefix}_ISSUER`,
                 option: "allowInsecureIssuer",
                 on: "oauthClient()",
                 what: "it sends the client secret and every token in the open",
@@ -354,15 +363,48 @@ export const oauthClient = <const O extends OAuthClientOptions = Record<never, n
     provides: [
       noObserverMember,
       fetches,
-      Provider(TokenSource)({
-        inject: { fetches: TokenFetches },
+      Provider(sourcePort)({
+        inject: { fetches: fetchesPort },
         sync: ({ fetches: built }) => built.source,
       }),
       Provider.member(HealthChecks)({
-        inject: { fetches: TokenFetches },
+        inject: { fetches: fetchesPort },
         sync: ({ fetches: built }) => ({ name: "oauth-client", check: built.health }),
       }),
     ],
-    exports: [TokenSource, HealthChecks],
+    exports: [sourcePort, HealthChecks],
   }) as never;
 };
+
+/** The selected environment namespace, including the default when a prefix may be absent. */
+type PrefixOf<O> = O extends unknown
+  ? "variablePrefix" extends keyof O
+    ?
+        | (NonNullable<O["variablePrefix"]> & string)
+        | (Record<never, never> extends Pick<O, "variablePrefix">
+            ? "OAUTH"
+            : undefined extends O["variablePrefix"]
+              ? "OAUTH"
+              : never)
+    : "OAUTH"
+  : never;
+
+type SourcePort<O> = O extends {
+  readonly port: infer P extends PortClassOf<string, TokenSourceService>;
+}
+  ? P
+  : O extends { readonly port?: infer P }
+    ? Extract<P, PortClassOf<string, TokenSourceService>> | typeof TokenSource
+    : typeof TokenSource;
+
+const fetchesPorts = new Map<string, PortClassOf<string, Fetches>>();
+
+function fetchesPortFor(
+  source: PortClassOf<string, TokenSourceService>,
+): PortClassOf<string, Fetches> {
+  const existing = fetchesPorts.get(source.portId);
+  if (existing !== undefined) return existing;
+  class SourceFetches extends Port(`OAuthTokenFetches:${source.portId}`)<Fetches> {}
+  fetchesPorts.set(source.portId, SourceFetches);
+  return SourceFetches;
+}

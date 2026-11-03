@@ -303,3 +303,22 @@ contract. Validation reuses the protocol library's public `defineContractBinding
 a Config field; defaults and pins are validated too. The client still binds its
 own destination explicitly. A worker's environment never resolves child or
 activity targets during workflow replay.
+
+## Application-owned renewable credentials
+
+`TemporalApiKeySource.read()` returns an `AsyncResult<string,
+TemporalApiKeyUnavailable>`. The application's port is composed through `apiKey`;
+the source owns acquisition, caching and expiry. The starter only polls it with
+`credentialsReloadMs`, and never imports an OAuth implementation. A source implies
+TLS and excludes inline/file API keys and mTLS. Configuration refusals precede
+source reads, and an empty answer is unavailable. Successful changes use
+`setApiKey`; credential values never enter diagnostics.
+
+A failed read or apply reports `temporal` / `reload`, immediately settles the
+runtime's stopped channel, and asks the worker to shut down. The kernel withdraws
+readiness and `runMain` returns nonzero. The process must restart after the source
+recovers; it never keeps polling with the previous credential after source removal.
+
+`api-key-source.spec.ts` uses the shared TLS authentication proxy to exercise real
+namespace RPCs and workers, including renewal and credential removal. Existing
+file-only rotation keeps its previous-credential retry behavior.

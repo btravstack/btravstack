@@ -4,7 +4,13 @@ import { ORY_ISSUER } from "@btravstack/internal-test-infra/ory";
 import { OkAsync, allAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { AUDIENCE, SCOPE, it } from "./__tests__/test-fixtures.js";
+import {
+  AUDIENCE,
+  SCOPE,
+  it,
+  separateSources,
+  conflictingSources,
+} from "./__tests__/test-fixtures.js";
 import { TokenIssuerUnavailable, TokenRefused, TokenSource } from "./token-source.js";
 
 const UNREACHABLE = "https://127.0.0.1:1/";
@@ -15,6 +21,161 @@ const BEFORE_SKEW_MS = 3_538_000;
 const AFTER_SKEW_MS = 3_541_000;
 
 describe("oauthClient", () => {
+  describe("variable prefix", () => {
+    it("should isolate two client identities in one dependency graph", async ({ scripted }) => {
+      // GIVEN a separate client port and deployment credential namespace for the same issuer
+      const env = {
+        OAUTH_ISSUER: scripted.issuing,
+        OAUTH_CLIENT_ID: "foreground",
+        OAUTH_CLIENT_SECRET: "foreground-secret",
+        BACKGROUND_OAUTH_ISSUER: scripted.issuing,
+        BACKGROUND_OAUTH_CLIENT_ID: "background",
+        BACKGROUND_OAUTH_CLIENT_SECRET: "background-secret",
+      };
+
+      // WHEN both sources fetch and reuse a token for the same audience
+      const answer = await separateSources(env);
+
+      // THEN their own credentials, caches and health contributions remain distinct
+      expect(answer).toBeOkWith({
+        distinct: 2,
+        reused: true,
+        healthChecks: 2,
+      });
+      expect({
+        discoveries: scripted.requests.filter(({ path }) =>
+          path.endsWith("/.well-known/openid-configuration"),
+        ).length,
+        credentials: scripted.requests
+          .flatMap(({ authorization }) =>
+            authorization === undefined
+              ? []
+              : [Buffer.from(authorization.slice("Basic ".length), "base64").toString()],
+          )
+          .sort(),
+      }).toStrictEqual({
+        discoveries: 2,
+        credentials: ["background:background%2Dsecret", "foreground:foreground%2Dsecret"],
+      });
+    });
+
+    it("should refuse different configurations targeting the same source port", async () => {
+      // GIVEN two sources sharing a custom port but using different deployment namespaces
+      const env = {
+        OAUTH_ISSUER: "https://issuer.example",
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+        BACKGROUND_OAUTH_ISSUER: "https://issuer.example",
+        BACKGROUND_OAUTH_CLIENT_ID: "other-client",
+        BACKGROUND_OAUTH_CLIENT_SECRET: "other-secret",
+      };
+
+      // WHEN their dependency graph is built
+      const answer = await conflictingSources(env);
+
+      // THEN configuration cannot silently select one client's identity
+      expect(answer).toBeDefectWith(expect.any(Error));
+    });
+
+    it("should keep the default client variable namespace", async ({ tokens, scripted }) => {
+      // GIVEN the original environment variable names
+      const env = {
+        OAUTH_ISSUER: scripted.issuing,
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+
+      // WHEN no prefix is provided
+      const answer = await tokens({ env }, (ctx) =>
+        ctx.get(TokenSource).token({ audience: "jobs" }),
+      );
+
+      // THEN the original configuration still serves a token
+      expect(answer).toBeOkWith({ bearer: "test-bearer-1" });
+    });
+
+    it("should read only the selected client identity", async ({ tokens, scripted }) => {
+      // GIVEN separate deployment-owned client credentials and an invalid default issuer
+      const env = {
+        OAUTH_ISSUER: "invalid default issuer",
+        OAUTH_CLIENT_ID: "unrelated-client",
+        OAUTH_CLIENT_SECRET: "unrelated-secret",
+        BACKGROUND_OAUTH_ISSUER: scripted.issuing,
+        BACKGROUND_OAUTH_CLIENT_ID: "background-client",
+        BACKGROUND_OAUTH_CLIENT_SECRET: "background-secret",
+      };
+
+      // WHEN the prefixed source requests a token through real discovery and grant HTTP endpoints
+      const answer = await tokens({ env, variablePrefix: "BACKGROUND_OAUTH" }, (ctx) =>
+        ctx.get(TokenSource).token({ audience: "jobs" }),
+      );
+
+      // THEN no default-identity configuration is read
+      expect(answer).toBeOkWith({ bearer: "test-bearer-1" });
+    });
+
+    it("should report missing variables from the selected prefix", async ({ tokens }) => {
+      // GIVEN only the unrelated default identity
+      const env = {
+        OAUTH_ISSUER: "https://issuer.example",
+        OAUTH_CLIENT_ID: "client",
+        OAUTH_CLIENT_SECRET: "secret",
+      };
+
+      // WHEN the background identity is built
+      const answer = await tokens({ env, variablePrefix: "BACKGROUND_OAUTH" }, () => OkAsync());
+
+      // THEN every missing variable names the selected prefix
+      expect(answer).toBeErrWith(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({ path: ["BACKGROUND_OAUTH_ISSUER"] }),
+            expect.objectContaining({ path: ["BACKGROUND_OAUTH_CLIENT_ID"] }),
+            expect.objectContaining({ path: ["BACKGROUND_OAUTH_CLIENT_SECRET"] }),
+          ]),
+        }),
+      );
+    });
+
+    it("should keep pins independent of the selected prefix", async ({ tokens, scripted }) => {
+      // GIVEN a pinned issuer and prefixed credentials
+      const env = {
+        BACKGROUND_OAUTH_CLIENT_ID: "client",
+        BACKGROUND_OAUTH_CLIENT_SECRET: "secret",
+      };
+
+      // WHEN the source is built without any issuer variable
+      const answer = await tokens(
+        { env, variablePrefix: "BACKGROUND_OAUTH", issuer: scripted.issuing },
+        (ctx) => ctx.get(TokenSource).token({ audience: "jobs" }),
+      );
+
+      // THEN the pinned issuer serves the request
+      expect(answer).toBeOkWith({ bearer: "test-bearer-1" });
+    });
+
+    it("should name the selected issuer variable when cleartext is refused", async ({ tokens }) => {
+      // GIVEN a cleartext issuer away from loopback
+      const env = {
+        BACKGROUND_OAUTH_ISSUER: "http://issuer.example",
+        BACKGROUND_OAUTH_CLIENT_ID: "client",
+        BACKGROUND_OAUTH_CLIENT_SECRET: "secret",
+      };
+
+      // WHEN the source is built without opting into cleartext
+      const answer = await tokens({ env, variablePrefix: "BACKGROUND_OAUTH" }, () => OkAsync());
+
+      // THEN the deployment error identifies its own identity's issuer variable
+      expect(answer).toBeErrWith(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({ path: ["BACKGROUND_OAUTH_ISSUER"] }),
+          ]),
+        }),
+      );
+    });
+  });
+
   describe("token exchange", () => {
     it("snapshots every request field before discovery so mutation cannot poison a subject's cache", async ({
       tokens,

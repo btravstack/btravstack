@@ -46,3 +46,20 @@ Request-scoped providers may inject `HttpRequestMetadata` to decode headers,
 method and URL independently of authentication. The runtime seeds its immutable
 snapshot and cancellation signal once per request unit; it is unavailable in
 application-scoped providers. See the [HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#non-authentication-request-metadata).
+
+`jwtVerifier()` on `/jwt` provides cached signed-evidence verification independently
+of an HTTP authentication scheme. Inject `JwtVerifier` and supply the expected
+audience on each `verify({ token, audience })` call; issuer and JWKS trust remain
+fixed at startup. See [signed evidence](https://btravstack.github.io/btravstack/reference/http-server#signed-evidence-for-another-recipient).
+
+## JWT verifier options
+
+- `issuer`: pins the required issuer.
+- `jwks`: pins the trusted key-set endpoint.
+- `variablePrefix`: names the issuer/JWKS environment prefix.
+- `algorithms`: pins the signature allowlist.
+- `clockToleranceSec`: pins expiry/not-before leeway.
+- `allowInsecureJwks`: explicitly permits non-loopback cleartext development keys.
+- `port`: names a second issuer's verifier capability.
+
+Defaults and configuration semantics are in the [HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#signed-evidence-for-another-recipient).

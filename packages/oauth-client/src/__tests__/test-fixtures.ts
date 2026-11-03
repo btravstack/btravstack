@@ -9,7 +9,7 @@ import {
   type Settle,
   type Settled,
 } from "@btravstack/core";
-import { Module, Provider, type Context } from "@btravstack/di";
+import { Module, Port, Provider, type Context } from "@btravstack/di";
 import { createExchangeClient } from "@btravstack/internal-test-infra/keycloak";
 import {
   ORY_ISSUER,
@@ -17,11 +17,11 @@ import {
   type OryServiceClient,
 } from "@btravstack/internal-test-infra/ory";
 import { createFakeClock, type FakeClock } from "@btravstack/testing";
-import type { AsyncResult } from "unthrown";
+import { allAsync, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 
 import { oauthClient, type OAuthClientOptions } from "../client.js";
-import { TokenSource } from "../token-source.js";
+import { TokenSource, type TokenSourceService } from "../token-source.js";
 
 /** The callee every provisioned client may ask a token for. */
 export const AUDIENCE = "https://orders.example.test";
@@ -67,6 +67,10 @@ export type OAuthFixtures = {
    * token request with a fresh bearer.
    */
   readonly scripted: {
+    readonly requests: readonly {
+      readonly path: string;
+      readonly authorization: string | undefined;
+    }[];
     readonly challenging: string;
     readonly failing: string;
     readonly issuing: string;
@@ -128,6 +132,7 @@ export const it = test.extend<OAuthFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   scripted: async ({}, use) => {
     let issued = 0;
+    const requests: { path: string; authorization: string | undefined }[] = [];
     let reachedDiscovery!: () => void;
     const discoveryReached = new Promise<void>((resolve) => {
       reachedDiscovery = resolve;
@@ -139,6 +144,7 @@ export const it = test.extend<OAuthFixtures>({
     const grants: ControlledGrant[] = [];
     const waiting: Array<(grant: ControlledGrant) => void> = [];
     const server = createServer((request, response) => {
+      requests.push({ path: request.url ?? "", authorization: request.headers.authorization });
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
       const [, name, rest] = (request.url ?? "").split(/^\/(\w+)/);
       response.setHeader("content-type", "application/json");
@@ -203,6 +209,7 @@ export const it = test.extend<OAuthFixtures>({
     await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     await use({
+      requests,
       challenging: `${base}/challenging`,
       failing: `${base}/failing`,
       issuing: `${base}/issuing`,
@@ -232,3 +239,45 @@ export const it = test.extend<OAuthFixtures>({
     });
   },
 });
+
+export class SecondaryTokens extends Port("OAuthTestSecondaryTokens")<TokenSourceService> {}
+
+export function separateSources(env: Environment) {
+  const module = Module("SeparateOAuthClients")({
+    imports: [
+      oauthClient(),
+      oauthClient({ port: SecondaryTokens, variablePrefix: "BACKGROUND_OAUTH" }),
+    ],
+    provides: [Provider(Env)({ inject: {}, value: env })],
+    exports: [TokenSource, SecondaryTokens, HealthChecks],
+  });
+  return Module.scoped(module, (ctx) => {
+    const first = ctx.get(TokenSource);
+    const second = ctx.get(SecondaryTokens);
+    return allAsync([
+      first.token({ audience: "jobs" }),
+      second.token({ audience: "jobs" }),
+    ]).flatMap((initial) =>
+      allAsync([first.token({ audience: "jobs" }), second.token({ audience: "jobs" })]).map(
+        (cached) => ({
+          distinct: new Set(initial.map(({ bearer }) => bearer)).size,
+          reused: cached.every((token, index) => token.bearer === initial[index]?.bearer),
+          healthChecks: ctx.get(HealthChecks).length,
+        }),
+      ),
+    );
+  });
+}
+
+export function conflictingSources(env: Environment) {
+  return Module.build(
+    Module("ConflictingOAuthClients")({
+      imports: [
+        oauthClient({ port: SecondaryTokens, variablePrefix: "OAUTH" }),
+        oauthClient({ port: SecondaryTokens, variablePrefix: "BACKGROUND_OAUTH" }),
+      ],
+      provides: [Provider(Env)({ inject: {}, value: env })],
+      exports: [SecondaryTokens],
+    }),
+  );
+}

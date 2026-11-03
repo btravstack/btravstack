@@ -17,7 +17,9 @@ commit.
   or Dex container was considered and declined — either is another daemon on
   the shared `internal/test-infra` roster for a behaviour four lines of `jose`
   already cover exactly, and neither buys back anything this fixture's real
-  fetch against a real JWKS does not already prove.
+  fetch against a real JWKS does not already prove. `sign` accepts one recipient
+  or a readonly audience list, copied before signing, so negative recipient-policy
+  tests exercise genuine signatures rather than rewriting an unverified payload.
 
   **The subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only, so
   the CJS build's `require("jose")` depends on `require(esm)`, which Node

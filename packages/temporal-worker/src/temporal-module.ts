@@ -15,11 +15,13 @@ import {
   type Exportable,
   type NeedsGate,
   type Provider,
+  type PortClassOf,
   type Scope,
   type ServiceOf,
 } from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
 
+import type { TemporalApiKeySource, TemporalApiKeyUnavailable } from "./connection-security.js";
 import {
   TemporalActivitiesPort,
   TemporalRuntime,
@@ -47,9 +49,12 @@ type TemporalStarter<
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined,
   Converter extends DataConverterPort,
+  ApiKey extends PortClassOf<string, TemporalApiKeySource>,
 > = Module<
   TemporalRuntime | TemporalConfig | TemporalConnection,
-  ConfigInvalid | TemporalUnreachable,
+  | ConfigInvalid
+  | TemporalUnreachable
+  | ([ApiKey] extends [never] ? never : TemporalApiKeyUnavailable),
   | EnvReading<
       never,
       | "TEMPORAL_ADDRESS"
@@ -70,6 +75,7 @@ type TemporalStarter<
   | ActivitiesInstanceOf<C>
   | UnitNeedsOf<Unit>
   | InstanceType<Converter>
+  | InstanceType<ApiKey>
 >;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
@@ -78,7 +84,8 @@ type Imports<
   C extends ContractDefinition,
   Unit extends AnyUnitModule | undefined,
   Converter extends DataConverterPort,
-> = readonly [...I, TemporalStarter<C, Unit, Converter>];
+  ApiKey extends PortClassOf<string, TemporalApiKeySource>,
+> = readonly [...I, TemporalStarter<C, Unit, Converter, ApiKey>];
 
 /** The activities provider plus the application's own — the tuple `Module(name)` is handed. */
 type Provides<
@@ -97,12 +104,13 @@ export type TemporalModuleOptions<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
-    Imports<I, C, Unit, Converter>,
+    Imports<I, C, Unit, Converter, ApiKey>,
     Provides<P, C, ActivitiesError, ActivitiesNeeds>
   >[],
   N extends readonly AnyPort[] | undefined,
   Converter extends DataConverterPort = never,
-> = TemporalTuning<Unit, Converter> & {
+  ApiKey extends PortClassOf<string, TemporalApiKeySource> = never,
+> = TemporalTuning<Unit, Converter, ApiKey> & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
   /**
@@ -124,7 +132,11 @@ export type TemporalModuleOptions<
    */
   readonly needs?: N;
 } & WorkflowsOption<C> &
-  NeedsGate<Imports<I, C, Unit, Converter>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N> &
+  NeedsGate<
+    Imports<I, C, Unit, Converter, ApiKey>,
+    Provides<P, C, ActivitiesError, ActivitiesNeeds>,
+    N
+  > &
   // Riding the whole options record rather than `unit.activity`: a root that
   // declares a piece's `unit:` and then binds NO module at all is the case
   // worth catching, and a gate on the property is not read when the property
@@ -159,11 +171,12 @@ export const TemporalModule =
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      Imports<I, C, Unit, Converter>,
+      Imports<I, C, Unit, Converter, ApiKey>,
       Provides<P, C, ActivitiesError, ActivitiesNeeds>
     >[] = [],
     const N extends readonly AnyPort[] | undefined = undefined,
     Converter extends DataConverterPort = never,
+    ApiKey extends PortClassOf<string, TemporalApiKeySource> = never,
   >(
     options: TemporalModuleOptions<
       C,
@@ -175,7 +188,8 @@ export const TemporalModule =
       P,
       X,
       N,
-      Converter
+      Converter,
+      ApiKey
     >,
   ) => {
     const { activities } = options;
@@ -192,7 +206,7 @@ export const TemporalModule =
     // tuples are type parameters, and is computed at the application's own call
     // because the options type re-declares it. Spelled out rather than
     // `as never`, which collapses the return to `Module<never, never, never>`.
-    const rootImports = [...imports, starter] as Imports<I, C, Unit, Converter>;
+    const rootImports = [...imports, starter] as Imports<I, C, Unit, Converter, ApiKey>;
     const rootProvides = [activities, ...provides] as Provides<
       P,
       C,
@@ -209,26 +223,26 @@ export const TemporalModule =
       ] as readonly [
         typeof TemporalRuntime,
         ...InfrastructureExports<
-          Imports<I, C, Unit, Converter>,
+          Imports<I, C, Unit, Converter, ApiKey>,
           Provides<P, C, ActivitiesError, ActivitiesNeeds>
         >,
         ...X,
       ],
       needs: (options.needs ?? []) as N,
     } as {
-      readonly imports: Imports<I, C, Unit, Converter>;
+      readonly imports: Imports<I, C, Unit, Converter, ApiKey>;
       readonly provides: Provides<P, C, ActivitiesError, ActivitiesNeeds>;
       readonly exports: readonly [
         typeof TemporalRuntime,
         ...InfrastructureExports<
-          Imports<I, C, Unit, Converter>,
+          Imports<I, C, Unit, Converter, ApiKey>,
           Provides<P, C, ActivitiesError, ActivitiesNeeds>
         >,
         ...X,
       ];
       readonly needs: N;
     } & NeedsGate<
-      Imports<I, C, Unit, Converter>,
+      Imports<I, C, Unit, Converter, ApiKey>,
       Provides<P, C, ActivitiesError, ActivitiesNeeds>,
       N
     >);

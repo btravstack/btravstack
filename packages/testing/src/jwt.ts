@@ -14,7 +14,8 @@ export type LocalIssuerOptions = {
 
 export type SignOptions = {
   readonly issuer?: string;
-  readonly audience?: string;
+  /** One or several recipients, including intentionally broad tokens for negative tests. */
+  readonly audience?: string | readonly string[];
   /** `"5m"` by default; `false` mints a token with no `exp` at all. */
   readonly expiresIn?: string | false;
 };
@@ -61,7 +62,7 @@ export const localIssuer = (options: LocalIssuerOptions): AsyncResult<LocalIssue
               const token = new SignJWT(claims)
                 .setProtectedHeader({ alg: ALG, kid: KID })
                 .setIssuer(signOptions.issuer ?? options.issuer)
-                .setAudience(signOptions.audience ?? options.audience)
+                .setAudience(audienceOf(signOptions.audience ?? options.audience))
                 .setIssuedAt();
               if (signOptions.expiresIn !== false) {
                 token.setExpirationTime(signOptions.expiresIn ?? "5m");
@@ -73,3 +74,7 @@ export const localIssuer = (options: LocalIssuerOptions): AsyncResult<LocalIssue
       };
     })(),
   );
+
+function audienceOf(value: string | readonly string[]): string | string[] {
+  return typeof value === "string" ? value : [...value];
+}

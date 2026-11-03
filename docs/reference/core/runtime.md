@@ -171,7 +171,7 @@ by itself: liveness answers from `building` onward, and readiness is the
 lifecycle's state rather than the transport's.
 
 The kernel races it against its own shutdown deferred and reports
-`reason: "runtimeStopped"`, which `runMain` exits `1` for — a restart, the right
+`reason: "runtimeStopped", unexpectedRuntimeStop: true`, which `runMain` exits `1` for — a restart, the right
 answer to a transport that has given up.
 
 **A runtime that cannot know omits it, and one with nothing to say withdraws.**

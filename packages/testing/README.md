@@ -124,6 +124,9 @@ const token = await issuer.sign({ sub: "u-1" }).get();
 await issuer.close();
 ```
 
+`sign` accepts a string or readonly audience list, including deliberately broad
+tokens for recipient-policy rejection tests.
+
 `@btravstack/testing/jwt`'s `localIssuer(options)` mints a generated key
 pair, a `node:http` listener answering its public key as a JWKS, and a
 `sign(claims?, options?)` closing over the private key — a real fetch against

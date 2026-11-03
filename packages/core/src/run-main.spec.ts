@@ -45,6 +45,33 @@ describe("runMain", () => {
     expect(codes).toEqual([0]);
   });
 
+  it("exits 1 when a runtime stopped without a shutdown request", async () => {
+    // GIVEN
+    const codes: number[] = [];
+
+    // WHEN
+    await awaitExit(
+      appWith(OkAsync({ ...clean, reason: "runtimeStopped", unexpectedRuntimeStop: true })),
+      (code) => codes.push(code),
+    );
+
+    // THEN
+    expect(codes).toEqual([1]);
+  });
+
+  it("preserves exit 0 for an explicit application stop", async () => {
+    // GIVEN
+    const codes: number[] = [];
+
+    // WHEN
+    await awaitExit(appWith(OkAsync({ ...clean, reason: "runtimeStopped" })), (code) =>
+      codes.push(code),
+    );
+
+    // THEN
+    expect(codes).toEqual([0]);
+  });
+
   it("exits 0 when the drain finished with nothing abandoned", async () => {
     // GIVEN
     const codes: number[] = [];

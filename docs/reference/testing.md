@@ -429,7 +429,7 @@ type LocalIssuerOptions = {
 
 type SignOptions = {
   readonly issuer?: string;
-  readonly audience?: string;
+  readonly audience?: string | readonly string[];
   readonly expiresIn?: string | false;
 };
 
@@ -450,8 +450,10 @@ code under test.
 | `sign(claims?, options?)` | `AsyncResult<string, never>` — `iss`, `aud` and `iat` are set for you, `exp` five minutes out unless `options` says |
 | `close()`                 | `AsyncResult<void, never>` — stops the listener; nothing else needs tearing down                                    |
 
-`sign`'s options override the issuer, the audience and the expiry **per call**,
-which is what makes the three refusals testable from one issuer:
+`sign`'s options override the issuer, the audience and the expiry **per call**.
+An audience may be a readonly list to test rejection of broadly targeted tokens;
+it is copied before signing. Three ordinary overrides make the verifier
+refusals testable from one issuer:
 `{ issuer: "https://elsewhere.test" }`, `{ audience: "another-api" }`, and
 `{ expiresIn: "-1s" }` for a token already past its `exp`. `expiresIn: false`
 mints a token with **no `exp` claim at all** — the case a verifier must refuse

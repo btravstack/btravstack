@@ -67,6 +67,8 @@ Putting the token on an oRPC client's `Authorization` header, without a
 | `OAUTH_CLIENT_ID`     | environment, pinned by `clientId`     | this service's client — required                                |
 | `OAUTH_CLIENT_SECRET` | environment, pinned by `clientSecret` | its secret, from a Kubernetes Secret — required                 |
 | `allowInsecureIssuer` | `oauthClient({ … })`                  | accept an `http:` issuer that is not loopback (default `false`) |
+| `port`                | `oauthClient({ … })`                  | distinct source port for a separate client identity             |
+| `variablePrefix`      | `oauthClient({ … })`                  | issuer and client variable prefix (default `OAUTH`)             |
 | `clock`               | `oauthClient({ … })`                  | what a token's lifetime is measured against                     |
 
 The full table — defaults, semantics and the reasoning — lives on

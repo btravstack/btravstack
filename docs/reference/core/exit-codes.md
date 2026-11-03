@@ -66,6 +66,7 @@ That is the whole of `examples/order-api/src/main.ts`.
 | Outcome of `exited`                                                                                   | Code | sysexits(3)   |
 | ----------------------------------------------------------------------------------------------------- | ---- | ------------- |
 | `Ok` — exited cleanly: no crash, nothing abandoned, no teardown error                                 | `0`  |               |
+| `Ok` — `unexpectedRuntimeStop` set: the runtime stopped before a shutdown request                     | `1`  |               |
 | `Err` — a modeled startup failure (the module's own `E`, or `RuntimeStartFailed`)                     | `1`  |               |
 | `Err` — a `ConfigInvalid`, or a `RuntimeStartFailed` whose `cause` is one (the kernel's `PROBE_PORT`) | `78` | `EX_CONFIG`   |
 | `Ok` — `drain.abandoned > 0`                                                                          | `2`  |               |
@@ -85,7 +86,9 @@ Evaluated in this order on an `Ok` report:
 2. **Unclean is `2`.** Abandoned work **or** a failed finaliser; both are "we
    stopped, but not cleanly", and a pool that could not flush is exactly the
    shutdown an orchestrator must not be told succeeded.
-3. Otherwise `0`.
+3. **An unexpected runtime stop is `1`.** `unexpectedRuntimeStop` distinguishes
+   a stopped runtime from an explicit `RunningApp.stop()`, which retains `0`.
+4. Otherwise `0`.
 
 On an `Err`, `78` is chosen when the error is a `ConfigInvalid` (by
 `instanceof`) or a `RuntimeStartFailed` carrying one as its `cause`; every

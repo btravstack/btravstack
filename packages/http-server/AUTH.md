@@ -322,6 +322,17 @@ The two rules this half exists to state, before the detail:
   does not know grants nothing extra. Nothing new checks them: the grant goes
   through `granted()` and the existing walk produces the 403.
 
+- **Signed evidence is not the request's authentication credential.**
+  `jwtVerifier()` provides a configured verifier on `JwtVerifier` (or an
+  application-declared verifier port). Its caller supplies an expected audience
+  derived from authenticated recipient identity or trusted policy, rather than
+  accepting an audience from the evidence itself. One verifier caches one
+  issuer's keys across recipients; issuer trust cannot vary per call. The JWT
+  scheme shares that verification implementation and preserves its existing
+  refusal behavior. The evidence service distinguishes `CredentialRefused`
+  from `AuthenticatorUnavailable`, since its caller still has to decide an
+  authorization outcome. Claim-shape and scope policy remain application-owned.
+
 - **`sessionAuthenticator<P>()({ scopes?, principal?, issuer?, clientId?, variablePrefix? })`
   → `Authenticator<P, Scopes[number], SessionCodec | Env, ConfigInvalid>`** — from
   **`@btravstack/http-server/session`**, beside `sessionCodec` and behind the

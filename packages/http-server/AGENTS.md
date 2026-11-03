@@ -1680,3 +1680,18 @@ resource authorization belong to the application, independently of authenticatio
 
 The oRPC initial context retains request, host and signal in controller handler
 types, matching what both the RPC and OpenAPI answerers supply at runtime.
+
+## Signed evidence verification
+
+`jwtVerifier()` exposes the same issuer verification as the JWT scheme without
+bootstrapping a second authentication graph for each recipient. A verifier holds
+one configured issuer/key set; its caller supplies the expected audience per
+call from trusted policy. It never derives that expectation from unverified
+claims and refuses a blank expectation. This is evidence verification, not a
+second authentication decision for the HTTP request.
+
+`jwtAuthenticator` shares the signature/claim/key-cache implementation while
+retaining its existing wire refusal behavior. The evidence port distinguishes a
+refused credential from unavailable issuer keys, so an authorization adapter can
+fail closed without misclassifying an issuer outage as a permanent refusal.
+Application claim validation and scope decisions remain outside the verifier.

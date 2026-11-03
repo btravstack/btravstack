@@ -65,6 +65,8 @@ type Stopped = {
 
 export type ExitReport = {
   readonly reason: "signal" | "runtimeStopped" | "uncaught";
+  /** The runtime stopped before any caller or signal requested shutdown; runMain exits nonzero. */
+  readonly unexpectedRuntimeStop?: true;
   readonly drain: DrainReport | undefined;
   readonly teardownErrors: readonly TeardownError[];
   readonly uptimeMs: number;
@@ -368,6 +370,7 @@ export const start = <X, E, N>(
   };
   let shutdownRequestedAt = startedAt;
   let shutdownRequested = false;
+  let unexpectedRuntimeStop = false;
   const sinceShutdownRequested = (): number => clock.now() - shutdownRequestedAt;
   const requestShutdown = (reason: ExitReport["reason"]): void => {
     if (!shutdownRequested) {
@@ -375,6 +378,10 @@ export const start = <X, E, N>(
       shutdownRequestedAt = clock.now();
     }
     shutdown.resolve(reason);
+  };
+  const runtimeStopped = (): void => {
+    if (!shutdownRequested) unexpectedRuntimeStop = true;
+    requestShutdown("runtimeStopped");
   };
   let forcedUnready = false;
   const onUnready = (): void => {
@@ -446,6 +453,7 @@ export const start = <X, E, N>(
     teardownErrors,
     uptimeMs: clock.now() - startedAt,
     ...(abandonedAt === undefined ? {} : { abandonedAt }),
+    ...(unexpectedRuntimeStop ? { unexpectedRuntimeStop: true as const } : {}),
   });
   // Probes answer from `building` onward, which is BEFORE the graph that
   // declares the checks exists — so the list is late-bound rather than passed
@@ -791,10 +799,7 @@ export const start = <X, E, N>(
       // a pod in a Service's endpoints, consuming nothing. The `Result`
       // is dropped on purpose after both settlement channels request the same
       // shutdown: whichever route gets there first decides the reason.
-      void serving
-        .stopped?.()
-        .tap(() => requestShutdown("runtimeStopped"))
-        .tapFailure(() => requestShutdown("runtimeStopped"));
+      void serving.stopped?.().tap(runtimeStopped).tapFailure(runtimeStopped);
 
       return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
     });

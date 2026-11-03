@@ -34,7 +34,7 @@ const codeFor = (report: ExitReport): number => {
     (report.drain?.abandoned ?? 0) > 0 ||
     report.teardownErrors.length > 0 ||
     report.abandonedAt !== undefined;
-  return unclean ? 2 : 0;
+  return unclean ? 2 : report.unexpectedRuntimeStop ? 1 : 0;
 };
 
 /**
@@ -78,6 +78,7 @@ export const awaitExit = async <E>(
  * | --- | --- |
  * | exited cleanly | `0` |
  * | startup failure (a modeled `Err`) | `1` |
+ * | a runtime stopped before shutdown was requested | `1` |
  * | a configuration port that could not be bound (`ConfigInvalid`, `PROBE_PORT` included) | `78` |
  * | drained with work abandoned | `2` |
  * | exited with teardown errors | `2` |

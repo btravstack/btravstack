@@ -104,8 +104,8 @@ now, since a second protocol's package has to name the set port it contributes
 to.
 
 **Four subpaths export more**: `@btravstack/http-server/jwt`
-(`jwtAuthenticator`, `DEFAULT_ALGORITHMS`, and the `Claims` / `JwtOptions`
-types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
+(`jwtAuthenticator`, `jwtVerifier`, `JwtVerifier`, `DEFAULT_ALGORITHMS`, and their
+options/service and `Claims` types — `jose`), `@btravstack/http-server/session` (`sessionCodec`,
 `sessionAuthenticator`, `SessionCodec`, `SESSION_COOKIE`, `DEFAULT_TTL_SEC`,
 `TRANSIENT_TTL_SEC`, and the `Session` /
 `SessionCodecService` / `SessionOptions` types — `jose` again),
@@ -383,6 +383,47 @@ The scheme's
 `Env` need travels with it into the graph like any other, and `HttpModule`
 declares `Env` for the whole root, so a composition root writes no `needs` line
 for it.
+
+### Signed evidence for another recipient
+
+`jwtVerifier()` provides `JwtVerifier` from the same `/jwt` subpath when the
+signed evidence is distinct from the credential authenticating the request.
+Its `verify({ token, audience })` checks the expected audience on every call,
+while issuer trust and the JWKS cache are established once at startup. Derive
+that audience from authenticated recipient identity or trusted application
+policy; copying the evidence token's unverified `aud` would remove the check.
+
+<!-- doctest: isolate
+import { JwtVerifier, jwtVerifier, type JwtVerifierService } from "@btravstack/http-server/jwt";
+declare const evidence: string;
+declare const authenticatedRecipientAudience: string;
+declare const injectedVerifier: JwtVerifierService;
+-->
+
+```ts
+const evidenceVerifier = jwtVerifier({ variablePrefix: "EVIDENCE_JWT" });
+
+// Compose evidenceVerifier; request-scoped adapters inject JwtVerifier.
+const verifiedClaims = injectedVerifier.verify({
+  token: evidence,
+  audience: authenticatedRecipientAudience,
+});
+```
+
+`jwks`, `issuer`, `variablePrefix`, `algorithms`, `clockToleranceSec` and
+`allowInsecureJwks` have the JWT scheme's semantics below. Only
+`<variablePrefix>_ISSUER` and `<variablePrefix>_JWKS_URI` are read; no fixed
+`_AUDIENCE` is needed. The prefix defaults to `HTTP_JWT`. `port` optionally
+names an application-declared port carrying `JwtVerifierService`, so a second
+configured issuer has its own provider and cache.
+
+Successful verification returns signed `Claims`; application claim-shape and
+authorization checks still follow. Invalid, expired, mismatched or malformed
+evidence returns `CredentialRefused` without credential details. A failed key
+lookup returns `AuthenticatorUnavailable` and a bounded issuer observation,
+without recording the evidence token. Blank expected audiences are refused.
+`jwtAuthenticator` reuses the same verification implementation and retains its
+existing authentication-scheme refusal behavior.
 
 ### The session cookie
 

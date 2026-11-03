@@ -18,6 +18,7 @@ import type { DataConverter } from "@temporalio/common";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
 
+import type { TemporalApiKeySource } from "./index.js";
 import { TemporalActivities, TemporalModule } from "./temporal-module.js";
 import { ActivityInput, TemporalWorkflowActivities } from "./workflow-activities.js";
 
@@ -409,3 +410,26 @@ const _withoutWorkflows = {
 } as const;
 // @ts-expect-error -- WORKFLOWS REQUIRED: `pinContract` declares `runEcho`, and no workflow source is given
 TemporalModule("PinWorkflowsMissing")(_withoutWorkflows);
+
+class PinApiKey extends Port("PinApiKey")<TemporalApiKeySource> {}
+const withoutApiKeySource = TemporalModule("PinWithoutApiKeySource")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  apiKey: PinApiKey,
+});
+// @ts-expect-error -- UNSATISFIED DEPENDENCIES: the application must provide its credential source
+start(withoutApiKeySource, { signals: false, probes: false });
+
+const withApiKeySource = TemporalModule("PinWithApiKeySource")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [
+    plainPiece,
+    Provider(PinApiKey)({ inject: {}, value: { read: () => OkAsync("credential") } }),
+  ],
+  workflows,
+  apiKey: PinApiKey,
+});
+start(withApiKeySource, { signals: false, probes: false });
