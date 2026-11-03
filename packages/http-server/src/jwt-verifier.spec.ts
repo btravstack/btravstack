@@ -174,6 +174,51 @@ describe("jwtVerifier", () => {
     expect(result).toBeErrTagged("CredentialRefused");
   });
 
+  it("should refuse a key id the fetched key set does not publish", async ({
+    forgedToken,
+    issuer,
+    verification,
+  }) => {
+    // GIVEN
+    const token = await forgedToken({ alg: "RS256", kid: "unpublished" }).get();
+
+    // WHEN
+    const result = await verification.service.verify({ token, audience: issuer.audience });
+
+    // THEN
+    expect(result).toBeErrTagged("CredentialRefused");
+  });
+
+  it("should refuse a published key id under another algorithm", async ({
+    forgedToken,
+    issuer,
+    verification,
+  }) => {
+    // GIVEN
+    const token = await forgedToken({ alg: "ES256" }).get();
+
+    // WHEN
+    const result = await verification.service.verify({ token, audience: issuer.audience });
+
+    // THEN
+    expect(result).toBeErrTagged("CredentialRefused");
+  });
+
+  it("should keep an unpublished key id out of observations", async ({
+    forgedToken,
+    issuer,
+    verification,
+  }) => {
+    // GIVEN
+    const token = await forgedToken({ alg: "RS256", kid: "unpublished" }).get();
+
+    // WHEN
+    await verification.service.verify({ token, audience: issuer.audience });
+
+    // THEN
+    expect(verification.observations).toEqual([]);
+  });
+
   it("should keep refused credentials out of observations", async ({ issuer, verification }) => {
     // GIVEN
     const token = await issuer.sign({ sub: "private-subject" }, { audience: "wrong-target" }).get();

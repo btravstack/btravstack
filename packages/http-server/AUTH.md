@@ -221,11 +221,15 @@ The two rules this half exists to state, before the detail:
     `Unauthenticated` carries no reason, so the endpoint is not an oracle for
     which of them the attacker got wrong.
   - **An ISSUER outage is reported, even though it answers the same `401`.**
-    A JWKS that times out, a key set that is not one, a `kid` no published key
-    matches, and anything with no `jose` `code` at all — a fetch `TypeError`, a
-    DNS failure, a 5xx — settle an `Observers` operation (`component: "jwt"`,
+    A JWKS that times out, a key set that is not one, and anything with no
+    `jose` `code` at all — a fetch `TypeError`, a DNS failure, a 5xx — settle
+    an `Observers` operation (`component: "jwt"`,
     `name: "verify"`, `outcome: "error"`) carrying a bounded `reason` dimension
-    and the library's own cause. They used to be the same silent refusal as a
+    and the library's own cause. A `kid` and `alg` that select no published
+    key are not on that list: `createRemoteJWKSet` has already refetched the
+    set once for an unknown `kid`, so what remains is a header the sender
+    chose, refused in silence rather than paging an operator as an outage.
+    They used to be the same silent refusal as a
     bad token, so a key-rotation incident presented as every client in the
     world suddenly sending bad credentials, with nothing anywhere saying
     otherwise. The status does not change: there is genuinely nothing here that

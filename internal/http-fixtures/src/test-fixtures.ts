@@ -111,7 +111,7 @@ import { localIssuer, type LocalIssuer } from "@btravstack/testing/jwt";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { eventIterator, oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { CompactEncrypt, SignJWT } from "jose";
+import { CompactEncrypt, SignJWT, generateKeyPair } from "jose";
 import type { IDToken } from "openid-client";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
@@ -287,6 +287,44 @@ const localIssuerFixture = async (
   }).get();
   await use(local);
   await local.close();
+};
+
+const forgedToken =
+  (issuer: LocalIssuer) =>
+  ({ alg, kid = issuer.jwk.kid }: { readonly alg: string; readonly kid?: string }) => {
+    assert.ok(kid !== undefined, "localIssuer served a JWK with no kid");
+    return fromSafePromise(
+      generateKeyPair(alg).then(({ privateKey }) =>
+        new SignJWT({ sub: "u-1", tenant: "acme" })
+          .setProtectedHeader({ alg, kid })
+          .setIssuer(issuer.issuer)
+          .setAudience(issuer.audience)
+          .setExpirationTime("5m")
+          .sign(privateKey),
+      ),
+    );
+  };
+
+type RecordedJwt = {
+  readonly resolve: AuthenticatorService<JwtIdentity>;
+  readonly taken: () => readonly Observation[];
+};
+
+const recordedJwtOf = async (issuer: LocalIssuer, jwks: string): Promise<RecordedJwt> => {
+  const observer = recordingObserver();
+  const resolve = (
+    await jwtServiceOf(
+      jwtAuthenticator<JwtIdentity>()({
+        jwks,
+        issuer: issuer.issuer,
+        audience: issuer.audience,
+        principal: jwtPrincipal,
+      }),
+      {},
+      [observer.member],
+    )
+  ).getOrThrow();
+  return { resolve, taken: observer.taken };
 };
 
 /**
@@ -2596,6 +2634,14 @@ export type HttpFixtures = {
   readonly stranger: LocalIssuer;
   /** The algorithm-confusion attack's token: `HS256` over `issuer`'s published JWK. */
   readonly hmacToken: AsyncResult<string, never>;
+  /**
+   * A token for `issuer`'s `iss` and `aud`, signed by a fresh key of `alg`,
+   * naming `kid` — `issuer`'s published one unless given.
+   */
+  readonly forgedToken: (header: {
+    readonly alg: string;
+    readonly kid?: string;
+  }) => AsyncResult<string, never>;
   /** The API-key scheme with two issued keys, resolved. */
   readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
   /** The API-key scheme with no scope vocabulary, resolved. */
@@ -2611,10 +2657,9 @@ export type HttpFixtures = {
    * recording observer — an ISSUER outage rather than a bad token, and the one
    * refusal this scheme is supposed to report rather than swallow.
    */
-  readonly unreachableJwks: () => Promise<{
-    readonly resolve: AuthenticatorService<JwtIdentity>;
-    readonly taken: () => readonly Observation[];
-  }>;
+  readonly unreachableJwks: () => Promise<RecordedJwt>;
+  /** The JWT scheme over `issuer`'s JWKS and a recording observer. */
+  readonly recordedJwt: () => Promise<RecordedJwt>;
   /**
    * The starter over a fragment requiring a JWT scheme that pins NOTHING, on an
    * ephemeral port. Every option arrives through `env`, which is what lets the
@@ -2769,6 +2814,10 @@ export const it = test.extend<HttpFixtures>({
     await use(hmacToken(issuer));
   },
 
+  forgedToken: async ({ issuer }, use) => {
+    await use(forgedToken(issuer));
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- see above
   apiKeyService: async ({}, use) => {
     await use(serviceOf(apiKeys));
@@ -2833,24 +2882,13 @@ export const it = test.extend<HttpFixtures>({
   },
 
   unreachableJwks: async ({ issuer }, use) => {
-    await use(async () => {
-      const observer = recordingObserver();
-      const resolve = (
-        await jwtServiceOf(
-          jwtAuthenticator<JwtIdentity>()({
-            // A port nothing is listening on: the fetch fails rather than
-            // answering a key set, which is what a JWKS outage is.
-            jwks: "http://127.0.0.1:1/.well-known/jwks.json",
-            issuer: issuer.issuer,
-            audience: issuer.audience,
-            principal: jwtPrincipal,
-          }),
-          {},
-          [observer.member],
-        )
-      ).getOrThrow();
-      return { resolve, taken: observer.taken };
-    });
+    // A port nothing is listening on: the fetch fails rather than answering a
+    // key set, which is what a JWKS outage is.
+    await use(() => recordedJwtOf(issuer, "http://127.0.0.1:1/.well-known/jwks.json"));
+  },
+
+  recordedJwt: async ({ issuer }, use) => {
+    await use(() => recordedJwtOf(issuer, issuer.jwks));
   },
 
   delegatedJwt: async ({ boot, issuer }, use) => {

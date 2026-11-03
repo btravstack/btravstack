@@ -1694,4 +1694,7 @@ second authentication decision for the HTTP request.
 retaining its existing wire refusal behavior. The evidence port distinguishes a
 refused credential from unavailable issuer keys, so an authorization adapter can
 fail closed without misclassifying an issuer outage as a permanent refusal.
+Unavailable means the key set could not be obtained or used; a `kid` or `alg`
+selecting no published key, after `jose`'s one refetch for an unknown `kid`, is
+the sender's choice and a refusal, or a forged header would read as an outage.
 Application claim validation and scope decisions remain outside the verifier.

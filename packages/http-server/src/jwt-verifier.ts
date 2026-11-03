@@ -137,11 +137,11 @@ type VerifierEnvironment<O> = EnvReading<
   | MaybePinned<O, "issuer", `${PrefixOf<O, "HTTP_JWT">}_ISSUER`>
 >;
 
+// No key matching the token's `kid` and `alg` is the token's fault, not the issuer's:
+// `createRemoteJWKSet` has already refetched once, so those codes stay refusals.
 const KEY_SET_REASONS: Readonly<Record<string, string>> = {
   ERR_JWKS_TIMEOUT: "keys_unreachable",
   ERR_JWKS_INVALID: "keys_invalid",
-  ERR_JWKS_NO_MATCHING_KEY: "no_matching_key",
-  ERR_JWKS_MULTIPLE_MATCHING_KEYS: "keys_ambiguous",
   ERR_JWK_INVALID: "key_invalid",
   ERR_JOSE_GENERIC: "issuer_unreachable",
 };

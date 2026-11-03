@@ -419,9 +419,13 @@ configured issuer has its own provider and cache.
 
 Successful verification returns signed `Claims`; application claim-shape and
 authorization checks still follow. Invalid, expired, mismatched or malformed
-evidence returns `CredentialRefused` without credential details. A failed key
-lookup returns `AuthenticatorUnavailable` and a bounded issuer observation,
-without recording the evidence token. Blank expected audiences are refused.
+evidence returns `CredentialRefused` without credential details. So does
+evidence whose `kid` and `alg` select no published key once the key set has
+been fetched (and refetched once for an unknown `kid`): the sender chose them.
+Only a key set that cannot be obtained or used (unreachable, timed out,
+non-`200`, malformed) returns `AuthenticatorUnavailable` and a bounded issuer
+observation, without recording the evidence token. Blank expected audiences
+are refused.
 `jwtAuthenticator` reuses the same verification implementation and retains its
 existing authentication-scheme refusal behavior.
 
@@ -1558,9 +1562,10 @@ An authenticator that wants to record why reports it to
 caller's own credential caused stays silent, because a line per unauthenticated
 request is how a scanner writes an application's logs for it. A refusal the
 scheme's own DEPENDENCY caused — a JWKS that times out, a key set that is not
-one, a `kid` no published key matches — settles an `error` operation carrying a
-bounded `reason`, because it refused every caller at once and a bare `401` per
-request reads as the whole world suddenly sending bad credentials.
+one — settles an `error` operation carrying a bounded `reason`, because it
+refused every caller at once and a bare `401` per request reads as the whole
+world suddenly sending bad credentials. A `kid` no published key matches, even
+after the key set's refetch, is the token's own fault and stays silent.
 
 ### `defineHttp({ authenticators })` — what each scheme resolves to
 
