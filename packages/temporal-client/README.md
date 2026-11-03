@@ -47,5 +47,5 @@ An application can supply renewable bearer credentials through an `apiKey` port
 implementing `TemporalApiKeySource.read()`. The source owns token acquisition,
 caching and expiry; the starter polls it with the credentials reload interval.
 A source requires TLS and excludes inline/file API keys and mTLS. See the
-[reference](../../docs/reference/temporal-client.md#renewable-bearer-credentials)
+[reference](https://btravstack.github.io/btravstack/reference/temporal-client#renewable-bearer-credentials)
 for composition and fail-closed behavior.

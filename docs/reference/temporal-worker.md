@@ -534,8 +534,8 @@ and server name settings remain available. An unavailable or blank initial
 credential prevents startup with `TemporalApiKeyUnavailable`; its diagnostic
 contains no credential value.
 
-The starter reads the source again every `credentialsReloadMs` (worker:
-`TEMPORAL_CREDENTIALS_RELOAD_MS`, default `60000`). Choose an interval shorter
+The starter reads the source again every `credentialsReloadMs`
+(`TEMPORAL_CREDENTIALS_RELOAD_MS`, default `60000`). Choose an interval shorter
 than the source's early-refresh margin so a valid replacement is installed
 before expiry. The starter keeps no token-expiry cache. A changed credential
 is installed with `setApiKey` on the current connection.

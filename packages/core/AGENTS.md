@@ -62,10 +62,6 @@ sync with the code in the same commit.
   Its semantics are `docs/reference/core/runtime.md`'s; what belongs here is
   why the kernel treats it the way it does. It is raced against `shutdown`
   and reaches `requestShutdown("runtimeStopped")` on both `Ok` and `Defect`;
-  before any shutdown request, it also marks `ExitReport.unexpectedRuntimeStop`.
-  `runMain` maps that flag to exit `1` after crash/unclean precedence; an explicit
-  `RunningApp.stop()` keeps exit `0`, even if the stopped channel settles during
-  its teardown. The reason alone cannot distinguish those two paths.
   the result is then **dropped**: whichever route gets there first decides the reason, and
   `Promise.withResolvers`' `resolve` is idempotent, so a runtime that stopped
   after a signal cannot rewrite it. Optional, so no shipped runtime had to
@@ -78,7 +74,11 @@ sync with the code in the same commit.
   report runtimeStopped when the runtime stopped because it was asked"_;
   `@btravstack/temporal-worker`'s `temporal-runtime.spec.ts` pins the same
   pair against a stub worker, since a real one cannot be made to fail without
-  taking the shared Temporal server down.
+  taking the shared Temporal server down. A stop before any shutdown request also marks
+  `ExitReport.unexpectedRuntimeStop`. `runMain` maps that flag to exit `1`
+  after crash/unclean precedence; an explicit `RunningApp.stop()` keeps exit
+  `0`, even if the stopped channel settles during its teardown. The reason
+  alone cannot distinguish those two paths.
 - **`RuntimePort`** — its declaration, and why every runtime port shares one
   id, are `docs/reference/core/runtime.md`'s. `RuntimeOf<X>` /
   `RuntimeResolvesOf<X>` / `RuntimeInfoOf<X>` read a runtime's `Resolves` and
