@@ -1,5 +1,13 @@
 # @btravstack/http-client
 
+## 0.55.0
+
+### Patch Changes
+
+- Updated dependencies [3acdfa5]
+  - @btravstack/core@0.55.0
+  - @btravstack/di@0.55.0
+
 ## 0.54.0
 
 ### Patch Changes
