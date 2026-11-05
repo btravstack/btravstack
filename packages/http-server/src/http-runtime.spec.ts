@@ -10,7 +10,7 @@ describe("httpRuntime", () => {
     configured,
     boundServer,
   }) => {
-    // Arrange
+    // GIVEN
     const { app } = configured(
       {
         PORT: "0",
@@ -21,11 +21,11 @@ describe("httpRuntime", () => {
       { keepAliveTimeoutMs: 1000, keepAliveTimeoutBufferMs: 100, socketTimeoutMs: 2000 },
     );
 
-    // Act
+    // WHEN
     await app.runtimeInfo();
     const server = boundServer();
 
-    // Assert
+    // THEN
     expect({
       keepalive: server.keepAliveTimeout,
       buffer: server.keepAliveTimeoutBuffer,
@@ -34,7 +34,7 @@ describe("httpRuntime", () => {
   });
 
   it("reads listener budgets from the deployment", async ({ configured, boundServer }) => {
-    // Arrange
+    // GIVEN
     const { app } = configured({
       PORT: "0",
       HTTP_KEEP_ALIVE_TIMEOUT_MS: "1200",
@@ -42,11 +42,11 @@ describe("httpRuntime", () => {
       HTTP_SOCKET_TIMEOUT_MS: "300",
     });
 
-    // Act
+    // WHEN
     await app.runtimeInfo();
     const server = boundServer();
 
-    // Assert
+    // THEN
     expect({
       keepalive: server.keepAliveTimeout,
       buffer: server.keepAliveTimeoutBuffer,
@@ -57,16 +57,16 @@ describe("httpRuntime", () => {
   it.for([-1, 0.5, 2_147_483_648, Number.NaN, Number.POSITIVE_INFINITY])(
     "refuses invalid listener budget %s",
     async (value, { configured }) => {
-      // Arrange
+      // GIVEN
       const { app } = configured(
         {},
         { keepAliveTimeoutMs: value, keepAliveTimeoutBufferMs: value, socketTimeoutMs: value },
       );
 
-      // Act
+      // WHEN
       const exited = await app.exited;
 
-      // Assert
+      // THEN
       expect(exited).toBeErrTagged(
         "ConfigInvalid",
         expect.objectContaining({
@@ -81,18 +81,18 @@ describe("httpRuntime", () => {
   );
 
   it("closes an idle reusable connection at its keepalive budget", async ({ serve, keepAlive }) => {
-    // Arrange
+    // GIVEN
     const { origin } = await serve(undefined, undefined, {
       keepAliveTimeoutMs: 50,
       keepAliveTimeoutBufferMs: 0,
     });
 
-    // Act
+    // WHEN
     const connection = await keepAlive.call(origin);
     await connection.head();
     await connection.closed();
 
-    // Assert
+    // THEN
     expect(await connection.head()).toContain("Keep-Alive: timeout=0");
   });
 
@@ -100,17 +100,17 @@ describe("httpRuntime", () => {
     configured,
     boundServer,
   }) => {
-    // Arrange
+    // GIVEN
     const { app } = configured(
       { PORT: "0" },
       { keepAliveTimeoutMs: 0, keepAliveTimeoutBufferMs: 0, socketTimeoutMs: 0 },
     );
 
-    // Act
+    // WHEN
     await app.runtimeInfo();
     const server = boundServer();
 
-    // Assert
+    // THEN
     expect({
       keepalive: server.keepAliveTimeout,
       buffer: server.keepAliveTimeoutBuffer,
@@ -119,16 +119,16 @@ describe("httpRuntime", () => {
   });
 
   it("refuses an overflowing combined keepalive budget", async ({ configured }) => {
-    // Arrange
+    // GIVEN
     const { app } = configured(
       { PORT: "0" },
       { keepAliveTimeoutMs: 2_147_483_647, keepAliveTimeoutBufferMs: 1 },
     );
 
-    // Act
+    // WHEN
     const exited = await app.exited;
 
-    // Assert
+    // THEN
     expect(exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({
@@ -141,14 +141,14 @@ describe("httpRuntime", () => {
     configured,
     legacyHttp,
   }) => {
-    // Arrange
+    // GIVEN
     void legacyHttp;
     const { app } = configured({ PORT: "0" }, { keepAliveTimeoutBufferMs: 1 });
 
-    // Act
+    // WHEN
     const exited = await app.exited;
 
-    // Assert
+    // THEN
     expect(exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({
@@ -161,7 +161,7 @@ describe("httpRuntime", () => {
     serve,
     keepAlive,
   }) => {
-    // Arrange
+    // GIVEN
     let aborted = false;
     const { origin } = await serve(
       (_request, response, signal) =>
@@ -180,18 +180,18 @@ describe("httpRuntime", () => {
       { socketTimeoutMs: 100 },
     );
 
-    // Act
+    // WHEN
     const connection = await keepAlive.call(origin);
     await connection.head();
     await connection.closed();
     await vi.waitUntil(() => aborted);
 
-    // Assert
+    // THEN
     expect(aborted).toBe(true);
   });
 
   it("keeps a progressing response alive beyond the request receive budget", async ({ serve }) => {
-    // Arrange
+    // GIVEN
     const { origin } = await serve(
       (_request, response) =>
         pipeline(
@@ -209,11 +209,11 @@ describe("httpRuntime", () => {
       { requestTimeoutMs: 1000, socketTimeoutMs: 2000 },
     );
 
-    // Act
+    // WHEN
     const response = await fetch(origin);
     const body = await response.text();
 
-    // Assert
+    // THEN
     expect({ status: response.status, body }).toEqual({ status: 200, body: "chunk".repeat(12) });
   });
 
@@ -221,7 +221,7 @@ describe("httpRuntime", () => {
     serve,
     stall,
   }) => {
-    // Arrange
+    // GIVEN
     const { app } = await serve(
       async (request, response) => {
         for await (const chunk of request) void chunk;
@@ -231,18 +231,18 @@ describe("httpRuntime", () => {
       { requestTimeoutMs: 200, socketTimeoutMs: 0 },
     );
 
-    // Act
+    // WHEN
     const status = await stall(
       app,
       "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1000\r\n\r\nx",
     );
 
-    // Assert
+    // THEN
     expect(status).toBe("HTTP/1.1 408 Request Timeout");
   });
 
   it("shares one response lifecycle listener with streaming adapters", async ({ serve }) => {
-    // Arrange
+    // GIVEN
     let peak = 0;
     let closed = 0;
     const { origin } = await serve((_request, response) => {
@@ -257,11 +257,11 @@ describe("httpRuntime", () => {
       return pipeline(Readable.from([Buffer.alloc(65_536)]), response);
     });
 
-    // Act
+    // WHEN
     for (let index = 0; index < 35; index += 1) await (await fetch(origin)).arrayBuffer();
     await vi.waitUntil(() => closed === 35);
 
-    // Assert
+    // THEN
     expect({ withinDefaultBudget: peak <= 10, closed }).toEqual({
       withinDefaultBudget: true,
       closed: 35,

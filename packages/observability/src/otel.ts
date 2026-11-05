@@ -56,6 +56,14 @@ const SECONDS_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 
  */
 const unitSpans = new WeakMap<UnitRecord, OtelSpan>();
 
+const exceptionMessage = (diagnostics: DiagnosticPolicy, cause: unknown): string => {
+  try {
+    return JSON.stringify(renderCause(diagnostics.cause(cause))) ?? "[unserialisable]";
+  } catch {
+    return "[unserialisable]";
+  }
+};
+
 const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
   unit === undefined
     ? {}
@@ -181,15 +189,16 @@ export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, 
               const endedAt = performance.now();
               duration.record((endedAt - startedAt) / 1000, all);
               const finish = (span: OtelSpan | undefined): void => {
-                if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
-                if (cause !== undefined && options?.diagnostics !== undefined) {
-                  span?.addEvent("exception", {
-                    "exception.message": JSON.stringify(
-                      renderCause(options.diagnostics.cause(cause)),
-                    ),
-                  });
+                try {
+                  if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
+                  if (cause !== undefined && options?.diagnostics !== undefined) {
+                    span?.addEvent("exception", {
+                      "exception.message": exceptionMessage(options.diagnostics, cause),
+                    });
+                  }
+                } finally {
+                  span?.end(endedAt);
                 }
-                span?.end(endedAt);
               };
               if (!deferred) finish(started);
               else if (unitSpans.has(unit)) finish(open(startedAt));
@@ -197,7 +206,15 @@ export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, 
               // fork: `UnitSpanModule` needs only the parent's `Tracer`, so di
               // builds it in that first level before any microtask runs. Unbound,
               // the span opens then without a unit parent rather than never.
-              else queueMicrotask(() => finish(open(startedAt)));
+              else
+                queueMicrotask(() => {
+                  try {
+                    finish(open(startedAt));
+                  } catch {
+                    // The queued callback runs outside core's synchronous
+                    // observer isolation; its failures must be dropped too.
+                  }
+                });
             };
           };
         },

@@ -49,6 +49,9 @@ explicit separate disclosure choice; log level does not select it.
 bounded fields, hostile reflection and explicit sensitive debugging.
 The OTel policy protects starter-owned observations, not application-created
 spans, SDK resource detectors or third-party instrumentation.
+Unserialisable exception diagnostics use a static fallback, and span completion
+always attempts to end the span. Deferred observer callbacks isolate and drop
+their own failures because they run outside core's synchronous observer boundary.
 
 What each spec file pins — the list, never a tally, since a count in prose is
 stale the next time a case is added (#192):

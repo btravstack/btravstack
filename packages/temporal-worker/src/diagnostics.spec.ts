@@ -7,7 +7,7 @@ import { installTemporalDiagnostics, temporalDiagnosticLogger } from "./diagnost
 
 describe("Temporal diagnostic disclosure", () => {
   it("filters SDK messages and metadata at every severity before logging", () => {
-    // Arrange
+    // GIVEN
     const written: string[] = [];
     const diagnostics = diagnosticPolicy({
       messages: ["safe"],
@@ -22,14 +22,14 @@ describe("Temporal diagnostic disclosure", () => {
       error: new Error("nested@example.invalid"),
       attached: "attached@example.invalid",
     };
-    // Act
+    // WHEN
     logger.log("TRACE", "safe", metadata);
     logger.trace("top@example.invalid", metadata);
     logger.debug("top@example.invalid", metadata);
     logger.info("top@example.invalid", metadata);
     logger.warn("top@example.invalid", metadata);
     logger.error("top@example.invalid", metadata);
-    // Assert
+    // THEN
     expect({
       leaked: written.join("").includes("@example.invalid"),
       lines: written.map((line) => JSON.parse(line) as unknown),
@@ -44,7 +44,7 @@ describe("Temporal diagnostic disclosure", () => {
   it("protects actual activity failures and native runtime diagnostics without changing outcomes", async ({
     serveObserved,
   }) => {
-    // Arrange
+    // GIVEN
     const written: string[] = [];
     const diagnostics = diagnosticPolicy({
       fields: { sdkComponent: ["activity", "worker", "workflow", "core"] },
@@ -55,7 +55,7 @@ describe("Temporal diagnostic disclosure", () => {
       cause: new Error("nested@example.invalid"),
     });
     Object.assign(cause, { attached: "payload@example.invalid" });
-    // Act
+    // WHEN
     const { app, client, taskQueue, taken } = await serveObserved(true, undefined, cause);
     const failed = await client.workflow
       .execute("runEcho", { taskQueue, workflowId: "diagnostic-failure", args: ["x"] })
@@ -70,7 +70,7 @@ describe("Temporal diagnostic disclosure", () => {
     const late = installTemporalDiagnostics({ logger, diagnostics });
     app.stop();
     await app.exited;
-    // Assert
+    // THEN
     expect({
       installed: installed.tag,
       failed,

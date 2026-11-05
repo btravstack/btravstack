@@ -16,7 +16,7 @@ describe("HTTP diagnostic disclosure", () => {
   it("minimizes actual HTTP failure and process diagnostic output while retaining correlation", async ({
     boot,
   }) => {
-    // Arrange
+    // GIVEN
     const written: string[] = [];
     const stream = { write: (line: string) => written.push(line) };
     const diagnostics = diagnosticPolicy({
@@ -41,7 +41,7 @@ describe("HTTP diagnostic disclosure", () => {
     const app = boot(graph, {
       onEvent: kernelEvents(createLogger(jsonSink(stream), "trace", diagnostics)),
     });
-    // Act
+    // WHEN
     const info = (await app.runtimeInfo()).get()!;
     const response = await fetch(`http://127.0.0.1:${info.port}/`, {
       headers: { "x-request-id": "diagnostic-correlation" },
@@ -50,7 +50,7 @@ describe("HTTP diagnostic disclosure", () => {
     kernelEvents(createLogger(jsonSink(stream), "trace", diagnostics))({ type: "uncaught", cause });
     app.stop();
     await app.exited;
-    // Assert
+    // THEN
     expect({
       status: response.status,
       leaked: written.join("").includes("@example.invalid"),

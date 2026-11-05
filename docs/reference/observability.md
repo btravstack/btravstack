@@ -711,6 +711,9 @@ and metric dimensions, and emits a minimized exception event for failed observed
 operations. Unit correlation remains. Application-created spans, direct
 `recordException` calls, SDK resources and third-party auto-instrumentation have
 their own disclosure boundaries; this option is not an exporter-wide sanitizer.
+Exception diagnostics that cannot be serialized use `[unserialisable]` instead.
+Observer failures, including deferred callbacks, are dropped without changing
+the application's result.
 
 Temporal's TypeScript and native Core logs use the same object through
 [`installTemporalDiagnostics`](/reference/temporal-worker#diagnostic-disclosure).

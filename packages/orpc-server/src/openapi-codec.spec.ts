@@ -33,7 +33,7 @@ describe("OpenAPI codec contracts", () => {
   ])(
     "keeps $label body optionality without repeating schema conversion",
     async ({ validate, required }) => {
-      // Arrange
+      // GIVEN
       let inputConversions = 0;
       let outputConversions = 0;
       const schema = {
@@ -55,10 +55,10 @@ describe("OpenAPI codec contracts", () => {
       };
       const contract = { probe: oc.input(schema).output(schema) };
 
-      // Act
+      // WHEN
       const document = (await openApiDocument(contract)).get();
 
-      // Assert
+      // THEN
       expect({
         required: (
           document.paths?.["/probe"]?.post?.requestBody as { required?: boolean } | undefined
@@ -70,7 +70,7 @@ describe("OpenAPI codec contracts", () => {
   );
 
   it("describes native calendar dates and instants in GET parameters, POST bodies and responses", async () => {
-    // Arrange
+    // GIVEN
     const Temporal =
       (Reflect.get(globalThis, "Temporal") as typeof PortableTemporal | undefined) ??
       PortableTemporal;
@@ -94,10 +94,10 @@ describe("OpenAPI codec contracts", () => {
         .output(payload),
     };
 
-    // Act
+    // WHEN
     const document = (await openApiDocument(contract)).get();
 
-    // Assert
+    // THEN
     expect(document.paths).toMatchObject({
       "/calendar/{date}": {
         get: {
@@ -173,7 +173,7 @@ describe("OpenAPI codec contracts", () => {
   });
 
   it.each(["GET", "POST"] as const)("preserves %s input conversion defects", async (method) => {
-    // Arrange
+    // GIVEN
     const contract = {
       broken: oc
         .meta(openapi({ method, path: "/broken" }))
@@ -181,26 +181,26 @@ describe("OpenAPI codec contracts", () => {
       valid: oc.meta(openapi({ method: "GET", path: "/valid" })).output(z.string()),
     };
 
-    // Act
+    // WHEN
     const result = await openApiDocument(contract);
 
-    // Assert
+    // THEN
     expect(result).toBeDefectWith(
       expect.objectContaining({ message: "Custom types cannot be represented in JSON Schema" }),
     );
   });
 
   it("fails the whole document when a response schema cannot be represented", async () => {
-    // Arrange
+    // GIVEN
     const contract = {
       broken: oc.output(z.object({ native: z.custom<URL>() })),
       valid: oc.output(z.string()),
     };
 
-    // Act
+    // WHEN
     const result = await openApiDocument(contract);
 
-    // Assert
+    // THEN
     expect(result).toBeDefectWith(
       expect.objectContaining({ message: "Custom types cannot be represented in JSON Schema" }),
     );

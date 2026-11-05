@@ -17,10 +17,10 @@ describe("tenantPinned", () => {
       "ISOLATION LEVEL REPEATABLE READ, READ ONLY",
     ],
   ] as const)("establishes %j before the tenant pin", async ([options, mode], { stub }) => {
-    // Arrange
+    // GIVEN
     const db = stub.client(binding);
 
-    // Act
+    // WHEN
     await tenantPinned(
       db,
       "acme",
@@ -28,7 +28,7 @@ describe("tenantPinned", () => {
       options,
     );
 
-    // Assert
+    // THEN
     expect(db.ran()).toEqual([
       { sql: `SET TRANSACTION ${mode}`, values: [], kind: "affectedCount", tx: 1 },
       {
@@ -48,11 +48,11 @@ describe("tenantPinned", () => {
     { readOnly: "true" },
     { readOnly: null },
   ])("refuses unsupported characteristics %j before running work", async (options, { stub }) => {
-    // Arrange
+    // GIVEN
     const db = stub.client(binding);
     let worked = false;
 
-    // Act
+    // WHEN
     const result = await tenantPinned(
       db,
       "acme",
@@ -62,7 +62,7 @@ describe("tenantPinned", () => {
       options as TenantPinnedOptions,
     );
 
-    // Assert
+    // THEN
     expect({ result, worked, ran: db.ran() }).toEqual({
       result: expect.objectContaining({ tag: "Defect", cause: expect.any(TypeError) }),
       worked: false,
@@ -71,13 +71,13 @@ describe("tenantPinned", () => {
   });
 
   it("does not pin or run work after characteristics fail", async ({ stub }) => {
-    // Arrange
+    // GIVEN
     const db = stub.client(binding);
     const cause = new Error("SET TRANSACTION refused");
     db.breakQueriesWith(cause);
     let worked = false;
 
-    // Act
+    // WHEN
     const result = await tenantPinned(
       db,
       "acme",
@@ -87,7 +87,7 @@ describe("tenantPinned", () => {
       { readOnly: true },
     );
 
-    // Assert
+    // THEN
     expect({ result, worked, ran: db.ran() }).toEqual({
       result: expect.objectContaining({ tag: "Defect", cause }),
       worked: false,

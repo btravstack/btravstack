@@ -17,10 +17,10 @@ describe("the oldest Prisma train @btravstack/prisma supports", () => {
   it.for(["read committed", "repeatable read", "serializable"] as const)(
     "establishes a read-only %s transaction before pinning on the floor client",
     async (isolationLevel, { db }) => {
-      // Arrange
+      // GIVEN
       const tenant = crypto.randomUUID();
 
-      // Act
+      // WHEN
       const modes = await tenantPinned(
         db,
         tenant,
@@ -34,7 +34,7 @@ describe("the oldest Prisma train @btravstack/prisma supports", () => {
         { isolationLevel, readOnly: true },
       );
 
-      // Assert
+      // THEN
       expect(modes).toBeOkWith([{ isolation: isolationLevel, readOnly: "on", tenant }]);
     },
   );

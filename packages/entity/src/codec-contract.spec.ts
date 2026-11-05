@@ -8,7 +8,7 @@ describe("Entity.codec in a JSON contract", () => {
   test.each(["input", "output"] as const)(
     "publishes nested native calendar dates and instants as wire strings for %s",
     (direction) => {
-      // Arrange
+      // GIVEN
       const schema = z.object({
         schedule: z.object({
           date: calendarDate.describe("Calendar date"),
@@ -17,10 +17,10 @@ describe("Entity.codec in a JSON contract", () => {
         }),
       });
 
-      // Act
+      // WHEN
       const document = schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" });
 
-      // Assert
+      // THEN
       expect(document).toMatchObject({
         type: "object",
         properties: {
@@ -43,17 +43,17 @@ describe("Entity.codec in a JSON contract", () => {
   );
 
   test("keeps native decoding, decoded-value acceptance and canonical encoding", () => {
-    // Arrange
+    // GIVEN
     const schema = z.object({ date: calendarDate, at: instant });
     const wire = { date: "2026-11-05", at: "2026-11-05T12:30:00Z" };
 
-    // Act
+    // WHEN
     const decoded = schema.parse(wire);
     const reparsed = schema.parse(decoded);
     const encoded = z.encode(schema, reparsed);
     const invalid = schema.safeParse({ date: "2026-02-30", at: wire.at });
 
-    // Assert
+    // THEN
     expect({
       date: decoded.date instanceof Temporal.PlainDate,
       instant: decoded.at instanceof Temporal.Instant,
@@ -70,7 +70,7 @@ describe("Entity.codec in a JSON contract", () => {
   });
 
   test("keeps recursive wire references in the containing schema's definitions", () => {
-    // Arrange
+    // GIVEN
     const node = z.object({
       value: z.string(),
       get children() {
@@ -87,10 +87,10 @@ describe("Entity.codec in a JSON contract", () => {
     );
     const schema = z.object({ tree: wrapped });
 
-    // Act
+    // WHEN
     const document = z.toJSONSchema(schema);
 
-    // Assert
+    // THEN
     expect(document).toMatchObject({
       properties: { tree: { $ref: "#/$defs/__schema0" } },
       $defs: {

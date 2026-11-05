@@ -26,11 +26,11 @@ describe("organization-pinned transaction snapshots", () => {
   }[])(
     "keeps the selected $isolation consistency boundary",
     async (scenario, { snapshotDb: raw, tenant, repository, otherRepository, anOrder }) => {
-      // Arrange
+      // GIVEN
       (await repository.save(anOrder("0199a1e0-0000-7000-8000-000000000701", 3))).getOrThrow();
       (await otherRepository.save(anOrder("0199a1e0-0000-7000-8000-000000000702", 9))).getOrThrow();
 
-      // Act
+      // WHEN
       const snapshot = await tenantPinned(
         raw,
         tenant,
@@ -61,7 +61,7 @@ describe("organization-pinned transaction snapshots", () => {
         scenario.options,
       );
 
-      // Assert
+      // THEN
       expect(snapshot).toBeOkWith({
         before: [3],
         after: scenario.after,
@@ -76,10 +76,10 @@ describe("organization-pinned transaction snapshots", () => {
     repository,
     anOrder,
   }) => {
-    // Arrange
+    // GIVEN
     (await repository.save(anOrder("0199a1e0-0000-7000-8000-000000000703", 3))).getOrThrow();
 
-    // Act
+    // WHEN
     const written = await tenantPinned(
       raw,
       tenant,
@@ -93,7 +93,7 @@ describe("organization-pinned transaction snapshots", () => {
     );
     const rows = await tenantPinned(raw, tenant, (tx) => tx.orm.orders.Order.all().toArray());
 
-    // Assert
+    // THEN
     expect({ written, rows }).toEqual({
       written: expect.objectContaining({
         tag: "Defect",
@@ -109,14 +109,14 @@ describe("organization-pinned transaction snapshots", () => {
   ])(
     "rolls back earlier writes after a $failure failure",
     async ({ failure, tag }, { snapshotDb: raw, tenant }) => {
-      // Arrange
+      // GIVEN
       const order = {
         tenantId: tenant,
         orderId: "0199a1e0-0000-7000-8000-000000000704",
         quantity: 3,
       };
 
-      // Act
+      // WHEN
       const written = await tenantPinned(
         raw,
         tenant,
@@ -130,7 +130,7 @@ describe("organization-pinned transaction snapshots", () => {
       );
       const rows = await tenantPinned(raw, tenant, (tx) => tx.orm.orders.Order.all().toArray());
 
-      // Assert
+      // THEN
       expect({ written, rows }).toEqual({
         written: expect.objectContaining({ tag }),
         rows: expect.toBeOkWith([]),
