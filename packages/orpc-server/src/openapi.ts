@@ -8,6 +8,16 @@ import { Ok, fromSafePromise, fromSafeThrowable, type AsyncResult } from "unthro
 import { errorStatusesOf } from "./error-status.js";
 
 class DocumentSchemaConverter extends StandardJsonSchemaConverter {
+  override condition(
+    schema: Parameters<StandardJsonSchemaConverter["condition"]>[0],
+    direction: Parameters<StandardJsonSchemaConverter["condition"]>[1],
+  ): boolean {
+    return (
+      super.condition(schema, direction) ||
+      (schema !== undefined && this.absenceDefinition(schema) !== undefined)
+    );
+  }
+
   override convertInternal(
     schema: Parameters<StandardJsonSchemaConverter["convertInternal"]>[0],
     direction: Parameters<StandardJsonSchemaConverter["convertInternal"]>[1],
@@ -30,15 +40,24 @@ class DocumentSchemaConverter extends StandardJsonSchemaConverter {
   private isAbsence(
     schema: Parameters<StandardJsonSchemaConverter["convertInternal"]>[0],
   ): boolean {
-    if (schema["~standard"].vendor !== "zod") return false;
+    const definition = this.absenceDefinition(schema);
+    if (definition === undefined) return false;
+    const checks: unknown = Reflect.get(definition, "checks");
+    return checks === undefined || (Array.isArray(checks) && checks.length === 0);
+  }
+
+  private absenceDefinition(
+    schema: NonNullable<Parameters<StandardJsonSchemaConverter["condition"]>[0]>,
+  ): object | undefined {
+    if (schema["~standard"].vendor !== "zod") return undefined;
     // Standard Schema's undefined probe also accepts optional native values.
     // Zod documents this definition discriminant for schema-tooling integrations.
     const core: unknown = Reflect.get(schema, "_zod");
-    if (typeof core !== "object" || core === null) return false;
+    if (typeof core !== "object" || core === null) return undefined;
     const definition: unknown = Reflect.get(core, "def");
-    if (typeof definition !== "object" || definition === null) return false;
+    if (typeof definition !== "object" || definition === null) return undefined;
     const kind: unknown = Reflect.get(definition, "type");
-    return kind === "void" || kind === "undefined";
+    return kind === "void" || kind === "undefined" ? definition : undefined;
   }
 }
 

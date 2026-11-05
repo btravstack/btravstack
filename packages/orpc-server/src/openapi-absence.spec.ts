@@ -7,39 +7,75 @@ import * as mini from "zod/mini";
 import { openApiDocument } from "./openapi.js";
 
 describe("OpenAPI absent bodies", () => {
+  it.each(["GET", "POST"] as const)(
+    "preserves an omitted %s body as no content",
+    async (method) => {
+      // GIVEN
+      const contract = { absent: oc.meta(openapi({ method })) };
+
+      // WHEN
+      const document = (await openApiDocument(contract)).get();
+      const key = method.toLowerCase() as "get" | "post";
+      const operation = document.paths!["/absent"]![key]!;
+
+      // THEN
+      expect({ request: operation.requestBody, responses: operation.responses }).toEqual({
+        request: undefined,
+        responses: { "200": { description: "OK", content: {} } },
+      });
+    },
+  );
+
   it.each(
     [
       { label: "void", schema: z.void() },
       { label: "undefined", schema: z.undefined() },
       { label: "mini void", schema: mini.void() },
       { label: "mini undefined", schema: mini.undefined() },
+      { label: "void with empty checks", schema: z.void().check() },
+      { label: "undefined with empty checks", schema: z.undefined().check() },
+      { label: "mini void with empty checks", schema: mini.void().check() },
+      { label: "mini undefined with empty checks", schema: mini.undefined().check() },
     ].flatMap((entry) => (["GET", "POST"] as const).map((method) => ({ ...entry, method }))),
   )(
     "preserves explicit $label $method input and output as no content",
     async ({ schema, method }) => {
       // GIVEN
-      const contract = {
-        absent: oc.meta(openapi({ method })),
-        explicit: oc.meta(openapi({ method })).input(schema).output(schema),
-      };
-      const noContent = {
-        request: undefined,
-        responses: { "200": { description: "OK", content: {} } },
-      };
+      const contract = { explicit: oc.meta(openapi({ method })).input(schema).output(schema) };
 
       // WHEN
       const document = (await openApiDocument(contract)).get();
       const key = method.toLowerCase() as "get" | "post";
-      const absent = document.paths!["/absent"]![key]!;
-      const explicit = document.paths!["/explicit"]![key]!;
+      const operation = document.paths!["/explicit"]![key]!;
 
       // THEN
-      expect(
-        [absent, explicit].map((operation) => ({
-          request: operation.requestBody,
-          responses: operation.responses,
-        })),
-      ).toEqual([noContent, noContent]);
+      expect({ request: operation.requestBody, responses: operation.responses }).toEqual({
+        request: undefined,
+        responses: { "200": { description: "OK", content: {} } },
+      });
+    },
+  );
+
+  it.each(
+    [
+      { label: "void", schema: z.void().refine(() => false) },
+      { label: "undefined", schema: z.undefined().refine(() => false) },
+      { label: "mini void", schema: mini.void().check(mini.refine(() => false)) },
+      { label: "mini undefined", schema: mini.undefined().check(mini.refine(() => false)) },
+    ].flatMap((entry) =>
+      (["input", "output"] as const).map((direction) => ({ ...entry, direction })),
+    ),
+  )(
+    "keeps refined $label $direction conversion in the defect channel",
+    async ({ schema, direction }) => {
+      // GIVEN
+      const contract = { refined: direction === "input" ? oc.input(schema) : oc.output(schema) };
+
+      // WHEN
+      const answer = await openApiDocument(contract);
+
+      // THEN
+      expect(answer).toBeDefect();
     },
   );
 

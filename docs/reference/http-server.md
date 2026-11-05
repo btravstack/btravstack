@@ -2770,9 +2770,11 @@ partial document. `Entity.codec` fields describe their encoded JSON form,
 including native Temporal values nested in objects; runtime validation retains
 the native domain values.
 
-Explicit root Zod 4 `z.void()` and `z.undefined()` inputs and outputs describe
-no content, as an omitted schema does. Optional or defaulted JSON bodies keep
-their JSON content and optionality. Accepting `undefined` does not hide a schema
+Explicit root Zod 4 `z.void()` and `z.undefined()` inputs and outputs with no
+checks describe no content, as an omitted schema does. This includes Zod Mini.
+Refined roots keep strict conversion and fail the document when they cannot be
+represented. Optional or defaulted JSON bodies keep their JSON content and
+optionality. Accepting `undefined` does not hide a schema
 conversion failure: an optional unrepresentable native value still makes the
 whole document fail.
 
