@@ -2770,6 +2770,12 @@ partial document. `Entity.codec` fields describe their encoded JSON form,
 including native Temporal values nested in objects; runtime validation retains
 the native domain values.
 
+Explicit root Zod 4 `z.void()` and `z.undefined()` inputs and outputs describe
+no content, as an omitted schema does. Optional or defaulted JSON bodies keep
+their JSON content and optionality. Accepting `undefined` does not hide a schema
+conversion failure: an optional unrepresentable native value still makes the
+whole document fail.
+
 This package mounts no documentation route by default and ships no UI asset.
 `openApiRoutes()` serves the contract's ordinary HTTP routes, but does not
 publish its document. An application can write the document to a build artifact

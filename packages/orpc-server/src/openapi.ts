@@ -12,6 +12,7 @@ class DocumentSchemaConverter extends StandardJsonSchemaConverter {
     schema: Parameters<StandardJsonSchemaConverter["convertInternal"]>[0],
     direction: Parameters<StandardJsonSchemaConverter["convertInternal"]>[1],
   ): ReturnType<StandardJsonSchemaConverter["convertInternal"]> {
+    if (this.isAbsence(schema)) return [{}, true];
     const jsonSchema = schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" });
     const optional = fromSafeThrowable(() => {
       const result = schema["~standard"].validate(undefined);
@@ -24,6 +25,20 @@ class DocumentSchemaConverter extends StandardJsonSchemaConverter {
       .recoverDefect(() => Ok(false))
       .get();
     return [jsonSchema, optional];
+  }
+
+  private isAbsence(
+    schema: Parameters<StandardJsonSchemaConverter["convertInternal"]>[0],
+  ): boolean {
+    if (schema["~standard"].vendor !== "zod") return false;
+    // Standard Schema's undefined probe also accepts optional native values.
+    // Zod documents this definition discriminant for schema-tooling integrations.
+    const core: unknown = Reflect.get(schema, "_zod");
+    if (typeof core !== "object" || core === null) return false;
+    const definition: unknown = Reflect.get(core, "def");
+    if (typeof definition !== "object" || definition === null) return false;
+    const kind: unknown = Reflect.get(definition, "type");
+    return kind === "void" || kind === "undefined";
   }
 }
 
