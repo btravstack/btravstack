@@ -147,6 +147,9 @@ Document generation uses Standard JSON Schema conversion without its permissive
 fallback: the upstream converter catches conversion errors and substitutes an
 unconstrained optional schema, masking the diagnostic and potentially publishing
 an inaccurate contract. The document converter preserves the original throw,
-which `openApiDocument` reports through the defect channel. Optionality still
-uses oRPC's own helper. One unrepresentable procedure fails the whole document;
+which `openApiDocument` reports through the defect channel. Optionality probes
+Standard Schema validation locally, since older supported oRPC peers do not
+export the helper. A throwing or asynchronous absence probe is conservatively
+required; asynchronous rejection is consumed. JSON conversion runs once per
+schema and direction. One unrepresentable procedure fails the whole document;
 no operation or schema is silently omitted.

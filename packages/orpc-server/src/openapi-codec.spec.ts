@@ -8,6 +8,67 @@ import { z } from "zod";
 import { openApiDocument } from "./openapi.js";
 
 describe("OpenAPI codec contracts", () => {
+  it.each([
+    { label: "optional", validate: () => ({ value: undefined }), required: undefined },
+    { label: "defaulted", validate: () => ({ value: "default" }), required: undefined },
+    { label: "required", validate: () => ({ issues: [{ message: "Required" }] }), required: true },
+    {
+      label: "asynchronous",
+      validate: () => Promise.resolve({ value: undefined }),
+      required: true,
+    },
+    {
+      label: "rejecting",
+      validate: () => Promise.reject(new Error("absence probe rejected")),
+      required: true,
+    },
+    {
+      label: "throwing",
+      validate: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- The absence probe must tolerate a throwing third-party validator.
+        throw new Error("absence probe threw");
+      },
+      required: true,
+    },
+  ])(
+    "keeps $label body optionality without repeating schema conversion",
+    async ({ validate, required }) => {
+      // Arrange
+      let inputConversions = 0;
+      let outputConversions = 0;
+      const schema = {
+        "~standard": {
+          version: 1 as const,
+          vendor: "test",
+          validate,
+          jsonSchema: {
+            input: () => {
+              inputConversions += 1;
+              return { type: "string" };
+            },
+            output: () => {
+              outputConversions += 1;
+              return { type: "string" };
+            },
+          },
+        },
+      };
+      const contract = { probe: oc.input(schema).output(schema) };
+
+      // Act
+      const document = (await openApiDocument(contract)).get();
+
+      // Assert
+      expect({
+        required: (
+          document.paths?.["/probe"]?.post?.requestBody as { required?: boolean } | undefined
+        )?.required,
+        inputConversions,
+        outputConversions,
+      }).toEqual({ required, inputConversions: 1, outputConversions: 1 });
+    },
+  );
+
   it("describes native calendar dates and instants in GET parameters, POST bodies and responses", async () => {
     // Arrange
     const Temporal =

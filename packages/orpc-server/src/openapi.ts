@@ -1,9 +1,9 @@
 import { isAuthenticated, type Requirements } from "@btravstack/contract";
 import type { AnyProcedureContract, RouterContract } from "@orpc/contract";
-import { StandardJsonSchemaConverter, isStandardSchemaOptional } from "@orpc/json-schema";
+import { StandardJsonSchemaConverter } from "@orpc/json-schema";
 import { OpenAPIGenerator, getOpenAPIMeta } from "@orpc/openapi";
 import { COMMON_ERROR_STATUS_MAP, walkProcedureContractsSync } from "@orpc/server";
-import { fromSafePromise, type AsyncResult } from "unthrown";
+import { Ok, fromSafePromise, fromSafeThrowable, type AsyncResult } from "unthrown";
 
 import { errorStatusesOf } from "./error-status.js";
 
@@ -12,10 +12,18 @@ class DocumentSchemaConverter extends StandardJsonSchemaConverter {
     schema: Parameters<StandardJsonSchemaConverter["convertInternal"]>[0],
     direction: Parameters<StandardJsonSchemaConverter["convertInternal"]>[1],
   ): ReturnType<StandardJsonSchemaConverter["convertInternal"]> {
-    return [
-      schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" }),
-      isStandardSchemaOptional(schema, direction),
-    ];
+    const jsonSchema = schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" });
+    const optional = fromSafeThrowable(() => {
+      const result = schema["~standard"].validate(undefined);
+      if (result instanceof Promise) {
+        void result.catch(() => undefined);
+        return false;
+      }
+      return !result.issues && (direction === "input" || result.value === undefined);
+    })()
+      .recoverDefect(() => Ok(false))
+      .get();
+    return [jsonSchema, optional];
   }
 }
 

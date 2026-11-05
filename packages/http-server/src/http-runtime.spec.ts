@@ -197,23 +197,24 @@ describe("httpRuntime", () => {
         pipeline(
           Readable.from(
             (async function* () {
-              for (let index = 0; index < 8; index += 1) {
+              for (let index = 0; index < 12; index += 1) {
                 yield "chunk";
-                await delay(40);
+                await delay(250);
               }
             })(),
           ),
           response,
         ),
       undefined,
-      { requestTimeoutMs: 100, socketTimeoutMs: 200 },
+      { requestTimeoutMs: 1000, socketTimeoutMs: 2000 },
     );
 
     // Act
-    const body = await (await fetch(origin)).text();
+    const response = await fetch(origin);
+    const body = await response.text();
 
     // Assert
-    expect(body).toBe("chunk".repeat(8));
+    expect({ status: response.status, body }).toEqual({ status: 200, body: "chunk".repeat(12) });
   });
 
   it("bounds a stalled request body independently of disabled socket inactivity", async ({
