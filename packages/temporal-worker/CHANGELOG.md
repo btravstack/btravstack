@@ -1,5 +1,18 @@
 # @btravstack/temporal-worker
 
+## 0.56.0
+
+### Minor Changes
+
+- 88338ac: Add a shared, explicit diagnostic disclosure policy for logs, starter-owned traces and Temporal SDK/runtime logging. Production policies keep static diagnostic identities and allowlisted bounded fields while excluding free-text failures, stacks, nested causes and arbitrary payloads. Add a pre-start Temporal installer that forwards native Core logs through the same boundary, and an explicit sensitive-debug policy without changing Result outcomes or default sink behavior.
+
+### Patch Changes
+
+- Updated dependencies [88338ac]
+  - @btravstack/core@0.56.0
+  - @btravstack/config@0.56.0
+  - @btravstack/di@0.56.0
+
 ## 0.55.1
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @btravstack/prisma
 
+## 0.56.0
+
+### Minor Changes
+
+- 88338ac: Allow tenantPinned to establish isolationLevel and readOnly transaction
+  characteristics before the tenant pin. Preserve connection defaults when omitted
+  and refuse unsupported values without downgrading isolation.
+
+### Patch Changes
+
+- Updated dependencies [88338ac]
+  - @btravstack/core@0.56.0
+  - @btravstack/config@0.56.0
+  - @btravstack/di@0.56.0
+
 ## 0.55.1
 
 ### Patch Changes
