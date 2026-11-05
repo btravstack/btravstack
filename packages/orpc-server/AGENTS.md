@@ -153,3 +153,16 @@ export the helper. A throwing or asynchronous absence probe is conservatively
 required; asynchronous rejection is consumed. JSON conversion runs once per
 schema and direction. One unrepresentable procedure fails the whole document;
 no operation or schema is silently omitted.
+
+Explicit root Zod 4 `void` and `undefined` schemas without checks are no-content
+declarations, not failed JSON conversions. The converter recognizes Zod's
+documented `_zod.def.type` discriminant and absent or empty `_zod.def.checks`
+before conversion, returning the same empty schema and optional flag as an
+absent body. Refined roots keep strict conversion because their checks can
+reject absence. Zod Mini roots enter this converter even without Standard JSON
+Schema metadata, so a checked root cannot fall through to the upstream
+empty-schema fallback. Standard Schema validation of undefined alone cannot
+make that distinction: optional native/custom schemas also accept undefined
+and must still fail conversion. No error-message matching or permissive
+conversion fallback is used; other vendors retain their Standard JSON Schema
+conversion, and mixed schemas are never guessed to be bodyless.
