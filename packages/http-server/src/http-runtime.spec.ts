@@ -190,6 +190,43 @@ describe("httpRuntime", () => {
     expect(aborted).toBe(true);
   });
 
+  it("closes a stalled socket even when the answerer observes response timeouts", async ({
+    serve,
+    keepAlive,
+  }) => {
+    // GIVEN
+    let timeoutObserved = false;
+    let aborted = false;
+    const { origin } = await serve(
+      (_request, response, signal) =>
+        new Promise<void>((done) => {
+          response.once("timeout", () => {
+            timeoutObserved = true;
+          });
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              done();
+            },
+            { once: true },
+          );
+          response.write("partial");
+        }),
+      undefined,
+      { socketTimeoutMs: 1000 },
+    );
+
+    // WHEN
+    const connection = await keepAlive.call(origin);
+    await connection.head();
+    await connection.closed();
+    await vi.waitUntil(() => aborted);
+
+    // THEN
+    expect({ timeoutObserved, aborted }).toEqual({ timeoutObserved: true, aborted: true });
+  });
+
   it("keeps a progressing response alive beyond the request receive budget", async ({ serve }) => {
     // GIVEN
     const { origin } = await serve(

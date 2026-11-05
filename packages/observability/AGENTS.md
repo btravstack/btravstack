@@ -49,6 +49,8 @@ explicit separate disclosure choice; log level does not select it.
 
 `diagnostics.spec.ts` guards direct sinks, custom sinks, static identity,
 bounded fields, hostile reflection and explicit sensitive debugging.
+`docs-examples.test-d.ts` compiles policy construction and logger, sink, starter
+and OTel composition under both the repository and consumer TypeScript versions.
 The OTel policy protects starter-owned observations, not application-created
 spans, SDK resource detectors or third-party instrumentation.
 Unserialisable exception diagnostics use a static fallback, and span completion

@@ -613,7 +613,8 @@ const listen = (
             );
             return;
           }
-          server.setTimeout(options.socketTimeoutMs);
+          // Request/response timeout observers suppress Node's default destroy.
+          server.setTimeout(options.socketTimeoutMs, (socket) => socket.destroy());
 
           server.on("connection", (socket) => {
             sockets.add(socket);

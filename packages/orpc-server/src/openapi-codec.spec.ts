@@ -60,9 +60,7 @@ describe("OpenAPI codec contracts", () => {
 
       // THEN
       expect({
-        required: (
-          document.paths?.["/probe"]?.post?.requestBody as { required?: boolean } | undefined
-        )?.required,
+        required: (document.paths!["/probe"]!.post!.requestBody as { required?: boolean }).required,
         inputConversions,
         outputConversions,
       }).toEqual({ required, inputConversions: 1, outputConversions: 1 });
