@@ -1,5 +1,6 @@
 import type { DiagnosticPolicy } from "@btravstack/core";
 
+import { correlationOf } from "./correlation.js";
 import type { Line, Sink } from "./logger.js";
 
 const DIAGNOSTIC_FIELDS = [
@@ -84,7 +85,7 @@ export const jsonSink =
       time: new Date(time).toISOString(),
       level,
       message: diagnostics?.message(message) ?? message,
-      ...(unit === undefined ? {} : unit),
+      ...correlationOf(unit, diagnostics),
       ...(cause === undefined
         ? {}
         : { cause: renderCause(diagnostics === undefined ? cause : diagnostics.cause(cause)) }),

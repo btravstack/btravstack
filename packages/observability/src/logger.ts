@@ -8,6 +8,7 @@ import {
 } from "@btravstack/core";
 
 import { mergeAttributeDescriptors } from "./attributes.js";
+import { correlationOf } from "./correlation.js";
 
 /** One line, as the implementation hands it to a {@link Sink}: the message, its severity, and everything known about it. */
 export type Line = {
@@ -17,7 +18,7 @@ export type Line = {
   readonly cause: unknown;
   /** Milliseconds since the epoch, stamped when the line was written. */
   readonly time: number;
-  /** What `currentUnit()` carried, or `undefined` outside a unit. */
+  /** Ambient correlation after the configured policy, or `undefined` outside a unit. */
   readonly unit:
     | { readonly unitId: string; readonly traceId: string; readonly tenantId?: string }
     | undefined;
@@ -70,14 +71,7 @@ export const createLogger = (
           cause:
             cause === undefined || diagnostics === undefined ? cause : diagnostics.cause(cause),
           time: Date.now(),
-          unit:
-            unit === undefined
-              ? undefined
-              : {
-                  unitId: unit.unitId,
-                  traceId: unit.traceId,
-                  ...(unit.tenantId === undefined ? {} : { tenantId: unit.tenantId }),
-                },
+          unit: correlationOf(unit, diagnostics),
         });
       } catch {
         // deliberately swallowed: see the port's TSDoc — a broken sink must

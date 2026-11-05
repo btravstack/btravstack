@@ -209,7 +209,11 @@ describe("diagnostic disclosure", () => {
         attributes: { secret: "field@example.invalid" },
         cause: new Error("top@example.invalid", { cause: new Error("nested@example.invalid") }),
         time: 0,
-        unit: { unitId: "u", traceId: "t" },
+        unit: {
+          unitId: "unit@example.invalid",
+          traceId: "trace@example.invalid",
+          tenantId: "tenant@example.invalid",
+        },
       };
       // WHEN
       const sink =
@@ -226,8 +230,8 @@ describe("diagnostic disclosure", () => {
         lines: [
           expect.objectContaining({
             [kind === "json" ? "message" : "msg"]: "failed",
-            traceId: "t",
-            unitId: "u",
+            traceId: "[redacted]",
+            unitId: "[redacted]",
             [kind === "json" ? "cause" : "err"]: { code: "unknown" },
           }),
         ],

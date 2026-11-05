@@ -12,6 +12,7 @@ import {
   type Span,
   type UnitRecord,
   type DiagnosticPolicy,
+  type TracerService,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
 import { context, metrics, trace, type Span as OtelSpan } from "@opentelemetry/api";
@@ -19,6 +20,7 @@ import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { fromSafePromise } from "unthrown";
 
 import { mergeAttributeDescriptors } from "./attributes.js";
+import { correlationOf } from "./correlation.js";
 import { renderCause } from "./json-sink.js";
 
 /**
@@ -56,6 +58,7 @@ const SECONDS_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 
  * Weak, so an ended unit costs nothing once its record is gone.
  */
 const unitSpans = new WeakMap<UnitRecord, OtelSpan>();
+const tracerDiagnostics = new WeakMap<TracerService, DiagnosticPolicy | undefined>();
 
 const exceptionMessage = (diagnostics: DiagnosticPolicy, cause: unknown): string => {
   try {
@@ -65,16 +68,23 @@ const exceptionMessage = (diagnostics: DiagnosticPolicy, cause: unknown): string
   }
 };
 
-const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
-  unit === undefined
+const unitAttributes = (
+  unit: UnitRecord | undefined,
+  diagnostics?: DiagnosticPolicy,
+): Attributes => {
+  const correlation = correlationOf(unit, diagnostics);
+  return correlation === undefined
     ? {}
     : {
-        "btravstack.unit_id": unit.unitId,
-        "btravstack.trace_id": unit.traceId,
-        ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
+        "btravstack.unit_id": correlation.unitId,
+        "btravstack.trace_id": correlation.traceId,
+        ...(correlation.tenantId === undefined
+          ? {}
+          : { "btravstack.tenant_id": correlation.tenantId }),
       };
+};
 
-/** SDK configuration plus a shared disclosure policy for starter-owned spans and metrics. */
+/** SDK configuration plus a shared disclosure policy for starter-owned spans, correlation and metrics. */
 export type OtelOptions = Partial<NodeSDKConfiguration> & {
   readonly diagnostics?: DiagnosticPolicy;
 };
@@ -164,7 +174,7 @@ export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, 
                   : options.diagnostics.attributes(mergeAttributeDescriptors(attributes, details));
               opened.setAttributes({
                 ...rendered,
-                ...unitAttributes(unit),
+                ...unitAttributes(unit, options?.diagnostics),
               });
               return opened;
             };
@@ -248,7 +258,11 @@ export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, 
       // the global providers the getters read are the configured ones.
       Provider(Tracer)({
         inject: { sdk: OtelSdk },
-        sync: () => trace.getTracer("@btravstack/observability"),
+        sync: () => {
+          const tracer = trace.getTracer("@btravstack/observability");
+          tracerDiagnostics.set(tracer, options?.diagnostics);
+          return tracer;
+        },
       }),
       Provider(Meter)({
         inject: { sdk: OtelSdk },
@@ -267,7 +281,8 @@ export class UnitSpan extends Port("UnitSpan")<Span> {}
  * and `onStop` ends it on every path out.
  *
  * The correlation is the ambient record's own, carried as attributes so a span
- * joins the same query the logger's lines answer. Every operation observed
+ * joins the same query the logger's lines answer. With `otel({ diagnostics })`,
+ * the same policy filters its canonical correlation fields. Every operation observed
  * inside the unit — a cache read, a stored object, a sent mail — is this
  * span's CHILD and carries the same attributes. The remote PARENT is
  * deliberately not reconstructed: `UnitMeta.traceId` carries the inbound trace
@@ -285,7 +300,7 @@ export const UnitSpanModule = Module("UnitSpan")({
       sync: ({ tracer }) => {
         const unit = currentUnit();
         const span = tracer.startSpan("unit");
-        span.setAttributes(unitAttributes(unit));
+        span.setAttributes(unitAttributes(unit, tracerDiagnostics.get(tracer)));
         // Only an OTel span can parent another; a hand-bound `Tracer` that is
         // not OTel's still gets its unit span, just no children.
         if (unit !== undefined && "spanContext" in span) unitSpans.set(unit, span as OtelSpan);

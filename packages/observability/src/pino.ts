@@ -1,6 +1,7 @@
 import type { DiagnosticPolicy } from "@btravstack/core";
 import type { Logger as PinoLogger } from "pino";
 
+import { correlationOf } from "./correlation.js";
 import { renderCause } from "./json-sink.js";
 import type { Line, Sink } from "./logger.js";
 
@@ -45,7 +46,7 @@ export const pinoSink = (logger: PinoLogger, diagnostics?: DiagnosticPolicy): Si
     const { level, message, attributes, cause, unit } = line;
     const fields = {
       ...(diagnostics?.attributes(attributes) ?? attributes),
-      ...(unit === undefined ? {} : unit),
+      ...correlationOf(unit, diagnostics),
       ...(cause === undefined ? {} : { err: cause }),
     };
     // A sink never throws: `createLogger` swallows what escapes here, and a

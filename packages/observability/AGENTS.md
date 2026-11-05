@@ -42,6 +42,12 @@ declared in core. The same object is passed explicitly to logging, OTel and the
 Temporal runtime installer; no process-global redaction toggle or new DI port
 is introduced. Unknown messages and errors retain static identities, fields use
 finite vocabularies or numeric bounds, and reflection never invokes getters.
+Canonical `unitId`, `traceId` and `tenantId` pass through that same attributes
+projection before custom sinks, JSON/Pino output and starter-owned unit/operation
+spans. The production policy retains UUIDs and nonzero W3C trace IDs; rejected
+required IDs become `[redacted]` and a rejected optional tenant is omitted.
+`UnitSpanModule` uses the policy associated with its provided OTel tracer,
+without adding a port or rewriting the runtime's original unit metadata.
 Attribute layers preserve own enumerable descriptors until policy filtering,
 so a rejected or accessor override masks an earlier value without evaluating it.
 The default renderer remains backward compatible. `sensitiveDiagnostics` is an
