@@ -2,7 +2,13 @@ import { rawSql } from "@prisma/orm-postgres/migration";
 import type { AsyncResult } from "unthrown";
 
 import type { SqlError } from "./result.js";
-import { tenantListing, type TenantListingInvalid, type TenantListingOptions } from "./rls.js";
+import {
+  tenantListing,
+  tenantPinned,
+  type TenantListingInvalid,
+  type TenantListingOptions,
+  type TenantPinnedOptions,
+} from "./rls.js";
 
 const options: TenantListingOptions = {
   schema: "orders",
@@ -19,3 +25,15 @@ declare const db: { readonly raw: { readonly sql: unknown }; readonly runtime: u
 const tenants: AsyncResult<readonly string[], TenantListingInvalid | SqlError> = declaration
   .toAsync()
   .flatMap((listing) => listing.list(db));
+
+declare const snapshotDb: Parameters<typeof tenantPinned>[0];
+const snapshotOptions: TenantPinnedOptions = {
+  isolationLevel: "repeatable read",
+  readOnly: true,
+};
+const snapshot: AsyncResult<number, SqlError> = tenantPinned(
+  snapshotDb,
+  "tenant",
+  async () => 1,
+  snapshotOptions,
+);
