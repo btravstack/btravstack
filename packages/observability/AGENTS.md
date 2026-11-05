@@ -42,6 +42,8 @@ declared in core. The same object is passed explicitly to logging, OTel and the
 Temporal runtime installer; no process-global redaction toggle or new DI port
 is introduced. Unknown messages and errors retain static identities, fields use
 finite vocabularies or numeric bounds, and reflection never invokes getters.
+Attribute layers preserve own enumerable descriptors until policy filtering,
+so a rejected or accessor override masks an earlier value without evaluating it.
 The default renderer remains backward compatible. `sensitiveDiagnostics` is an
 explicit separate disclosure choice; log level does not select it.
 

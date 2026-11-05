@@ -18,6 +18,7 @@ import { context, metrics, trace, type Span as OtelSpan } from "@opentelemetry/a
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { fromSafePromise } from "unthrown";
 
+import { mergeAttributeDescriptors } from "./attributes.js";
 import { renderCause } from "./json-sink.js";
 
 /**
@@ -157,9 +158,12 @@ export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, 
               // Details ride the SPAN and not the instruments: a cache key or a
               // URL is one more field on a span and one more time series on a
               // metric.
-              const offered = { ...attributes, ...details };
+              const rendered =
+                options?.diagnostics === undefined
+                  ? { ...attributes, ...details }
+                  : options.diagnostics.attributes(mergeAttributeDescriptors(attributes, details));
               opened.setAttributes({
-                ...(options?.diagnostics?.attributes(offered) ?? offered),
+                ...rendered,
                 ...unitAttributes(unit),
               });
               return opened;
@@ -183,8 +187,11 @@ export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, 
             );
 
             return ({ outcome, attributes: settled, cause }) => {
-              const offered = { ...attributes, ...settled };
-              const all = { ...(options?.diagnostics?.attributes(offered) ?? offered), outcome };
+              const rendered =
+                options?.diagnostics === undefined
+                  ? { ...attributes, ...settled }
+                  : options.diagnostics.attributes(mergeAttributeDescriptors(attributes, settled));
+              const all = { ...rendered, outcome };
               operations.add(1, all);
               const endedAt = performance.now();
               duration.record((endedAt - startedAt) / 1000, all);

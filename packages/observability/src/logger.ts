@@ -7,6 +7,8 @@ import {
   type DiagnosticPolicy,
 } from "@btravstack/core";
 
+import { mergeAttributeDescriptors } from "./attributes.js";
+
 /** One line, as the implementation hands it to a {@link Sink}: the message, its severity, and everything known about it. */
 export type Line = {
   readonly level: Level;
@@ -64,7 +66,7 @@ export const createLogger = (
               ? attributes === undefined
                 ? base
                 : { ...base, ...attributes }
-              : diagnostics.attributes({ ...base, ...attributes }),
+              : diagnostics.attributes(mergeAttributeDescriptors(base, attributes)),
           cause:
             cause === undefined || diagnostics === undefined ? cause : diagnostics.cause(cause),
           time: Date.now(),
@@ -90,7 +92,12 @@ export const createLogger = (
       warn: (message, attributes, cause) => write("warn", message, attributes, cause),
       error: (message, attributes, cause) => write("error", message, attributes, cause),
       fatal: (message, attributes, cause) => write("fatal", message, attributes, cause),
-      with: (attributes) => build({ ...base, ...attributes }),
+      with: (attributes) =>
+        build(
+          diagnostics === undefined
+            ? { ...base, ...attributes }
+            : mergeAttributeDescriptors(base, attributes),
+        ),
       isEnabled: (lineLevel) => severity(lineLevel) >= floor,
     };
   };

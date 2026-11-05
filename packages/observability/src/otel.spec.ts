@@ -70,6 +70,115 @@ const batchedOtel = (spans: Keeper) =>
 
 describe("otel", () => {
   it.for([
+    {
+      name: "accepted",
+      detailsStatus: 201,
+      settledStatus: 202,
+      accessor: false,
+      spanStatus: { status: 201 },
+      metricStatus: { status: 202 },
+    },
+    {
+      name: "rejected",
+      detailsStatus: "secret@example.invalid",
+      settledStatus: "secret@example.invalid",
+      accessor: false,
+      spanStatus: {},
+      metricStatus: {},
+    },
+    {
+      name: "accessor",
+      detailsStatus: 201,
+      settledStatus: 202,
+      accessor: true,
+      spanStatus: {},
+      metricStatus: {},
+    },
+  ])(
+    "filters original span and metric attributes with $name overrides without evaluating getters",
+    async ({ detailsStatus, settledStatus, accessor, spanStatus, metricStatus }, { spans }) => {
+      // GIVEN
+      let getterReads = 0;
+      const ignored = {
+        enumerable: true,
+        get: () => {
+          getterReads += 1;
+          // oxlint-disable-next-line unthrown/no-throw -- ignored diagnostic accessors must never execute
+          throw new Error("getter@example.invalid");
+        },
+      };
+      const attributes = Object.defineProperties({ method: "GET", status: 200 }, { ignored });
+      const details = Object.defineProperties(
+        { detail: "wire", status: detailsStatus },
+        { ignored, ...(accessor ? { status: ignored } : {}) },
+      );
+      const settled = Object.defineProperties(
+        { attempt: 2, status: settledStatus },
+        { ignored, ...(accessor ? { status: ignored } : {}) },
+      );
+      const diagnostics = diagnosticPolicy({
+        messages: ["http.request"],
+        fields: {
+          method: ["GET"],
+          status: { min: 100, max: 299 },
+          detail: ["wire"],
+          attempt: { min: 0, max: 3 },
+        },
+      });
+      const reader = new (class extends sdkMetrics.MetricReader {
+        protected onShutdown = (): Promise<void> => Promise.resolve();
+        protected onForceFlush = (): Promise<void> => Promise.resolve();
+      })();
+
+      // WHEN
+      const collected = await Module.scoped(
+        otel({
+          diagnostics,
+          metricReaders: [reader],
+          spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })],
+        }),
+        (ctx) =>
+          observed(
+            ctx.get(Observers),
+            { component: "http", name: "request", attributes, details },
+            () => OkAsync("done"),
+            { ok: () => ({ outcome: "ok", attributes: settled }) },
+          ).flatMap(() => fromSafePromise(reader.collect())),
+      );
+
+      // THEN
+      expect({
+        getterReads,
+        spans: spans.seen().map((span) => ({ name: span.name, attributes: span.attributes })),
+        metrics: collected.map(({ resourceMetrics }) =>
+          resourceMetrics.scopeMetrics
+            .flatMap((scope) => scope.metrics)
+            .map((metric) => ({
+              name: metric.descriptor.name,
+              attributes: metric.dataPoints.map((point) => point.attributes),
+            }))
+            .toSorted((left, right) => left.name.localeCompare(right.name)),
+        ),
+      }).toEqual({
+        getterReads: 0,
+        spans: [
+          { name: "http.request", attributes: { method: "GET", detail: "wire", ...spanStatus } },
+        ],
+        metrics: expect.toBeOkWith([
+          {
+            name: "btravstack.http.duration",
+            attributes: [{ method: "GET", attempt: 2, outcome: "ok", ...metricStatus }],
+          },
+          {
+            name: "btravstack.http.operations",
+            attributes: [{ method: "GET", attempt: 2, outcome: "ok", ...metricStatus }],
+          },
+        ]),
+      });
+    },
+  );
+
+  it.for([
     { failure: "bigint", deferred: false },
     { failure: "circular", deferred: false },
     { failure: "bigint", deferred: true },

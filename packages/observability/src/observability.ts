@@ -2,6 +2,7 @@ import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/co
 import {
   Logger,
   Observers,
+  type Attributes,
   type EventSink,
   type KernelEvent,
   type Level,
@@ -10,6 +11,7 @@ import {
 } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 
+import { mergeAttributeDescriptors } from "./attributes.js";
 import { logLevel, type LoggerSettings } from "./config.js";
 import { jsonSink } from "./json-sink.js";
 import { createLogger, type Sink } from "./logger.js";
@@ -75,7 +77,7 @@ export const observability = (
             // call is worth knowing the KEY of, and worth no time series.
             logger.error(
               `${component}.${name} failed`,
-              { ...attributes, ...details, ...settled },
+              mergeAttributeDescriptors(attributes, details, settled),
               cause,
             );
           },
@@ -123,17 +125,18 @@ export const kernelEvents =
         return;
       case "serving":
         // `info` is `unknown` — the kernel cannot know a runtime's `Info` at the
-        // event union — so it is spread only when it is a record. That guard is
+        // event union — so it is merged only when it is a record. That guard is
         // also what protects a hand-rolled runtime publishing a string or a
         // number: the line still goes out, carrying what the kernel does know.
-        logger.info("serving", {
-          event: event.type,
-          runtime: event.runtime,
-          probePort: event.probePort,
-          ...(typeof event.info === "object" && event.info !== null && !Array.isArray(event.info)
-            ? (event.info as Record<string, unknown>)
-            : {}),
-        });
+        logger.info(
+          "serving",
+          mergeAttributeDescriptors(
+            { event: event.type, runtime: event.runtime, probePort: event.probePort },
+            typeof event.info === "object" && event.info !== null && !Array.isArray(event.info)
+              ? (event.info as Attributes)
+              : undefined,
+          ),
+        );
         return;
       case "draining":
         logger.info("draining", { event: event.type, inFlight: event.inFlight });

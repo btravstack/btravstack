@@ -705,6 +705,9 @@ request values. `observability({ diagnostics })` and `createLogger` apply the
 policy before any custom sink sees a line. Direct sinks also accept it as their
 second argument: `jsonSink(stream, diagnostics)` and
 `pinoSink(logger, diagnostics)`. Correlation IDs remain available; use opaque IDs.
+Attribute getters are skipped by the production policy, including on child
+loggers and observed operations. Later layers still override earlier ones;
+a rejected value removes that field rather than restoring an earlier value.
 
 `otel({ diagnostics })` filters starter-owned operation span attributes, names
 and metric dimensions, and emits a minimized exception event for failed observed

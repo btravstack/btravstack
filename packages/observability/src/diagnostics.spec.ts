@@ -1,14 +1,114 @@
+import { Env } from "@btravstack/config";
+import { Observers } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import pino from "pino";
-import { TaggedError } from "unthrown";
+import { OkAsync, TaggedError } from "unthrown";
 import { describe, expect, test } from "vitest";
 
 import { diagnosticPolicy, sensitiveDiagnostics } from "./diagnostics.js";
 import { jsonSink } from "./json-sink.js";
 import { createLogger, type Line } from "./logger.js";
-import { kernelEvents } from "./observability.js";
+import { kernelEvents, observability } from "./observability.js";
 import { pinoSink } from "./pino.js";
 
 describe("diagnostic disclosure", () => {
+  test("preserves attribute precedence without evaluating ignored or allowed accessors", () => {
+    // GIVEN
+    const lines: Line[] = [];
+    let reads = 0;
+    const getter = () => {
+      reads += 1;
+      // oxlint-disable-next-line unthrown/no-throw -- protected logging must never invoke attribute getters
+      throw new Error("accessor must not run");
+    };
+    const diagnostics = diagnosticPolicy({
+      messages: ["failed"],
+      fields: { attempt: { min: 0, max: 3 }, phase: ["opening", "closing"] },
+    });
+    const logger = createLogger((line) => lines.push(line), "trace", diagnostics);
+    const base = Object.defineProperties(
+      { attempt: 1, phase: "opening" },
+      {
+        secret: { enumerable: true, get: getter },
+        hidden: { enumerable: false, get: getter },
+      },
+    );
+
+    // WHEN
+    const child = logger.with(base).with({ phase: "closing" });
+    child.error("failed", {
+      attempt: 2,
+      get secret(): never {
+        return getter();
+      },
+    });
+    child.error("failed", { attempt: 4 });
+    child.error("failed", {
+      get attempt() {
+        return getter();
+      },
+    });
+    child.error("failed");
+    logger.error("failed");
+
+    // THEN
+    expect({ reads, lines: lines.map(({ attributes }) => attributes) }).toEqual({
+      reads: 0,
+      lines: [
+        { attempt: 2, phase: "closing" },
+        { phase: "closing" },
+        { phase: "closing" },
+        { attempt: 1, phase: "closing" },
+        {},
+      ],
+    });
+  });
+
+  test("filters process serving info and observed layers before invoking accessors", async () => {
+    // GIVEN
+    const lines: Line[] = [];
+    let reads = 0;
+    const attributes = {
+      attempt: 1,
+      get secret(): never {
+        reads += 1;
+        // oxlint-disable-next-line unthrown/no-throw -- an ignored attribute getter must not run in either adapter
+        throw new Error("accessor must not run");
+      },
+    };
+    const diagnostics = diagnosticPolicy({ fields: { attempt: { min: 0, max: 3 } } });
+    const logger = createLogger((line) => lines.push(line), "trace", diagnostics);
+    const App = Module("ProtectedObservations")({
+      imports: [
+        observability({ diagnostics, sink: (line) => lines.push(line), level: "trace" }),
+        Module("DiagnosticEnv")({
+          provides: [Provider(Env)({ inject: {}, value: {} })],
+          exports: [Env],
+        }),
+      ],
+      exports: [Observers],
+    });
+
+    // WHEN
+    kernelEvents(logger)({ type: "serving", runtime: "test", info: attributes, probePort: 0 });
+    const result = await Module.scoped(App, (ctx) => {
+      for (const observer of ctx.get(Observers)) {
+        observer({ component: "cache", name: "get", attributes, details: { attempt: 2 } })({
+          outcome: "error",
+          attributes: { attempt: 3 },
+        });
+      }
+      return OkAsync();
+    });
+
+    // THEN
+    expect({ reads, result, lines: lines.map(({ attributes: fields }) => fields) }).toEqual({
+      reads: 0,
+      result: expect.toBeOk(),
+      lines: [{ attempt: 1 }, { attempt: 3 }],
+    });
+  });
+
   test.each([
     { min: Infinity, max: 3 },
     { min: 0, max: Infinity },
