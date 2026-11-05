@@ -21,6 +21,7 @@ import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opent
 import { Err, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, test } from "vitest";
 
+import { diagnosticPolicy } from "./diagnostics.js";
 import { UnitSpan, UnitSpanModule, otel } from "./otel.js";
 
 /**
@@ -68,6 +69,57 @@ const batchedOtel = (spans: Keeper) =>
   });
 
 describe("otel", () => {
+  it("exports minimized exception diagnostics and leaves an unknown failure a defect", async ({
+    spans,
+  }) => {
+    // Arrange
+    const cause = new Error("top@example.invalid", { cause: new Error("nested@example.invalid") });
+    Object.assign(cause, { attached: "attached@example.invalid" });
+    const diagnostics = diagnosticPolicy({
+      messages: ["http.request"],
+      fields: { status: { min: 100, max: 599 } },
+    });
+    // Act
+    const result = await Module.scoped(
+      otel({ diagnostics, spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })] }),
+      (ctx) =>
+        observed(
+          ctx.get(Observers),
+          {
+            component: "http",
+            name: "request",
+            attributes: { status: 500 },
+            details: { path: "path@example.invalid" },
+          },
+          () => fromSafePromise(Promise.reject(cause)),
+        ),
+    );
+    // Assert
+    expect({
+      result: result.tag,
+      original: cause.message,
+      spans: spans.seen().map((span) => ({
+        name: span.name,
+        attributes: span.attributes,
+        status: span.status,
+        events: span.events.map(({ name, attributes }) => ({ name, attributes })),
+      })),
+    }).toEqual({
+      result: "Defect",
+      original: "top@example.invalid",
+      spans: [
+        {
+          name: "http.request",
+          attributes: { status: 500 },
+          status: { code: SPAN_STATUS.error },
+          events: [
+            { name: "exception", attributes: { "exception.message": '{"code":"unknown"}' } },
+          ],
+        },
+      ],
+    });
+  });
+
   it("opens a span per unit and flushes it out on the scope's close", async ({ boot, spans }) => {
     // GIVEN an app whose unit module opens a span, exporting through a batch
     // processor an hour from its next scheduled export

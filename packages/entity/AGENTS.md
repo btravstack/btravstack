@@ -25,3 +25,12 @@ Creation inputs accept deeply readonly domain values as well as mutable parsed v
 Readonly input mapping leaves `unknown` intact, including `null` and explicitly supplied `undefined`. Array key remapping preserves optional tuple slots and custom array members. Tuple detection retains required trailing elements after a leading rest element. A branded tuple has the same indexed-access behavior as a native tuple intersected with the Zod brand: TypeScript does not reject an out-of-range index on that intersection, so bounds are not claimed beyond the native type.
 
 Creation-mode readonly mapping preserves the native input type of a branded variadic tuple with a required suffix. Both supported compilers erase that suffix when rebuilding the branded array, even through their built-in `Readonly`; retaining the native input prevents acceptance of empty or string-only values. The rule applies recursively inside objects and arrays. Data projections remain deeply readonly; a frozen projection of this opaque tuple shape is not a typed creation input, whereas ordinary readonly JSON still transfers directly.
+
+`Entity.codec` publishes its encoded wire schema during JSON Schema conversion
+in either direction, including inside ordinary Zod objects. Its custom Zod
+union constructor reinstalls the conversion processor on clones, so `.describe()`
+and `.meta()` preserve the behavior. The processor visits the wire schema in
+the caller's conversion context and records a reference, preserving metadata,
+targets and recursive definitions. It never visits the native fallback during
+conversion; runtime union parsing still validates both original branches.
+Tests use native Temporal where available and the polyfill on older Node.

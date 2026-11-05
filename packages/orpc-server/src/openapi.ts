@@ -1,11 +1,23 @@
 import { isAuthenticated, type Requirements } from "@btravstack/contract";
 import type { AnyProcedureContract, RouterContract } from "@orpc/contract";
-import { StandardJsonSchemaConverter } from "@orpc/json-schema";
+import { StandardJsonSchemaConverter, isStandardSchemaOptional } from "@orpc/json-schema";
 import { OpenAPIGenerator, getOpenAPIMeta } from "@orpc/openapi";
 import { COMMON_ERROR_STATUS_MAP, walkProcedureContractsSync } from "@orpc/server";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
 import { errorStatusesOf } from "./error-status.js";
+
+class DocumentSchemaConverter extends StandardJsonSchemaConverter {
+  override convertInternal(
+    schema: Parameters<StandardJsonSchemaConverter["convertInternal"]>[0],
+    direction: Parameters<StandardJsonSchemaConverter["convertInternal"]>[1],
+  ): ReturnType<StandardJsonSchemaConverter["convertInternal"]> {
+    return [
+      schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" }),
+      isStandardSchemaOptional(schema, direction),
+    ];
+  }
+}
 
 export { openApiDocumentRoute } from "./openapi-document-route.js";
 export { openApiRoutes, type OpenApiRoutesOptions } from "./openapi-routes.js";
@@ -123,7 +135,7 @@ export const openApiDocument = (
   contract: Record<string, RouterContract>,
   options: OpenApiOptions = {},
 ): AsyncResult<OpenApiDocument, never> => {
-  const generator = new OpenAPIGenerator({ converters: [new StandardJsonSchemaConverter()] });
+  const generator = new OpenAPIGenerator({ converters: [new DocumentSchemaConverter()] });
   const localStatuses = new Map<AnyProcedureContract, Record<string, number>>();
   walkProcedureContractsSync(contract, (procedure) => {
     const statuses = errorStatusesOf(procedure);

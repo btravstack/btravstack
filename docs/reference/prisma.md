@@ -558,10 +558,10 @@ import { tenantPinned } from "@btravstack/prisma/rls";
 const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
-| Export                               | What it is                                                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `tenantPinned(db, tenant, work, o?)` | Runs `work` in a transaction pinned to `tenant`. Answers whatever `work` answers.                                               |
-| `TenantPinnedOptions<S>`             | `{ setting?: string }` — the run-time setting the policy reads, default `app.tenant_id` — and `raises`, as `tryQuery` takes it. |
+| Export                               | What it is                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `tenantPinned(db, tenant, work, o?)` | Runs `work` in a transaction pinned to `tenant`. Answers whatever `work` answers.                |
+| `TenantPinnedOptions<S>`             | The setting the policy reads, transaction characteristics, and `raises`, as `tryQuery` takes it. |
 
 **It opens a transaction because `set_config(…, true)` is transaction-local**,
 and that is the whole design rather than an implementation detail. A
@@ -585,12 +585,58 @@ statement say which tenant it is for", and the three layers that answer who the
 caller is and what they may do are
 [Authorize a request](/how-to/authorize-a-request).
 
+### Consistent snapshots
+
+Select transaction characteristics when several reads must describe one
+database state:
+
+<!-- doctest: isolate
+import type { OrderDatabaseClient } from "@btravstack/example-order-infrastructure";
+declare const db: OrderDatabaseClient;
+declare const tenant: string;
+-->
+
+```ts
+import { tenantPinned } from "@btravstack/prisma/rls";
+
+const snapshotOrders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all(), {
+  isolationLevel: "repeatable read",
+  readOnly: true,
+});
+```
+
+`isolationLevel` accepts `"read committed"`, `"repeatable read"` or
+`"serializable"`. `readOnly: true` refuses writes; `false` explicitly selects
+read/write mode. Omit either to retain the connection's default. Without either
+option, the existing pin-first behavior and its cost are unchanged.
+
+Use the boot-probed client from `prismaDatabase`. A standalone client must
+complete an initialization query before opening snapshot transactions: Prisma
+can otherwise read its contract marker inside the transaction before the
+starter's first statement, which PostgreSQL refuses with SQLSTATE `25001`.
+
+The starter issues `SET TRANSACTION` before the tenant pin's first query.
+Repeatable-read and serializable snapshots therefore begin at that pin; use
+the callback's `tx` for every related read, including parent records and
+watermarks. Calls through the outer client use another connection and are
+outside the snapshot. PostgreSQL may abort serializable transactions; these
+remain defects under the existing SQLSTATE policy, with no automatic retry.
+Unsupported characteristics from untyped callers are defects before work
+starts. `"read uncommitted"` is refused because PostgreSQL treats it as read
+committed. Setup or work failure rolls back the transaction; no fallback
+downgrades its isolation.
+
+The ordering and access-mode restrictions follow PostgreSQL's
+[SET TRANSACTION contract](https://www.postgresql.org/docs/current/sql-set-transaction.html).
+
 ### The cost
 
 **One extra round trip and one transaction per unit of work.** Group the
 statements that belong together into one `tenantPinned` call rather than
 issuing them side by side — which is the same argument for grouping writes into
 one transaction, arriving one layer down.
+
+Selecting transaction characteristics adds one more round trip before the pin.
 
 ### Two things are still the deployment's
 

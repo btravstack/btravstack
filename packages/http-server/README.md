@@ -63,3 +63,14 @@ fixed at startup. See [signed evidence](https://btravstack.github.io/btravstack/
 - `port`: names a second issuer's verifier capability.
 
 Defaults and configuration semantics are in the [HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#signed-evidence-for-another-recipient).
+
+## Listener options
+
+- `port`, `hostname`: bind the listener.
+- `headersTimeoutMs`, `requestTimeoutMs`: bound request reception.
+- `keepAliveTimeoutMs`: bound idle reusable connections after a response.
+- `keepAliveTimeoutBufferMs`: extend the actual keepalive lifetime beyond its advertised budget.
+- `socketTimeoutMs`: bound inactivity during request and response progress.
+
+Each has a matching environment variable; defaults, zero semantics and Node
+compatibility are in the [HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#httpconfig-and-the-environment).

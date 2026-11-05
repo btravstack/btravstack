@@ -64,3 +64,14 @@ void tenantPinned(db, "acme", () => Promise.resolve(undefined), { setting: "app.
 declare const rawless: { readonly transaction: Db["transaction"] };
 // @ts-expect-error — no `raw`, so there is no statement to pin with
 void tenantPinned(rawless, "a", () => Promise.resolve(undefined));
+
+const snapshot = tenantPinned(db, "acme", (tx) => tx.orm.orders.Order.all(), {
+  isolationLevel: "repeatable read",
+  readOnly: true,
+});
+type _Snapshot = Expect<Exactly<typeof snapshot, typeof rows>>;
+
+// @ts-expect-error — PostgreSQL aliases read uncommitted to read committed; no silent downgrade
+void tenantPinned(db, "acme", async () => 1, { isolationLevel: "read uncommitted" });
+// @ts-expect-error — an access mode must be a boolean, never an environment string
+void tenantPinned(db, "acme", async () => 1, { readOnly: "true" });

@@ -105,6 +105,7 @@
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/observability": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",

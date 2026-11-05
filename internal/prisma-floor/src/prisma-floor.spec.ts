@@ -4,6 +4,7 @@ import { Env } from "@btravstack/config";
 import { Observers, type Operation, type Settle, type Settled } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { prismaDatabase } from "@btravstack/prisma";
+import { tenantPinned } from "@btravstack/prisma/rls";
 import postgres from "@prisma/orm-postgres/runtime";
 import { fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
@@ -13,6 +14,31 @@ import type { Contract } from "./prisma/contract.js";
 import contractJson from "./prisma/contract.json" with { type: "json" };
 
 describe("the oldest Prisma train @btravstack/prisma supports", () => {
+  it.for(["read committed", "repeatable read", "serializable"] as const)(
+    "establishes a read-only %s transaction before pinning on the floor client",
+    async (isolationLevel, { db }) => {
+      // Arrange
+      const tenant = crypto.randomUUID();
+
+      // Act
+      const modes = await tenantPinned(
+        db,
+        tenant,
+        (tx) =>
+          tx.query(
+            db.raw
+              .sql`SELECT current_setting('transaction_isolation') AS isolation, current_setting('transaction_read_only') AS "readOnly", current_setting('app.tenant_id') AS tenant`
+              .returnsRow({ isolation: "pg/text@1", readOnly: "pg/text@1", tenant: "pg/text@1" })
+              .build(),
+          ),
+        { isolationLevel, readOnly: true },
+      );
+
+      // Assert
+      expect(modes).toBeOkWith([{ isolation: isolationLevel, readOnly: "on", tenant }]);
+    },
+  );
+
   it("verifies a database migrated by the history released under it, unedited", async ({
     floor,
   }) => {

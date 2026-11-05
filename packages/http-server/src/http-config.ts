@@ -28,4 +28,10 @@ export class HttpConfig extends Port("HttpConfig")<{
   readonly headersTimeoutMs: number;
   /** How long a client may take to send a whole request, headers and body, in ms; `408` past it. */
   readonly requestTimeoutMs: number;
+  /** Idle reusable connection budget in ms; `0` disables it. */
+  readonly keepAliveTimeoutMs: number;
+  /** Extra idle time beyond the advertised keepalive budget in ms. */
+  readonly keepAliveTimeoutBufferMs: number | undefined;
+  /** Request/response socket inactivity budget in ms; `0` disables it. */
+  readonly socketTimeoutMs: number;
 }> {}

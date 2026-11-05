@@ -1,3 +1,4 @@
+import type { DiagnosticPolicy } from "@btravstack/core";
 import type { Logger as PinoLogger } from "pino";
 
 import { renderCause } from "./json-sink.js";
@@ -25,28 +26,30 @@ import type { Line, Sink } from "./logger.js";
  * `trace` map to pino's own; the ambient unit's ids ride as fields, not as a
  * message prefix, so they stay indexable.
  */
-export const pinoSink = (logger: PinoLogger): Sink => {
+export const pinoSink = (logger: PinoLogger, diagnostics?: DiagnosticPolicy): Sink => {
   const safeLogger = logger.child(
     {},
     {
       level: "trace",
       serializers: {
         err: (cause: unknown) =>
-          cause instanceof Error
-            ? { type: cause.name, ...(renderCause(cause) as object) }
-            : renderCause(cause),
+          diagnostics !== undefined
+            ? renderCause(diagnostics.cause(cause))
+            : cause instanceof Error
+              ? { type: cause.name, ...(renderCause(cause) as object) }
+              : renderCause(cause),
       },
     },
   );
   return (line: Line) => {
     const { level, message, attributes, cause, unit } = line;
     const fields = {
-      ...attributes,
+      ...(diagnostics?.attributes(attributes) ?? attributes),
       ...(unit === undefined ? {} : unit),
       ...(cause === undefined ? {} : { err: cause }),
     };
     // A sink never throws: `createLogger` swallows what escapes here, and a
     // pino transport that has closed under a shutdown is the case that would.
-    safeLogger[level](fields, message);
+    safeLogger[level](fields, diagnostics?.message(message) ?? message);
   };
 };

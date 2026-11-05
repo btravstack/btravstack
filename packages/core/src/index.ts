@@ -1,4 +1,5 @@
 export { Instrumentations, type InstrumentationLoader } from "./instrumentation.js";
+export type { DiagnosticPolicy } from "./diagnostics.js";
 export {
   HealthCheckFailed,
   HealthChecks,

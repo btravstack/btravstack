@@ -93,14 +93,15 @@ const echoing = EchoActivities({
  * into an application failure. The errors half of RED has to see it: a count
  * that omitted defects would report a healthy rate while every attempt failed.
  */
-const failingEcho = EchoActivities({
-  inject: {},
-  sync: () => ({
-    runEcho: {
-      echo: () => fromSafePromise(Promise.reject<string>(new Error("the activity is on fire"))),
-    },
-  }),
-});
+const failingEcho = (cause = new Error("the activity is on fire")) =>
+  EchoActivities({
+    inject: {},
+    sync: () => ({
+      runEcho: {
+        echo: () => fromSafePromise(Promise.reject<string>(cause)),
+      },
+    }),
+  });
 
 /**
  * An activity the contract never declared. Built as a variable, not a literal
@@ -709,6 +710,7 @@ export type TemporalFixtures = {
   readonly serveObserved: (
     failing?: boolean,
     env?: Environment,
+    cause?: Error,
   ) => Promise<{
     readonly app: App;
     readonly client: Client;
@@ -808,11 +810,12 @@ const composeObserved = (
   member: (operation: Operation) => Settle,
   failing: boolean,
   env: Environment = { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
+  cause?: Error,
 ) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Observed")({
     contract: { ...echoContract, taskQueue },
-    activities: failing ? failingEcho : echoing,
+    activities: failing ? failingEcho(cause) : echoing,
     workflows: echoWorkflows,
     provides: [
       Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
@@ -1022,9 +1025,16 @@ export const it = bundledTest.extend<TemporalFixtures>({
     });
   },
   serveObserved: async ({ server, client, boot }, use) => {
-    await use(async (failing = false, env?: Environment) => {
+    await use(async (failing = false, env?: Environment, cause?: Error) => {
       const observer = recordingObserver();
-      const { app, taskQueue } = composeObserved(server, boot, observer.member, failing, env);
+      const { app, taskQueue } = composeObserved(
+        server,
+        boot,
+        observer.member,
+        failing,
+        env,
+        cause,
+      );
       await app.runtimeInfo();
       return { app, client, taskQueue, taken: observer.taken };
     });

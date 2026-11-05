@@ -716,7 +716,9 @@ structural client contract or raise its peer floor.
 on the model and a `policy_<operation>` block beside it, planned and applied as
 ordinary migration operations. What the starter still owns is the pin —
 `tenantPinned(db, tenant, work)` — which opens the transaction
-`set_config(…, true)` is local to. Two halves stay the deployment's and both
+`set_config(…, true)` is local to. Optional isolation and read-only
+characteristics are established before that first query on the boot-probed
+client, so related reads can share a consistent snapshot. Two halves stay the deployment's and both
 fail quietly: Prisma 8 authors no `GRANT`s, and it cannot express `FORCE ROW
 LEVEL SECURITY`, so a deployment must connect as a role that is neither the
 table's owner nor a superuser. `packages/prisma/AGENTS.md` carries both.
@@ -853,6 +855,11 @@ Both built-in log sinks share the safe error diagnostic renderer: Pino is
 configured through a child logger so a sink change cannot expose arbitrary
 error payloads. That child accepts all six levels, leaving the stack's validated
 `LOG_LEVEL` as the sole filter and the supplied logger's level intact.
+An opt-in shared `DiagnosticPolicy` minimizes log, trace and Temporal SDK/native
+diagnostics with static vocabularies and bounded fields. Core declares only the
+structural contract; the observability package builds the policy, and Temporal
+installs its diagnostic adapter before the first native connection. Process
+events use the same policy through `kernelEvents` over a protected logger.
 Malformed `Config.url` diagnostics omit the raw value entirely,
 since malformed credentials cannot be reliably separated from the URL.
 
@@ -1484,6 +1491,7 @@ A sixth rule is about production code that tests keep honest:
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
    `DRAIN_TIMEOUT_MS`, `STOP_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_STREAM_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `HTTP_HEADERS_TIMEOUT_MS`, `HTTP_REQUEST_TIMEOUT_MS`, `GRAPHQL_DEVELOPER_TOOLS`, `GRAPHQL_MAX_TOKENS`,
+   `HTTP_KEEP_ALIVE_TIMEOUT_MS`, `HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS`, `HTTP_SOCKET_TIMEOUT_MS`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS`,
    `TEMPORAL_CREDENTIALS_RELOAD_MS`, the `TEMPORAL_TLS*` and `TEMPORAL_API_KEY*`
    connection security (Temporal's own names),

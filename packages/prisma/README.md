@@ -168,6 +168,12 @@ declare const tenant: string;
 const orders = await tenantPinned(db, tenant, (tx) => tx.orm.orders.Order.all());
 ```
 
+For a consistent snapshot, pass `{ isolationLevel: "repeatable read", readOnly: true }`
+as the fourth argument. The starter establishes these characteristics before
+the tenant pin. Use its boot-probed client and the callback's `tx` for every
+related read; omitted characteristics preserve the connection defaults. See
+[consistent snapshots](https://btravstack.github.io/btravstack/reference/prisma#consistent-snapshots).
+
 `set_config(…, true)` is **transaction-local**, which is why this opens one
 rather than handing back a pinned client: a session-scoped pin works only while
 the pool happens to return the same connection, and fails silently the first
@@ -216,15 +222,16 @@ package's.
 
 ## Options
 
-| Option                            | Where                                                      | What it is                                                                               |
-| --------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `name`                            | `prismaDatabase(name)`                                     | the port's id and the health check's name — required                                     |
-| `client`                          | `prismaDatabase(name)({ client })`                         | builds your client from the URL and middleware this package bound — required             |
-| `DATABASE_URL`                    | environment, read by `prismaDatabase(name)`                | the connection string — required, validated at graph build; blank is an error, exit `78` |
-| `setting`                         | `tenantPinned(db, tenant, work, { setting })`              | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`               |
-| `raises`                          | `tryQuery(run, { raises })`, `tenantPinned(…, { raises })` | SQLSTATEs modeled as `RaisedException` rather than defects — default none                |
-| `schema`, `table`, `tenantColumn` | `tenantListing(options)`                                   | the physical table and tenant column for a narrow listing                                |
-| `name`, `owner`, `role`           | `tenantListing(options)`                                   | the listing function, its trusted owner and application caller                           |
+| Option                            | Where                                                      | What it is                                                                                |
+| --------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `name`                            | `prismaDatabase(name)`                                     | the port's id and the health check's name — required                                      |
+| `client`                          | `prismaDatabase(name)({ client })`                         | builds your client from the URL and middleware this package bound — required              |
+| `DATABASE_URL`                    | environment, read by `prismaDatabase(name)`                | the connection string — required, validated at graph build; blank is an error, exit `78`  |
+| `setting`                         | `tenantPinned(db, tenant, work, { setting })`              | the PostgreSQL run-time setting the policy reads — default `app.tenant_id`                |
+| `isolationLevel`, `readOnly`      | `tenantPinned(db, tenant, work, options)`                  | transaction characteristics established before the pin — connection defaults when omitted |
+| `raises`                          | `tryQuery(run, { raises })`, `tenantPinned(…, { raises })` | SQLSTATEs modeled as `RaisedException` rather than defects — default none                 |
+| `schema`, `table`, `tenantColumn` | `tenantListing(options)`                                   | the physical table and tenant column for a narrow listing                                 |
+| `name`, `owner`, `role`           | `tenantListing(options)`                                   | the listing function, its trusted owner and application caller                            |
 
 There is **no `instrumented` flag**: observation is a set port every call is
 handed to, so a graph composing no observability pays one inert call and no

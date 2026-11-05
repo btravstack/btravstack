@@ -8,12 +8,14 @@ import { vi } from "vitest";
  * through the shipped `Serving` type just for a test.
  */
 export const capturedServers: Server[] = [];
+let legacyKeepAliveBuffer = false;
 vi.mock("node:http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:http")>();
   return {
     ...actual,
     createServer: (...args: Parameters<typeof actual.createServer>) => {
       const server = actual.createServer(...args);
+      if (legacyKeepAliveBuffer) Reflect.deleteProperty(server, "keepAliveTimeoutBuffer");
       capturedServers.push(server);
       return server;
     },
@@ -131,12 +133,18 @@ const publicApi = defineHttp();
  * The transport under test with a bare listener where `http()` would put the
  * oRPC one, so the guarantees are exercised without a router in the way.
  */
-const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securityHeaders"]) =>
+const appOf = (
+  handler: Handler,
+  port = 0,
+  securityHeaders?: HttpOptions["securityHeaders"],
+  options: ConfiguredOptions = {},
+) =>
   Module("App")({
     imports: [
       httpServer({
         port,
         hostname: "127.0.0.1",
+        ...options,
         ...(securityHeaders === undefined ? {} : { securityHeaders }),
       }),
     ],
@@ -166,6 +174,9 @@ const appOnUncheckedPort = (port: number) =>
           compression: false,
           headersTimeoutMs: DEFAULT_HEADERS_TIMEOUT_MS,
           requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+          keepAliveTimeoutMs: 5_000,
+          keepAliveTimeoutBufferMs: undefined,
+          socketTimeoutMs: 0,
         },
       }),
       Provider.member(Observers)({ inject: {}, value: noObserver }),
@@ -1671,7 +1682,16 @@ const rpcPolicyAppOf = (options: PolicyOptions) =>
 
 /** What a `configured` spec may pin on the starter. */
 type ConfiguredOptions = Partial<
-  Pick<HttpOptions, "port" | "hostname" | "headersTimeoutMs" | "requestTimeoutMs">
+  Pick<
+    HttpOptions,
+    | "port"
+    | "hostname"
+    | "headersTimeoutMs"
+    | "requestTimeoutMs"
+    | "keepAliveTimeoutMs"
+    | "keepAliveTimeoutBufferMs"
+    | "socketTimeoutMs"
+  >
 >;
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
@@ -2170,6 +2190,9 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
             compression: false,
             headersTimeoutMs: DEFAULT_HEADERS_TIMEOUT_MS,
             requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+            keepAliveTimeoutMs: 5_000,
+            keepAliveTimeoutBufferMs: undefined,
+            socketTimeoutMs: 0,
           },
         }),
         Provider(HttpUnit)({ inject: {}, value: {} }),
@@ -2220,6 +2243,7 @@ export type HttpFixtures = {
   readonly serve: (
     handler?: Handler,
     securityHeaders?: HttpOptions["securityHeaders"],
+    options?: ConfiguredOptions,
   ) => Promise<{ readonly app: App; readonly origin: string }>;
   /**
    * `protectedResource()` over whatever options and environment a test hands
@@ -2276,7 +2300,7 @@ export type HttpFixtures = {
    * goes quiet — answering the first status line the server wrote before it
    * closed the socket, or `""` when it wrote none.
    */
-  readonly stall: (app: App) => Promise<string>;
+  readonly stall: (app: App, request?: string) => Promise<string>;
   /**
    * The starter proper — `HttpModule` over a router provider — on an
    * ephemeral port, with a typed oRPC client pointed at it. Shut down by the
@@ -2368,6 +2392,7 @@ export type HttpFixtures = {
   }>;
   /** The `http.Server` the runtime just created. Asserted here so a test body cannot pass on an empty capture. */
   readonly boundServer: () => Server;
+  readonly legacyHttp: undefined;
   /** A handler held open until `release()`, so a test can observe a unit in flight. */
   readonly gate: {
     readonly handler: Handler;
@@ -2701,6 +2726,12 @@ export type HttpFixtures = {
 };
 
 export const it = test.extend<HttpFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest requires a destructuring pattern for fixtures
+  legacyHttp: async ({}, use) => {
+    legacyKeepAliveBuffer = true;
+    await use(undefined);
+    legacyKeepAliveBuffer = false;
+  },
   // oxlint-disable-next-line no-empty-pattern -- vitest's fixture signature: one that names no other fixture still takes the destructured first parameter
   streamed: async ({}, use) => {
     const chunk = new Uint8Array(65_536);
@@ -2942,8 +2973,8 @@ export const it = test.extend<HttpFixtures>({
   },
 
   serve: async ({ boot }, use) => {
-    await use(async (handler = noop, securityHeaders) => {
-      const app = boot(appOf(handler, undefined, securityHeaders));
+    await use(async (handler = noop, securityHeaders, options) => {
+      const app = boot(appOf(handler, undefined, securityHeaders, options));
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { app, origin: `http://127.0.0.1:${info.port}` };
@@ -3027,12 +3058,12 @@ export const it = test.extend<HttpFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   stall: async ({}, use) => {
-    await use(async (app) => {
+    await use(async (app, request = "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n") => {
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       const socket = connect(info.port, "127.0.0.1");
       await once(socket, "connect");
-      socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+      socket.write(request);
       let answered = "";
       socket.on("data", (chunk: Buffer) => {
         answered += chunk.toString();

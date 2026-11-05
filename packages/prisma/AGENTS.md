@@ -254,11 +254,29 @@ model plus a `policy_<operation>` block — and Prisma's planner emits `ENABLE
 ROW LEVEL SECURITY` and `CREATE POLICY` as ordinary migration operations. What
 is left here is the PIN, plus an optional narrow tenant-listing capability.
 
-- **`tenantPinned(db, tenant, work, { setting? })`** runs `work` inside a
+- **`tenantPinned(db, tenant, work, options?)`** runs `work` inside a
   transaction whose connection carries
   `set_config(setting, tenant, true)`. `setting` defaults to `app.tenant_id`,
   and the policy must read the **same** name: a mismatch denies every row and
   every write, which looks exactly like row security working.
+
+**Snapshot characteristics precede the pin** (#708). `isolationLevel` accepts
+`read committed`, `repeatable read` or `serializable`; `readOnly` selects the
+access mode. A single `SET TRANSACTION` runs before `SELECT set_config` on the
+same transaction connection. PostgreSQL refuses isolation changes after the
+first query, so moving this statement after the pin breaks snapshots. Omitted
+characteristics retain the connection defaults, with no extra statement when
+both are omitted. Unknown values from untyped callers are defects before any
+transaction starts; read uncommitted is refused because PostgreSQL aliases it
+to read committed. SQL tokens are selected from validated literals, never
+bound as parameters or interpolated from unchecked input.
+
+Use the starter's boot-probed client. On an unprobed client, Prisma may read its
+contract marker on the transaction connection before the first submitted plan;
+PostgreSQL then refuses `SET TRANSACTION ISOLATION LEVEL` with `25001`. The
+starter already probes outside a transaction to avoid the pool deadlock
+described above. A standalone client must likewise finish its initialization
+query before opening snapshot transactions.
 
 **It opens a transaction because the pin is transaction-local, and that is the
 whole design.** A session-scoped pin (`set_config(..., false)`) followed by a
@@ -283,12 +301,16 @@ no further.
 
 **Its spec is stubbed, by this package's own rule** (no container, which
 `vitest.config.ts` explains). What `rls.spec.ts` pins is the MECHANICS: that
-the pin is the FIRST statement, that it runs in the SAME transaction as the
+characteristics precede the pin when selected, that the pin runs in the SAME transaction as the
 work, that `set_config`'s third argument is `true`, and that the setting name
 is the option's. What it cannot prove is that PostgreSQL then refuses the row,
 and that proof is deliberately elsewhere: it needs a `NOSUPERUSER NOBYPASSRLS`
 role and a policy, both of which belong to the application. It lives in
-`examples/order-infrastructure`, against the shared container.
+`examples/order-infrastructure`, against the shared container. Its snapshot
+spec commits a concurrent change between two reads, proving repeatable-read
+stability, default read-committed visibility, read-only write refusal and both
+modeled and defect rollback. `internal/prisma-floor` checks the same
+characteristics on the oldest supported client.
 
 **Two gaps are Prisma 8's and are documented rather than worked around:**
 
@@ -497,8 +519,8 @@ tested before the precheck and skips a pre-satisfied operation, and
 `createIndex`'s check is `to_regclass(…) IS NOT NULL`, by name only — which is
 why it insists on `pg_index.indisvalid`.
 
-**No read-only `tenantPinned`** (issue #499). Prisma 8's `transaction` takes
-no options at all, so there is no `READ ONLY` to open, and what is left — the
-three `SqlError` arms folded into the defect channel — is one `mapErrCases` an
-adapter writes once, as `examples/order-infrastructure`'s `pinnedOrDefect`
-does. A variant here would be that line under a second name.
+**No separate read helper** (issue #499). `tenantPinned` can select a read-only
+transaction, but keeps its existing `SqlError` channel. Folding those arms
+into the defect channel for a read remains one `mapErrCases` an adapter writes
+once, as `examples/order-infrastructure`'s `pinnedOrDefect` does. A second
+helper would duplicate that policy under another name.

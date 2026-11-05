@@ -1937,6 +1937,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.3(vitest@5.0.3)
+      temporal-polyfill:
+        specifier: 1.0.6
+        version: 1.0.6
       tsdown:
         specifier: 'catalog:'
         version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2111,6 +2114,9 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
+      '@btravstack/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@btravstack/testing':
         specifier: workspace:*
         version: link:../testing
@@ -2420,6 +2426,9 @@ importers:
       '@btravstack/di':
         specifier: workspace:*
         version: link:../di
+      '@btravstack/entity':
+        specifier: workspace:*
+        version: link:../entity
       '@btravstack/htmx-server':
         specifier: workspace:*
         version: link:../htmx-server
@@ -2459,6 +2468,9 @@ importers:
       openid-client:
         specifier: 'catalog:'
         version: 6.8.8
+      temporal-polyfill:
+        specifier: 1.0.6
+        version: 1.0.6
       tsdown:
         specifier: 'catalog:'
         version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2789,6 +2801,9 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
+      '@btravstack/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@btravstack/temporal-testing':
         specifier: workspace:*
         version: link:../temporal-testing
@@ -10313,11 +10328,17 @@ packages:
   temporal-polyfill@1.0.4:
     resolution: {integrity: sha512-MLEU0qOD2uXlz24oINNtdLZQl8RgmMxSnRtKEGZGGetTJjlRwQJjk+VsJ4EREaUoiaTb8NJOcUiKtoAiWn9EBg==}
 
+  temporal-polyfill@1.0.6:
+    resolution: {integrity: sha512-tYyEry1HLGUDbm2356W3iYD0OZdo7rlP7h98Zr/EnjqLZQwTAfcBDUvJnJbfA15v/vQad57hJZScG5O0W2oKEA==}
+
   temporal-spec@1.0.1:
     resolution: {integrity: sha512-wxVoanmDeavXie1vu2JaQ3WIc3JZnWAOYFBsJyATaVsXsycKYUflGsyBmrRSnoCpZJpwPyr38VpgSUlQ8CbFxg==}
 
   temporal-utils@1.0.2:
     resolution: {integrity: sha512-1B8Dl4KzrOvsNUlpoWGno2VLQlxroLjDgc5NBjVC9ax9ymdo+ezfyvhyjEMx+IVfhINr6CIG2gcnlP95iRrybQ==}
+
+  temporal-utils@1.0.3:
+    resolution: {integrity: sha512-9jbTSX3HvkOWvDpNpFzwX/d1mkCrgQgwLmVTOEiuocZGKHsrQJtttGZFmybJ2zYP5zCSZuU5ZyeS8+eOEPABiQ==}
 
   terminal-size@4.0.1:
     resolution: {integrity: sha512-avMLDQpUI9I5XFrklECw1ZEUPJhqzcwSWsyyI8blhRLT+8N1jLJWLWWYQpB2q2xthq8xDvjZPISVh53T/+CLYQ==}
@@ -18867,9 +18888,16 @@ snapshots:
       temporal-spec: 1.0.1
       temporal-utils: 1.0.2
 
+  temporal-polyfill@1.0.6:
+    dependencies:
+      temporal-spec: 1.0.1
+      temporal-utils: 1.0.3
+
   temporal-spec@1.0.1: {}
 
   temporal-utils@1.0.2: {}
+
+  temporal-utils@1.0.3: {}
 
   terminal-size@4.0.1: {}
 

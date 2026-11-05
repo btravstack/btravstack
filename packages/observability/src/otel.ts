@@ -11,11 +11,14 @@ import {
   type Histogram,
   type Span,
   type UnitRecord,
+  type DiagnosticPolicy,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
 import { context, metrics, trace, type Span as OtelSpan } from "@opentelemetry/api";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { fromSafePromise } from "unthrown";
+
+import { renderCause } from "./json-sink.js";
 
 /**
  * The tracing half of observability — the ADAPTER, not the contract. `Tracer`
@@ -62,6 +65,11 @@ const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
         ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
       };
 
+/** SDK configuration plus a shared disclosure policy for starter-owned spans and metrics. */
+export type OtelOptions = Partial<NodeSDKConfiguration> & {
+  readonly diagnostics?: DiagnosticPolicy;
+};
+
 /**
  * The OTel starter: a module providing `Tracer` and `Meter` over a `NodeSDK`
  * opened with the scope and flushed on close. Compose it beside
@@ -89,9 +97,7 @@ const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
  * plan time and in `Needs`. Guice's `newSetBinder` declares the empty set for
  * the same reason.
  */
-export const otel = (
-  options?: Partial<NodeSDKConfiguration>,
-): Module<Tracer | Meter | Observers, never, Scope> =>
+export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, never, Scope> =>
   Module("Otel")({
     provides: [
       Provider.member(Instrumentations)({ inject: {}, value: () => Promise.resolve(undefined) }),
@@ -136,14 +142,18 @@ export const otel = (
             const open = (startTime?: number): OtelSpan => {
               const parent = unit === undefined ? undefined : unitSpans.get(unit);
               const opened = tracer.startSpan(
-                `${component}.${name}`,
+                options?.diagnostics?.message(`${component}.${name}`) ?? `${component}.${name}`,
                 startTime === undefined ? {} : { startTime },
                 parent === undefined ? undefined : trace.setSpan(context.active(), parent),
               );
               // Details ride the SPAN and not the instruments: a cache key or a
               // URL is one more field on a span and one more time series on a
               // metric.
-              opened.setAttributes({ ...attributes, ...details, ...unitAttributes(unit) });
+              const offered = { ...attributes, ...details };
+              opened.setAttributes({
+                ...(options?.diagnostics?.attributes(offered) ?? offered),
+                ...unitAttributes(unit),
+              });
               return opened;
             };
             // Inside a unit whose span is not filed YET — a sibling provider di
@@ -164,13 +174,21 @@ export const otel = (
               }),
             );
 
-            return ({ outcome, attributes: settled }) => {
-              const all = { ...attributes, ...settled, outcome };
+            return ({ outcome, attributes: settled, cause }) => {
+              const offered = { ...attributes, ...settled };
+              const all = { ...(options?.diagnostics?.attributes(offered) ?? offered), outcome };
               operations.add(1, all);
               const endedAt = performance.now();
               duration.record((endedAt - startedAt) / 1000, all);
               const finish = (span: OtelSpan | undefined): void => {
                 if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
+                if (cause !== undefined && options?.diagnostics !== undefined) {
+                  span?.addEvent("exception", {
+                    "exception.message": JSON.stringify(
+                      renderCause(options.diagnostics.cause(cause)),
+                    ),
+                  });
+                }
                 span?.end(endedAt);
               };
               if (!deferred) finish(started);

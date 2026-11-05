@@ -1,3 +1,5 @@
+import type { DiagnosticPolicy } from "@btravstack/core";
+
 import type { Line, Sink } from "./logger.js";
 
 const DIAGNOSTIC_FIELDS = [
@@ -71,16 +73,21 @@ export const renderCause = (cause: unknown, depth = 0, parents = new Set<Error>(
  * because `traceId` is the field an operator searches.
  */
 export const jsonSink =
-  (stream: { readonly write: (chunk: string) => unknown } = process.stdout): Sink =>
+  (
+    stream: { readonly write: (chunk: string) => unknown } = process.stdout,
+    diagnostics?: DiagnosticPolicy,
+  ): Sink =>
   (line: Line) => {
     const { level, message, attributes, cause, time, unit } = line;
     const rendered = {
-      ...attributes,
+      ...(diagnostics?.attributes(attributes) ?? attributes),
       time: new Date(time).toISOString(),
       level,
-      message,
+      message: diagnostics?.message(message) ?? message,
       ...(unit === undefined ? {} : unit),
-      ...(cause === undefined ? {} : { cause: renderCause(cause) }),
+      ...(cause === undefined
+        ? {}
+        : { cause: renderCause(diagnostics === undefined ? cause : diagnostics.cause(cause)) }),
     };
     stream.write(`${safeStringify(rendered)}\n`);
   };

@@ -173,6 +173,11 @@ describes it. Write the wire schema as the canonical spelling `encode` emits,
 since that is what `json` publishes. Why both members, and why in this order:
 [The JSON form](/entity/reference/schemas#the-json-form-json).
 
+JSON Schema conversion publishes the encoded wire schema in both directions,
+also when this field is a property of an ordinary `z.object`. The native
+fallback remains available for decoding and rehydration; conversion does not
+replace its validator or accept arbitrary domain values.
+
 ## `Entity.computed(schema, from)`
 
 One derived field: its schema, and the function producing it.

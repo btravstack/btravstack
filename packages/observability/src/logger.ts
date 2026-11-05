@@ -4,6 +4,7 @@ import {
   type Attributes,
   type Level,
   type LoggerService,
+  type DiagnosticPolicy,
 } from "@btravstack/core";
 
 /** One line, as the implementation hands it to a {@link Sink}: the message, its severity, and everything known about it. */
@@ -38,7 +39,11 @@ const severity = (level: Level): number => LEVELS.indexOf(level);
  * Every path is wrapped: a sink that throws is swallowed here, because a
  * logger that takes the process down is worse than a line nobody sees.
  */
-export const createLogger = (sink: Sink, level: Level = "info"): LoggerService => {
+export const createLogger = (
+  sink: Sink,
+  level: Level = "info",
+  diagnostics?: DiagnosticPolicy,
+): LoggerService => {
   const floor = severity(level);
 
   const build = (base: Attributes): LoggerService => {
@@ -53,9 +58,15 @@ export const createLogger = (sink: Sink, level: Level = "info"): LoggerService =
       try {
         sink({
           level: lineLevel,
-          message,
-          attributes: attributes === undefined ? base : { ...base, ...attributes },
-          cause,
+          message: diagnostics?.message(message) ?? message,
+          attributes:
+            diagnostics === undefined
+              ? attributes === undefined
+                ? base
+                : { ...base, ...attributes }
+              : diagnostics.attributes({ ...base, ...attributes }),
+          cause:
+            cause === undefined || diagnostics === undefined ? cause : diagnostics.cause(cause),
           time: Date.now(),
           unit:
             unit === undefined

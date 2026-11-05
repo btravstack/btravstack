@@ -37,6 +37,19 @@ argument order and the six differences from NestJS's `Logger`.
 
 ## Specs
 
+`diagnosticPolicy` implements the optional shared `DiagnosticPolicy` contract
+declared in core. The same object is passed explicitly to logging, OTel and the
+Temporal runtime installer; no process-global redaction toggle or new DI port
+is introduced. Unknown messages and errors retain static identities, fields use
+finite vocabularies or numeric bounds, and reflection never invokes getters.
+The default renderer remains backward compatible. `sensitiveDiagnostics` is an
+explicit separate disclosure choice; log level does not select it.
+
+`diagnostics.spec.ts` guards direct sinks, custom sinks, static identity,
+bounded fields, hostile reflection and explicit sensitive debugging.
+The OTel policy protects starter-owned observations, not application-created
+spans, SDK resource detectors or third-party instrumentation.
+
 What each spec file pins — the list, never a tally, since a count in prose is
 stale the next time a case is added (#192):
 

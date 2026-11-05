@@ -7,6 +7,11 @@ sync with the code in the same commit.
 
 ## Public surface
 
+- **`DiagnosticPolicy` is a structural contract, not a kernel policy.** Logging,
+  tracing and Temporal adapters accept the same object explicitly. Core neither
+  implements the disclosure rules nor moves failures between Result channels.
+  The implementation and sensitive debugging contract live in observability.
+
 - **`start(module, options?)`** — the gate (`StartGate<X, N>`) and its arms
   are `docs/reference/core/start.md`'s. A `Runtime` phantom carrying a
   `fork` module's needs through this marker was tried and reverted: every

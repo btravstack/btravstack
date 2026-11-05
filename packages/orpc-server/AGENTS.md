@@ -142,3 +142,11 @@ and runtime cancellation `signal`, beside the selected principal and declared
 unit services. RPC and OpenAPI supply the same fields. A request-scoped provider
 can instead inject `HttpRequestMetadata` from the HTTP runtime; metadata does
 not require an authentication scheme or an application ambient store.
+
+Document generation uses Standard JSON Schema conversion without its permissive
+fallback: the upstream converter catches conversion errors and substitutes an
+unconstrained optional schema, masking the diagnostic and potentially publishing
+an inaccurate contract. The document converter preserves the original throw,
+which `openApiDocument` reports through the defect channel. Optionality still
+uses oRPC's own helper. One unrepresentable procedure fails the whole document;
+no operation or schema is silently omitted.
