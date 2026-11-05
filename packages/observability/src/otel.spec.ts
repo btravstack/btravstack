@@ -71,6 +71,81 @@ const batchedOtel = (spans: Keeper) =>
 describe("otel", () => {
   it.for([
     {
+      name: "production",
+      diagnostics: diagnosticPolicy(),
+      traceId: "Synthetic.Person.716",
+      tenantId: "tenant@example.invalid",
+      expectedTrace: "[redacted]",
+      expectedTenant: undefined,
+    },
+    {
+      name: "opaque",
+      diagnostics: diagnosticPolicy(),
+      traceId: "1234567890abcdef1234567890abcdef",
+      tenantId: "0192b5b0-0000-7000-8000-000000000002",
+      expectedTrace: "1234567890abcdef1234567890abcdef",
+      expectedTenant: "0192b5b0-0000-7000-8000-000000000002",
+    },
+    {
+      name: "sensitive",
+      diagnostics: sensitiveDiagnostics,
+      traceId: "Synthetic.Person.716",
+      tenantId: "tenant@example.invalid",
+      expectedTrace: "Synthetic.Person.716",
+      expectedTenant: "tenant@example.invalid",
+    },
+  ])(
+    "projects $name correlation consistently onto unit and observed spans",
+    async ({ diagnostics, traceId, tenantId, expectedTrace, expectedTenant }, { boot, spans }) => {
+      // GIVEN
+      const runtime = testRuntime("test");
+      const App = Module("CorrelationPolicyApp")({
+        imports: [
+          otel({
+            diagnostics,
+            spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })],
+          }),
+          runtime.module,
+        ],
+        exports: [TestRuntimePort, Tracer, Observers],
+      });
+      const app = boot(App);
+      await runtime.untilStarted();
+      const observers = (runtime.host().ctx as unknown as Context<Observers>).get(Observers);
+      const id = "0192b5b0-0000-7000-8000-000000000001";
+
+      // WHEN
+      const outcome = await runtime
+        .host()
+        .run({ kind: "test", id, traceId, tenantId }, (unit) =>
+          unit
+            .fork(UnitSpanModule as never, [])
+            .flatMap(() =>
+              observed(observers, { component: "cache", name: "get", attributes: {} }, () =>
+                OkAsync("hit"),
+              ),
+            ),
+        );
+      app.stop();
+      await app.exited;
+
+      // THEN
+      const correlation = {
+        "btravstack.unit_id": expect.stringMatching(
+          /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i,
+        ),
+        "btravstack.trace_id": expectedTrace,
+        ...(expectedTenant === undefined ? {} : { "btravstack.tenant_id": expectedTenant }),
+      };
+      expect({ outcome, spans: spans.seen().map((span) => span.attributes) }).toEqual({
+        outcome: expect.toBeOkWith("hit"),
+        spans: [correlation, correlation],
+      });
+    },
+  );
+
+  it.for([
+    {
       name: "accepted",
       detailsStatus: 201,
       settledStatus: 202,

@@ -2,6 +2,7 @@ import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { diagnosticPolicy } from "./diagnostics.js";
 import { createLogger } from "./logger.js";
 
 describe("the logger", () => {
@@ -162,6 +163,25 @@ describe("the logger", () => {
       unitId: expect.any(String),
       traceId: "unit-1",
       tenantId: "acme",
+    });
+  });
+
+  it("filters ambient correlation before a custom sink receives a line", async ({
+    boot,
+    recorder,
+    tenantApp,
+  }) => {
+    // GIVEN
+    const diagnostics = diagnosticPolicy();
+    boot(tenantApp("tenant@example.invalid", { sink: recorder.sink, diagnostics }));
+
+    // WHEN
+    await vi.waitUntil(() => recorder.lines().length > 0);
+
+    // THEN
+    expect(recorder.only().unit).toEqual({
+      unitId: expect.stringMatching(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i),
+      traceId: "[redacted]",
     });
   });
 

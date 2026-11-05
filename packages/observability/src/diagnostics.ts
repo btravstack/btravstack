@@ -15,6 +15,10 @@ export type DiagnosticOptions = {
   readonly fields?: Readonly<Record<string, DiagnosticField>>;
 };
 
+const CORRELATION_FIELDS = ["unitId", "traceId", "tenantId"];
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const TRACE_ID = /^(?!0{32}$)[a-f0-9]{32}$/i;
+
 const own = (value: unknown, key: string): unknown => {
   try {
     return value !== null && (typeof value === "object" || typeof value === "function")
@@ -28,15 +32,22 @@ const own = (value: unknown, key: string): unknown => {
 /**
  * A production policy that never traverses causes, stacks, payloads or error
  * messages. Unknown messages and failures retain a static diagnostic identity.
- * Field values must match an explicit vocabulary or finite numeric bounds.
+ * Correlation retains UUIDs and nonzero W3C trace IDs. Other field values must
+ * match an explicit vocabulary or finite numeric bounds.
  */
 export const diagnosticPolicy = (options: DiagnosticOptions = {}): DiagnosticPolicy => {
   const messages = new Set(options.messages);
   const codes = new Set(options.codes);
   const fields = Object.entries(options.fields ?? {});
   const attributes = (values: Readonly<Record<string, unknown>>): Attributes =>
-    Object.fromEntries(
-      fields.flatMap(([key, rule]) => {
+    Object.fromEntries([
+      ...CORRELATION_FIELDS.flatMap((key) => {
+        const value = own(values, key);
+        return typeof value === "string" && (UUID.test(value) || TRACE_ID.test(value))
+          ? [[key, value]]
+          : [];
+      }),
+      ...fields.flatMap(([key, rule]) => {
         const value = own(values, key);
         const accepted = Array.isArray(rule)
           ? rule.includes(value as string | boolean)
@@ -48,7 +59,7 @@ export const diagnosticPolicy = (options: DiagnosticOptions = {}): DiagnosticPol
             value <= (rule as { max: number }).max;
         return accepted ? [[key, value]] : [];
       }),
-    ) as Attributes;
+    ]) as Attributes;
   return {
     message: (message) => (messages.has(message) ? message : "diagnostic"),
     attributes,

@@ -138,6 +138,11 @@ Both JSON and Pino sinks retain safe error diagnostics and omit arbitrary
 error payloads. Pino's error serializer is installed on a child logger at
 `trace`, leaving the supplied logger's configuration intact.
 
+A configured production policy also projects ambient unit, trace and tenant
+correlation before custom sinks and starter-owned spans see it. UUIDs and
+nonzero W3C trace IDs survive; free text does not. Unconfigured legacy rendering
+and explicitly sensitive debugging keep their existing disclosure behavior.
+
 For production data minimization, pass a shared `diagnosticPolicy()` through
 `observability({ diagnostics })`, `otel({ diagnostics })` and Temporal's
 `installTemporalDiagnostics`. Without this explicit policy, error messages,

@@ -704,14 +704,25 @@ Allowlist deployment-owned static strings and operational numeric bounds, never
 request values. `observability({ diagnostics })` and `createLogger` apply the
 policy before any custom sink sees a line. Direct sinks also accept it as their
 second argument: `jsonSink(stream, diagnostics)` and
-`pinoSink(logger, diagnostics)`. Correlation IDs remain available; use opaque IDs.
+`pinoSink(logger, diagnostics)`. The same policy projects ambient correlation
+using canonical `unitId`, `traceId` and `tenantId` fields. `diagnosticPolicy()`
+retains UUIDs and nonzero 32-hex W3C trace IDs, including opaque inbound request
+IDs in those forms. Unapproved required IDs become `[redacted]`; an unapproved
+optional tenant ID is omitted. Raw caller-supplied free text in `x-request-id`
+therefore cannot bypass the configured policy. Runtime request and unit metadata
+remain unchanged; this is a disclosure boundary, not request normalization.
+A custom policy controls these fields through its `attributes` projection.
+Use opaque identifiers; an identifier's format alone does not establish an
+access or retention policy.
 Attribute getters are skipped by the production policy, including on child
 loggers and observed operations. Later layers still override earlier ones;
 a rejected value removes that field rather than restoring an earlier value.
 
 `otel({ diagnostics })` filters starter-owned operation span attributes, names
 and metric dimensions, and emits a minimized exception event for failed observed
-operations. Unit correlation remains. Application-created spans, direct
+operations. `UnitSpanModule` uses the policy associated with its provided OTel
+tracer for unit correlation too. A hand-bound tracer has no such association.
+Application-created spans, direct
 `recordException` calls, SDK resources and third-party auto-instrumentation have
 their own disclosure boundaries; this option is not an exporter-wide sanitizer.
 Exception diagnostics that cannot be serialized use `[unserialisable]` instead.
