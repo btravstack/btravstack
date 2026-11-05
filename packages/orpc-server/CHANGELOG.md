@@ -1,5 +1,21 @@
 # @btravstack/orpc-server
 
+## 0.56.1
+
+### Patch Changes
+
+- 76b093b: Preserve root Zod void and undefined schemas without checks as no-content
+  OpenAPI inputs and outputs. Keep conversion defects from refined roots,
+  optional native values and generic Standard JSON Schema implementations.
+  Existing codec wire schemas and optional/defaulted JSON bodies retain their
+  conversion behavior.
+- @btravstack/http-server@0.56.1
+  - @btravstack/config@0.56.1
+  - @btravstack/contract@0.56.1
+  - @btravstack/core@0.56.1
+  - @btravstack/di@0.56.1
+  - @btravstack/htmx-server@0.56.1
+
 ## 0.56.0
 
 ### Patch Changes
