@@ -1,5 +1,23 @@
 # @btravstack/http-server
 
+## 0.56.0
+
+### Minor Changes
+
+- 88338ac: Expose independent keepalive, keepalive buffer and socket inactivity budgets
+  with validated deployment configuration. Preserve request receive deadlines,
+  stream progress, cancellation and graceful shutdown. Share one response lifecycle
+  listener so streamed adapters can coexist with ordinary application close listeners
+  without exceeding the default listener budget.
+
+### Patch Changes
+
+- Updated dependencies [88338ac]
+  - @btravstack/core@0.56.0
+  - @btravstack/config@0.56.0
+  - @btravstack/contract@0.56.0
+  - @btravstack/di@0.56.0
+
 ## 0.55.1
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # @btravstack/orpc-server
 
+## 0.56.0
+
+### Patch Changes
+
+- 88338ac: Publish Entity.codec's encoded wire schema in nested JSON Schema and OpenAPI contracts while retaining native domain validation. Preserve underlying schema conversion diagnostics and refuse incomplete OpenAPI documents.
+- Updated dependencies [88338ac]
+- Updated dependencies [88338ac]
+  - @btravstack/http-server@0.56.0
+  - @btravstack/core@0.56.0
+  - @btravstack/htmx-server@0.56.0
+  - @btravstack/config@0.56.0
+  - @btravstack/contract@0.56.0
+  - @btravstack/di@0.56.0
+
 ## 0.55.1
 
 ### Patch Changes

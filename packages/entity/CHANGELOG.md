@@ -1,5 +1,11 @@
 # @btravstack/entity
 
+## 0.56.0
+
+### Patch Changes
+
+- 88338ac: Publish Entity.codec's encoded wire schema in nested JSON Schema and OpenAPI contracts while retaining native domain validation. Preserve underlying schema conversion diagnostics and refuse incomplete OpenAPI documents.
+
 ## 0.55.1
 
 No changes in this release.
