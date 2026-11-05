@@ -15,11 +15,11 @@ import {
 import { tenantListing, tenantPinned, type TenantListing } from "@btravstack/prisma/rls";
 import postgres from "@prisma/orm-postgres/runtime";
 import { Temporal } from "temporal-polyfill";
-import type { AsyncResult } from "unthrown";
+import { fromSafePromise, type AsyncResult } from "unthrown";
 import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
-import { contract } from "../database.js";
+import { contract, OrderDatabase, OrderDatabaseModule } from "../database.js";
 import {
   openDatabase,
   prismaCustomerRepository,
@@ -45,6 +45,7 @@ export type PersistenceFixtures = {
    * unset.
    */
   readonly raw: OrderDatabaseClient;
+  readonly snapshotDb: OrderDatabaseClient;
   /**
    * This test's tenant, and nobody else's. A UUID, so it is unique across
    * spec files and across the workspaces running concurrently — which is the
@@ -107,6 +108,17 @@ export type PersistenceFixtures = {
 };
 
 export const it = test.extend<PersistenceFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest requires destructuring; this fixture has no fixture dependencies
+  snapshotDb: async ({}, use) => {
+    const root = Module("SnapshotDatabase")({
+      imports: [OrderDatabaseModule],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: inject("__ORDERS_DATABASE_URL__") } }),
+      ],
+      exports: [OrderDatabase],
+    });
+    (await Module.scoped(root, (ctx) => fromSafePromise(use(ctx.get(OrderDatabase))))).getOrThrow();
+  },
   preciseEvent: async ({ db, tenant }, use) => {
     const occurredAt = Temporal.Instant.from("2026-10-26T12:00:00.123456Z");
     const inserted = await tenantPinned(db, tenant, (tx) =>

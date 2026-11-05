@@ -199,6 +199,23 @@ Its own test suite needs a **Docker daemon**: the specs run against the shared
 `temporalio/temporal` development-server container `internal/test-infra` starts once per machine and every
 workspace reuses. Nothing else here does.
 
+## Diagnostic disclosure
+
+`installTemporalDiagnostics({ logger, diagnostics, nativeLogLevel? })` installs
+Temporal's process Runtime once, before the first Temporal connection or worker.
+It forwards SDK, workflow, activity and native Core logs through the supplied
+logger and shared `DiagnosticPolicy`. Native Core verbosity defaults to `WARN`;
+the kernel retains ownership of process signals. The installer returns
+`Result<void, never>`: a late or repeated installation is a defect to handle
+before booting the worker.
+
+`temporalDiagnosticLogger(logger, diagnostics)` returns a Temporal SDK logger for
+an application that configures `Runtime.install` itself. Native log forwarding
+still needs that Runtime configuration. Both helpers accept the policy declared
+in `@btravstack/core`; `@btravstack/observability` provides `diagnosticPolicy()`.
+See [diagnostic disclosure](https://btravstack.github.io/btravstack/reference/temporal-worker#diagnostic-disclosure)
+for composition and the separate payload/failure boundary.
+
 ## Schedules
 
 `@btravstack/temporal-worker/schedule` exports `ensureSchedule` — the typed

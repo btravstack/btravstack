@@ -131,7 +131,13 @@ wrote them, so what converts is what zod converts:
 | `z.custom(...)`, `z.instanceof(...)` | the value you passed, untouched | ✗ throws                        | ✗ throws                         |
 | a `.transform(...)`                  | the transformed value           | ✓ the source schema             | ✗ throws                         |
 | a `z.codec(wire, domain, ...)`       | the decoded (domain) value      | ✓ the wire schema               | the domain schema; ✗ if a `Date` |
-| `Entity.codec(wire, domain, ...)`    | the decoded (domain) value      | ✗ throws on the domain member   | ✗ throws; **`json`** converts    |
+| `Entity.codec(wire, domain, ...)`    | the decoded (domain) value      | ✓ the encoded wire schema       | ✓ the encoded wire schema        |
+
+`Entity.codec` publishes its encoded wire schema even when nested in an ordinary
+`z.object`, array, optional or nullable field. Native values such as
+`Temporal.PlainDate` and `Temporal.Instant` remain the parsed application values;
+the generated JSON Schema describes their declared JSON strings. Descriptions,
+metadata and recursive wire references follow Zod's ordinary conversion.
 
 Two of those rows also break the round trip above, before JSON Schema is
 involved: `JSON.stringify` writes a `Date` as a string, which `z.date()` then

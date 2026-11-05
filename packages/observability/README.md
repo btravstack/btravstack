@@ -138,6 +138,13 @@ Both JSON and Pino sinks retain safe error diagnostics and omit arbitrary
 error payloads. Pino's error serializer is installed on a child logger at
 `trace`, leaving the supplied logger's configuration intact.
 
+For production data minimization, pass a shared `diagnosticPolicy()` through
+`observability({ diagnostics })`, `otel({ diagnostics })` and Temporal's
+`installTemporalDiagnostics`. Without this explicit policy, error messages,
+stacks and bounded cause chains remain visible. See the
+[disclosure policy reference](https://btravstack.github.io/btravstack/reference/observability#a-shared-diagnostic-disclosure-policy)
+for allowlists and the separate sensitive-debug access and retention contract.
+
 ## Traces and metrics
 
 The other half of the package's name, behind an optional-peer subpath the way

@@ -19,6 +19,10 @@ export type TenantPinnedOptions<S extends string = never> = QualifyOptions<S> & 
    * `app.tenant_id`, matching `current_setting('app.tenant_id', true)`.
    */
   readonly setting?: string;
+  /** Established before the tenant pin; omitted to retain the connection's default. */
+  readonly isolationLevel?: "read committed" | "repeatable read" | "serializable";
+  /** Transaction access mode; omitted to retain the connection's default. */
+  readonly readOnly?: boolean;
 };
 
 /**
@@ -45,6 +49,7 @@ type Raw = {
       strings: TemplateStringsArray,
       ...values: readonly (string | boolean)[]
     ) => {
+      readonly affectedCount: () => { readonly build: () => unknown };
       readonly returnsRow: (spec: Readonly<Record<string, string>>) => {
         readonly build: () => unknown;
       };
@@ -72,6 +77,11 @@ type Queryable = { readonly query: (plan: never) => PromiseLike<unknown> };
  * work run on one connection and fail on one channel, so a caller never wraps
  * this in a second combinator. `work` still hands back a `PromiseLike`, because
  * that is what Prisma's own transaction callback is.
+ * `isolationLevel` and `readOnly`, when supplied, are set before the pin's
+ * first query. Unsupported values are defects, never silently downgraded.
+ * Use the starter's boot-probed client. A standalone client must finish an
+ * initialization query first, so Prisma's marker check cannot precede the
+ * isolation statement inside this transaction.
  *
  * @remarks
  * The policy must read the **same** setting name. A `tenantPinned(db, tenant,
@@ -89,25 +99,44 @@ export const tenantPinned = <Tx extends Queryable, R, const S extends string = n
   work: (tx: Tx) => PromiseLike<R>,
   options?: TenantPinnedOptions<S>,
 ): AsyncResult<R, SqlError | Raised<S>> => {
-  const setting = options?.setting ?? "app.tenant_id";
-  // Built off the client, run on the transaction: `db.raw` is where the tagged
-  // template lives, and `tx.query` is what puts the statement on the
-  // transaction's own connection. `pg/text@1` is the codec every Postgres
-  // contract registers for a text column, which is what `set_config` answers.
-  const plan = (db as unknown as Raw).raw
-    .sql`SELECT set_config(${setting}, ${tenant}, ${true}) AS pinned`
-    .returnsRow({
-      pinned: "pg/text@1",
-    })
-    .build();
-  return tryQuery(
-    () =>
-      db.transaction(async (tx) => {
-        await (tx as unknown as { readonly query: (plan: unknown) => PromiseLike<unknown> }).query(
-          plan,
-        );
-        return work(tx);
-      }),
-    options,
-  );
+  return tryQuery(async () => {
+    const isolation = options?.isolationLevel;
+    const readOnly = options?.readOnly;
+    if (
+      isolation !== undefined &&
+      isolation !== "read committed" &&
+      isolation !== "repeatable read" &&
+      isolation !== "serializable"
+    ) {
+      return Promise.reject(new TypeError("Unsupported tenantPinned isolationLevel"));
+    }
+    if (readOnly !== undefined && typeof readOnly !== "boolean") {
+      return Promise.reject(new TypeError("Unsupported tenantPinned readOnly"));
+    }
+    const modes: string[] = [];
+    if (isolation !== undefined) modes.push(`ISOLATION LEVEL ${isolation.toUpperCase()}`);
+    if (readOnly !== undefined) modes.push(readOnly ? "READ ONLY" : "READ WRITE");
+    const raw = (db as unknown as Raw).raw;
+    const statement = `SET TRANSACTION ${modes.join(", ")}`;
+    // SQL keywords cannot be bind parameters; every token above is allow-listed.
+    const characteristics =
+      modes.length === 0
+        ? undefined
+        : raw
+            .sql(Object.assign([statement], { raw: [statement] }))
+            .affectedCount()
+            .build();
+    const setting = options?.setting ?? "app.tenant_id";
+    const pin = raw.sql`SELECT set_config(${setting}, ${tenant}, ${true}) AS pinned`
+      .returnsRow({ pinned: "pg/text@1" })
+      .build();
+    return db.transaction(async (tx) => {
+      const connection = tx as unknown as {
+        readonly query: (plan: unknown) => PromiseLike<unknown>;
+      };
+      if (characteristics !== undefined) await connection.query(characteristics);
+      await connection.query(pin);
+      return work(tx);
+    });
+  }, options);
 };

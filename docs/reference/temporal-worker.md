@@ -51,12 +51,52 @@ import { currentUnit } from "@btravstack/core";
 > worked example, [Order Temporal worker](/examples/order-temporal-worker).
 > Generated signatures are under [API reference](/api/temporal-worker/).
 
+## Diagnostic disclosure
+
+Temporal has a process-wide native Runtime. Install its diagnostic boundary once,
+before the first native connection or worker; worker-local payload codecs do not
+control runtime logging. The installer returns `Result<void, never>`; a late or
+duplicate installation is a defect, and must prevent startup rather than silently
+retaining an unprotected runtime.
+
+```ts
+import { createLogger, diagnosticPolicy, jsonSink } from "@btravstack/observability";
+import { installTemporalDiagnostics } from "@btravstack/temporal-worker";
+
+const temporalDiagnosticPolicy = diagnosticPolicy({
+  fields: { sdkComponent: ["activity", "workflow", "worker", "core"] },
+});
+installTemporalDiagnostics({
+  logger: createLogger(jsonSink()),
+  diagnostics: temporalDiagnosticPolicy,
+}).get();
+```
+
+Pass that same policy to `observability({ diagnostics })` and `otel({ diagnostics })`
+for starter-owned observations. `installTemporalDiagnostics({ logger, diagnostics,
+nativeLogLevel? })` forwards native Core logs into the same policy as TypeScript
+SDK, workflow and activity logs. It disables Temporal's independent signal handlers
+so the kernel retains shutdown ownership. Temporal owns native buffering and
+flush-on-shutdown. `nativeLogLevel` is the SDK's `LogLevel`, defaults to `WARN`,
+and controls collection before the supplied logger's own severity filter.
+
+`temporalDiagnosticLogger(logger, diagnostics)` exposes the same SDK `Logger`
+adapter for a deployment that explicitly owns `Runtime.install` and its other
+telemetry settings. Such a deployment must also configure native log forwarding;
+changing only `Runtime.logger` leaves the default native console channel intact.
+Unknown messages become the policy's static fallback; only allowlisted bounded
+metadata survives. Payload encryption and failure conversion remain separate
+application responsibilities. For explicit sensitive debugging and its access
+and retention contract, see [the shared policy](/reference/observability#a-shared-diagnostic-disclosure-policy).
+
 ## Exports
 
 `packages/temporal-worker/src/index.ts` exports exactly this:
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                                     |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `installTemporalDiagnostics`     | value | Install the shared disclosure policy before the first Temporal connection; forwards native Core logs into the TypeScript logger                                                                                                                                                                |
+| `temporalDiagnosticLogger`       | value | Build the SDK logger adapter for a deployment owning `Runtime.install`                                                                                                                                                                                                                         |
 | `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows?, address?, namespace?, taskQueue?, gracePeriod?, forceAfter?, unit?, dataConverter?, apiKey?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                          |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                                |
 | `TemporalActivities`             | value | `TemporalActivities(contract)` — the builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, unit?, sync }`, or `([pieces])` to compose one provider per workflow                                                                    |

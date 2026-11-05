@@ -163,12 +163,12 @@ on another), and an `unknown` value is where a logger starts stringifying
 whatever it is handed. Anything else is the caller's to render; a failure has
 a channel of its own.
 
-## `createLogger(sink, level?)`
+## `createLogger(sink, level?, diagnostics?)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-createLogger(sink: Sink, level: Level = "info"): LoggerService;
+createLogger(sink: Sink, level: Level = "info", diagnostics?: DiagnosticPolicy): LoggerService;
 ```
 
 The implementation. Two details are load-bearing:
@@ -221,12 +221,12 @@ act on it, not for a log backend.
 A `Sink` is allowed to throw. `createLogger` is what makes that safe, which is
 why a sink is a plain function with no error channel of its own.
 
-## `jsonSink(stream?)`
+## `jsonSink(stream?, diagnostics?)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-jsonSink(stream?: { readonly write: (chunk: string) => unknown }): Sink;
+jsonSink(stream?: { readonly write: (chunk: string) => unknown }, diagnostics?: DiagnosticPolicy): Sink;
 ```
 
 The default: one JSON object per line, `process.stdout` unless a stream is
@@ -302,6 +302,7 @@ observability(options?: ObservabilityOptions):
   Module<Logger | LoggerConfig | Observers, ConfigInvalid, Env>;
 
 type ObservabilityOptions = {
+  readonly diagnostics?: DiagnosticPolicy;
   readonly sink?: Sink; // unset: jsonSink() — one JSON object per line, to stdout
   readonly level?: Level; // unset: read from LOG_LEVEL, which defaults to "info"
 };
@@ -456,7 +457,8 @@ pnpm add @opentelemetry/api @opentelemetry/sdk-node
 ```ts
 // `Tracer` and `Meter` are the kernel's ports — see /reference/core/observability.
 // This subpath is one implementation of them.
-otel(options?: Partial<NodeSDKConfiguration>): Module<Tracer | Meter, never, Scope>;
+otel(options?: OtelOptions): Module<Tracer | Meter | Observers, never, Scope>;
+type OtelOptions = Partial<NodeSDKConfiguration> & { readonly diagnostics?: DiagnosticPolicy };
 
 class UnitSpan extends Port("UnitSpan")<Span> {}
 const UnitSpanModule: Module<UnitSpan, never, Scope>; // needs: [Tracer]
@@ -469,8 +471,8 @@ gets spans out of a dying process, and a lost flush is a `teardownError` and
 exit `2`, never silence. Compose it beside `observability()` in a root's
 `imports`.
 
-**`otel()` takes no options of its own.** Its parameter is the SDK's own
-`Partial<NodeSDKConfiguration>`, passed through untouched, and **unset means the
+`otel()` accepts the SDK's own `Partial<NodeSDKConfiguration>` plus the optional
+shared `diagnostics` policy described below. SDK options pass through, and **unset means the
 SDK's defaults** — for an unconfigured process: an OTLP/HTTP span exporter at
 `http://localhost:4318`, a periodic OTLP **metric** reader alongside it unless
 `OTEL_METRICS_EXPORTER=none`, and a resource combining the `OTEL_*` resource
@@ -645,22 +647,86 @@ collapses into another.
 
 ## Summary of exports
 
-| Export                 | Kind                                               |
-| ---------------------- | -------------------------------------------------- |
-| `Logger`               | port                                               |
-| `LoggerConfig`         | port — `{ level }`, bound from `LOG_LEVEL`         |
-| `LoggerSettings`       | type                                               |
-| `Line` / `Sink`        | type — what an implementation hands a destination  |
-| `createLogger`         | value — the implementation                         |
-| `jsonSink`             | value — the default sink                           |
-| `observability`        | value — the starter                                |
-| `ObservabilityOptions` | type                                               |
-| `logLevel`             | value — the `LOG_LEVEL` field alone                |
-| `kernelEvents`         | value — the kernel's `EventSink` over a logger     |
-| `pinoSink`             | value — `@btravstack/observability/pino` only      |
-| `otel`                 | value — `@btravstack/observability/otel` only      |
-| `UnitSpan`             | port class — `@btravstack/observability/otel` only |
-| `UnitSpanModule`       | value — `@btravstack/observability/otel` only      |
+| Export                                 | Kind                                                 |
+| -------------------------------------- | ---------------------------------------------------- |
+| `Logger`                               | port                                                 |
+| `LoggerConfig`                         | port — `{ level }`, bound from `LOG_LEVEL`           |
+| `LoggerSettings`                       | type                                                 |
+| `Line` / `Sink`                        | type — what an implementation hands a destination    |
+| `createLogger`                         | value — the implementation                           |
+| `jsonSink`                             | value — the default sink                             |
+| `observability`                        | value — the starter                                  |
+| `ObservabilityOptions`                 | type                                                 |
+| `logLevel`                             | value — the `LOG_LEVEL` field alone                  |
+| `kernelEvents`                         | value — the kernel's `EventSink` over a logger       |
+| `diagnosticPolicy`                     | value — a production disclosure policy factory       |
+| `sensitiveDiagnostics`                 | value — explicit raw diagnostic disclosure           |
+| `DiagnosticField`, `DiagnosticOptions` | types — finite field vocabularies and policy options |
+| `OtelOptions`                          | type — `@btravstack/observability/otel` only         |
+| `pinoSink`                             | value — `@btravstack/observability/pino` only        |
+| `otel`                                 | value — `@btravstack/observability/otel` only        |
+| `UnitSpan`                             | port class — `@btravstack/observability/otel` only   |
+| `UnitSpanModule`                       | value — `@btravstack/observability/otel` only        |
+
+## A shared diagnostic disclosure policy
+
+Without a policy, the existing sinks preserve error messages, stacks and bounded
+cause chains. Those strings may contain personal data. `diagnosticPolicy()` is
+an explicit production policy: it replaces unknown log messages with
+`diagnostic`, unknown failure identities with `{ code: "unknown" }`, and excludes
+error messages, stacks, nested causes and arbitrary payload fields entirely.
+An own `_tag` or `code` survives only when listed in `codes`. It does not invoke
+getters or serializers, and properties a proxy refuses to disclose are omitted.
+Rendering leaves the original error and its Result channel unchanged.
+
+```ts
+import { diagnosticPolicy } from "@btravstack/observability";
+
+const productionDiagnostics = diagnosticPolicy({
+  messages: ["http.request failed", "http.request"],
+  codes: ["DatabaseUnavailable"],
+  fields: {
+    method: ["GET", "POST"],
+    status: { min: 100, max: 599 },
+    sdkComponent: ["activity", "workflow", "worker", "core"],
+  },
+});
+observability({ diagnostics: productionDiagnostics });
+otel({ diagnostics: productionDiagnostics });
+const startupLogger = createLogger(jsonSink(), "info", productionDiagnostics);
+const onEvent = kernelEvents(startupLogger);
+```
+
+Pass `{ onEvent }` to `start` or `runMain` as well. Composing observability alone
+does not replace the kernel's default stderr event sink.
+
+Allowlist deployment-owned static strings and operational numeric bounds, never
+request values. `observability({ diagnostics })` and `createLogger` apply the
+policy before any custom sink sees a line. Direct sinks also accept it as their
+second argument: `jsonSink(stream, diagnostics)` and
+`pinoSink(logger, diagnostics)`. Correlation IDs remain available; use opaque IDs.
+Attribute getters are skipped by the production policy, including on child
+loggers and observed operations. Later layers still override earlier ones;
+a rejected value removes that field rather than restoring an earlier value.
+
+`otel({ diagnostics })` filters starter-owned operation span attributes, names
+and metric dimensions, and emits a minimized exception event for failed observed
+operations. Unit correlation remains. Application-created spans, direct
+`recordException` calls, SDK resources and third-party auto-instrumentation have
+their own disclosure boundaries; this option is not an exporter-wide sanitizer.
+Exception diagnostics that cannot be serialized use `[unserialisable]` instead.
+Observer failures, including deferred callbacks, are dropped without changing
+the application's result.
+
+Temporal's TypeScript and native Core logs use the same object through
+[`installTemporalDiagnostics`](/reference/temporal-worker#diagnostic-disclosure).
+Install that boundary before creating any Temporal connection or worker.
+
+`sensitiveDiagnostics` explicitly preserves raw causes, messages and attributes.
+Use it only on a separately authorized debugging destination with restricted
+access and a short, enforced retention period; keep production logs on the
+production policy. `LOG_LEVEL=debug` alone never changes disclosure. This package
+does not provision access controls, retention or a second destination.
 
 ## What it does not do
 

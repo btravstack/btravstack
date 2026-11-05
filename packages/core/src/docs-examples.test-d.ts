@@ -33,6 +33,8 @@ import {
   type RuntimeStartFailed,
   type Serving,
   type UnitMeta,
+  type Attributes,
+  type DiagnosticPolicy,
 } from "./index.js";
 
 // "A worked example" — packages/core/README.md; docs/how-to/write-a-runtime.md.
@@ -333,3 +335,19 @@ const defaultReadiness: import("./index.js").HealthCheck = {
   readiness: true,
 };
 expectTypeOf(defaultReadiness).toEqualTypeOf<import("./index.js").HealthCheck>();
+
+// "A shared diagnostic disclosure policy" — docs/reference/core/observability.md.
+const startupDiagnostics: DiagnosticPolicy = {
+  message: () => "application.failure",
+  attributes: () => ({ component: "application" }),
+  cause: () => ({ code: "unknown" }),
+};
+const startupFields = startupDiagnostics.attributes({
+  component: "application",
+  attached: new Error("untrusted diagnostic payload"),
+});
+const startupMessage = startupDiagnostics.message("untrusted diagnostic message");
+const startupCause = startupDiagnostics.cause(new Error("untrusted failure"));
+expectTypeOf(startupFields).toEqualTypeOf<Attributes>();
+expectTypeOf(startupMessage).toEqualTypeOf<string>();
+expectTypeOf(startupCause).toEqualTypeOf<unknown>();

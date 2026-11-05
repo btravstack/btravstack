@@ -150,6 +150,20 @@ them and none should own a private copy:
 It follows whole-module re-exports while keeping private providers and business
 ports hidden. Application starters use it alongside their own runtime exports.
 
+## Diagnostic disclosure
+
+`DiagnosticPolicy` is the shared structural contract for rendering diagnostic
+messages, attributes and causes. Pass the same policy object explicitly to
+logging, tracing and Temporal adapters. Its `message`, `attributes` and `cause`
+methods must be synchronous and must not throw; rendering leaves the original
+Result and its failure channel unchanged.
+
+[`@btravstack/observability`](../observability) implements the production policy
+as `diagnosticPolicy()` and exposes sensitive debugging as an explicit separate
+choice. The kernel declares the type without implementing disclosure rules or
+adding a policy port. See the
+[observability contracts](https://btravstack.github.io/btravstack/reference/core/observability).
+
 ## What you get
 
 - **A drain that survives Kubernetes.** On SIGTERM: readiness flips false, the

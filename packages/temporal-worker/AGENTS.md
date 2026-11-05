@@ -10,6 +10,15 @@ page, never this file.
 
 ## Decisions and gotchas
 
+- **Diagnostic configuration owns the process singleton, before connections.**
+  `installTemporalDiagnostics` installs Temporal's Runtime once with the shared
+  policy and forwards native Core logging into its TypeScript logger. A late
+  install defects; retaining an already-installed raw console channel would
+  silently defeat disclosure policy. The installer disables Temporal's own
+  signal handlers, leaving the kernel in charge. Payload/failure encryption is
+  a separate channel. `diagnostics.spec.ts` proves native forwarding and actual
+  activity failures using synthetic personal values against the shared server.
+
 - **Activity pieces are namespaced by the contract's task queue.** Different
   worker contracts can reuse a workflow or activity key in one process without
   sharing a DI port. The composing form strips that queue prefix while keeping

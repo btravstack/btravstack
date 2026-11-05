@@ -575,6 +575,16 @@ This does not change ordinary di module visibility.
     200 ms bound fires after up to 30 s, and a 60 s one after up to 90.
     `requestTimeout` bounds the request, never the response, which is why a
     long-lived `text/event-stream` is not cut by it.
+- **`keepAliveTimeoutMs`, `keepAliveTimeoutBufferMs`, `socketTimeoutMs`** are
+  independent listener budgets. They accept zero and bounded integers; zero
+  disables the corresponding timer or buffer. An omitted buffer stays
+  undefined so Node retains its native default. A nonzero buffer on a release
+  predating Node 22.19/24.6 is a modeled startup failure, since assigning a
+  property an older Node ignores would silently promise an ineffective bound.
+  The combined keepalive time and buffer must fit Node's signed timer range.
+  Socket inactivity applies during response streaming; progress resets it,
+  unlike the whole-request receive deadline, which never times a response.
+
 - **`csrf`** — a state-changing request that carries cookies must be
   same-site, refused with a bodyless `403` **before dispatch**, in the
   listener beside `securityHeaders` so it covers every answerer rather than
@@ -1701,3 +1711,18 @@ refusal, or a forged header would read as an outage. `jose` refetches for an
 unknown `kid` only outside its 30-second cooldown, so a token signed with a key
 published within it is refused until a later attempt.
 Application claim validation and scope decisions remain outside the verifier.
+
+## Response listener ownership
+
+The runtime registers one close listener before dispatch and shares its settled
+promise with request work and protected-resource lookup races. That listener
+removes response tracking, settles RED observations and releases the unit.
+Subscribing before dispatch also handles a synchronous response close without
+waiting for an event that has already fired.
+
+This bounds the runtime's contribution to the listener count when an adapter
+uses Node's stream pipeline and an application also owns a close/abort listener.
+Pipeline retains some listeners on a completed stream by Node's documented
+contract; each response is a separate object, so this is a per-response budget,
+not accumulation across requests. The runtime removes none of the adapter's
+listeners and changes neither EventEmitter limits nor cancellation semantics.

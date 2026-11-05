@@ -528,15 +528,16 @@ const grantUnitOf = (log: string[]) => {
 
 const capabilityApi = capabilityAuth.units<{ grant: ReturnType<typeof grantUnitOf> }>();
 
+const binaryStream = z.instanceof(ReadableStream);
+binaryStream._zod.toJSONSchema = () => ({ type: "string", format: "binary" });
+
 /** A file behind a capability URL: `GET /files/{id}?grant=…`, streamed. */
 export const capabilityContract = {
   files: authenticated({ grant: [] })({
     download: oc
       .meta(openapi({ method: "GET", path: "/files/{id}", outputStructure: "detailed" }))
       .input(z.object({ id: z.string() }))
-      .output(
-        z.object({ headers: z.record(z.string(), z.string()), body: z.instanceof(ReadableStream) }),
-      ),
+      .output(z.object({ headers: z.record(z.string(), z.string()), body: binaryStream })),
   }),
 };
 

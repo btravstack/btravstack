@@ -21,6 +21,7 @@ import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opent
 import { Err, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, test } from "vitest";
 
+import { diagnosticPolicy, sensitiveDiagnostics } from "./diagnostics.js";
 import { UnitSpan, UnitSpanModule, otel } from "./otel.js";
 
 /**
@@ -68,6 +69,274 @@ const batchedOtel = (spans: Keeper) =>
   });
 
 describe("otel", () => {
+  it.for([
+    {
+      name: "accepted",
+      detailsStatus: 201,
+      settledStatus: 202,
+      accessor: false,
+      spanStatus: { status: 201 },
+      metricStatus: { status: 202 },
+    },
+    {
+      name: "rejected",
+      detailsStatus: "secret@example.invalid",
+      settledStatus: "secret@example.invalid",
+      accessor: false,
+      spanStatus: {},
+      metricStatus: {},
+    },
+    {
+      name: "accessor",
+      detailsStatus: 201,
+      settledStatus: 202,
+      accessor: true,
+      spanStatus: {},
+      metricStatus: {},
+    },
+  ])(
+    "filters original span and metric attributes with $name overrides without evaluating getters",
+    async ({ detailsStatus, settledStatus, accessor, spanStatus, metricStatus }, { spans }) => {
+      // GIVEN
+      let getterReads = 0;
+      const ignored = {
+        enumerable: true,
+        get: () => {
+          getterReads += 1;
+          // oxlint-disable-next-line unthrown/no-throw -- ignored diagnostic accessors must never execute
+          throw new Error("getter@example.invalid");
+        },
+      };
+      const attributes = Object.defineProperties({ method: "GET", status: 200 }, { ignored });
+      const details = Object.defineProperties(
+        { detail: "wire", status: detailsStatus },
+        { ignored, ...(accessor ? { status: ignored } : {}) },
+      );
+      const settled = Object.defineProperties(
+        { attempt: 2, status: settledStatus },
+        { ignored, ...(accessor ? { status: ignored } : {}) },
+      );
+      const diagnostics = diagnosticPolicy({
+        messages: ["http.request"],
+        fields: {
+          method: ["GET"],
+          status: { min: 100, max: 299 },
+          detail: ["wire"],
+          attempt: { min: 0, max: 3 },
+        },
+      });
+      const reader = new (class extends sdkMetrics.MetricReader {
+        protected onShutdown = (): Promise<void> => Promise.resolve();
+        protected onForceFlush = (): Promise<void> => Promise.resolve();
+      })();
+
+      // WHEN
+      const collected = await Module.scoped(
+        otel({
+          diagnostics,
+          metricReaders: [reader],
+          spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })],
+        }),
+        (ctx) =>
+          observed(
+            ctx.get(Observers),
+            { component: "http", name: "request", attributes, details },
+            () => OkAsync("done"),
+            { ok: () => ({ outcome: "ok", attributes: settled }) },
+          ).flatMap(() => fromSafePromise(reader.collect())),
+      );
+
+      // THEN
+      expect({
+        getterReads,
+        spans: spans.seen().map((span) => ({ name: span.name, attributes: span.attributes })),
+        metrics: collected.map(({ resourceMetrics }) =>
+          resourceMetrics.scopeMetrics
+            .flatMap((scope) => scope.metrics)
+            .map((metric) => ({
+              name: metric.descriptor.name,
+              attributes: metric.dataPoints.map((point) => point.attributes),
+            }))
+            .toSorted((left, right) => left.name.localeCompare(right.name)),
+        ),
+      }).toEqual({
+        getterReads: 0,
+        spans: [
+          { name: "http.request", attributes: { method: "GET", detail: "wire", ...spanStatus } },
+        ],
+        metrics: expect.toBeOkWith([
+          {
+            name: "btravstack.http.duration",
+            attributes: [{ method: "GET", attempt: 2, outcome: "ok", ...metricStatus }],
+          },
+          {
+            name: "btravstack.http.operations",
+            attributes: [{ method: "GET", attempt: 2, outcome: "ok", ...metricStatus }],
+          },
+        ]),
+      });
+    },
+  );
+
+  it.for([
+    { failure: "bigint", deferred: false },
+    { failure: "circular", deferred: false },
+    { failure: "bigint", deferred: true },
+    { failure: "circular", deferred: true },
+  ])(
+    "ends an operation with an unserialisable $failure cause (deferred: $deferred)",
+    async ({ failure, deferred }, { boot, spans }) => {
+      // GIVEN
+      const circular: { self?: unknown } = {};
+      circular.self = circular;
+      const cause = failure === "bigint" ? 1n : circular;
+      const runtime = testRuntime("test");
+      const App = Module("OtelUnserialisableApp")({
+        imports: [
+          otel({
+            diagnostics: sensitiveDiagnostics,
+            spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })],
+          }),
+          runtime.module,
+        ],
+        exports: [TestRuntimePort, Observers],
+      });
+      const app = boot(App);
+      await runtime.untilStarted();
+      const observers = (runtime.host().ctx as unknown as Context<Observers>).get(Observers);
+      const work = () =>
+        observed(observers, { component: "cache", name: "get", attributes: {} }, () =>
+          fromSafePromise(Promise.reject(cause)),
+        );
+
+      // WHEN
+      const result = await (deferred
+        ? runtime.host().run({ kind: "test", id: "unserialisable" }, work)
+        : work());
+      app.stop();
+      const exited = await app.exited;
+
+      // THEN
+      expect({
+        result,
+        exited,
+        spans: spans.seen().map((span) => ({
+          name: span.name,
+          status: span.status,
+          events: span.events.map(({ name, attributes }) => ({ name, attributes })),
+        })),
+      }).toEqual({
+        result: expect.toBeDefectWith(cause),
+        exited: expect.toBeOkWith(expect.objectContaining({ reason: "runtimeStopped" })),
+        spans: [
+          {
+            name: "cache.get",
+            status: { code: SPAN_STATUS.error },
+            events: [
+              { name: "exception", attributes: { "exception.message": "[unserialisable]" } },
+            ],
+          },
+        ],
+      });
+    },
+  );
+
+  it("drops a failure from deferred span setup without changing application work", async ({
+    boot,
+    spans,
+  }) => {
+    // GIVEN
+    const runtime = testRuntime("test");
+    const App = Module("OtelBrokenDeferredObserverApp")({
+      imports: [
+        otel({
+          diagnostics: {
+            ...sensitiveDiagnostics,
+            message: () => {
+              // oxlint-disable-next-line unthrown/no-throw -- a broken observer must not escape its deferred isolation boundary
+              throw new Error("broken diagnostic policy");
+            },
+          },
+          spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })],
+        }),
+        runtime.module,
+      ],
+      exports: [TestRuntimePort, Observers],
+    });
+    const app = boot(App);
+    await runtime.untilStarted();
+    const observers = (runtime.host().ctx as unknown as Context<Observers>).get(Observers);
+
+    // WHEN
+    const result = await runtime
+      .host()
+      .run({ kind: "test", id: "broken-observer" }, () =>
+        observed(observers, { component: "cache", name: "get", attributes: {} }, () =>
+          OkAsync("done"),
+        ),
+      );
+    app.stop();
+    const exited = await app.exited;
+
+    // THEN
+    expect({ result, exited, spans: spans.seen() }).toEqual({
+      result: expect.toBeOkWith("done"),
+      exited: expect.toBeOkWith(expect.objectContaining({ reason: "runtimeStopped" })),
+      spans: [],
+    });
+  });
+
+  it("exports minimized exception diagnostics and leaves an unknown failure a defect", async ({
+    spans,
+  }) => {
+    // GIVEN
+    const cause = new Error("top@example.invalid", { cause: new Error("nested@example.invalid") });
+    Object.assign(cause, { attached: "attached@example.invalid" });
+    const diagnostics = diagnosticPolicy({
+      messages: ["http.request"],
+      fields: { status: { min: 100, max: 599 } },
+    });
+    // WHEN
+    const result = await Module.scoped(
+      otel({ diagnostics, spanProcessors: [new BatchSpanProcessor({ exporter: spans.exporter })] }),
+      (ctx) =>
+        observed(
+          ctx.get(Observers),
+          {
+            component: "http",
+            name: "request",
+            attributes: { status: 500 },
+            details: { path: "path@example.invalid" },
+          },
+          () => fromSafePromise(Promise.reject(cause)),
+        ),
+    );
+    // THEN
+    expect({
+      result: result.tag,
+      original: cause.message,
+      spans: spans.seen().map((span) => ({
+        name: span.name,
+        attributes: span.attributes,
+        status: span.status,
+        events: span.events.map(({ name, attributes }) => ({ name, attributes })),
+      })),
+    }).toEqual({
+      result: "Defect",
+      original: "top@example.invalid",
+      spans: [
+        {
+          name: "http.request",
+          attributes: { status: 500 },
+          status: { code: SPAN_STATUS.error },
+          events: [
+            { name: "exception", attributes: { "exception.message": '{"code":"unknown"}' } },
+          ],
+        },
+      ],
+    });
+  });
+
   it("opens a span per unit and flushes it out on the scope's close", async ({ boot, spans }) => {
     // GIVEN an app whose unit module opens a span, exporting through a batch
     // processor an hour from its next scheduled export

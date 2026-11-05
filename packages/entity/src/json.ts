@@ -6,6 +6,18 @@ import { z } from "zod";
  */
 const ENTITY_CODEC = "entityCodec";
 
+const CodecUnion = z.core.$constructor<z.ZodUnion<readonly z.core.SomeType[]>>(
+  "EntityCodec",
+  (schema, def) => {
+    (z.ZodUnion.init as (instance: typeof schema, definition: typeof def) => void)(schema, def);
+    schema._zod.processJSONSchema = (context, _result, params) => {
+      const wire = json(def.options[0] as z.core.$ZodType);
+      z.core.process(wire, context, params);
+      context.seen.get(schema)!.ref = wire;
+    };
+  },
+);
+
 /** What `Entity.codec` returns: its union, carrying a phantom `json` reads. */
 export type EntityCodec<W extends z.core.SomeType, D extends z.core.SomeType> = z.ZodUnion<
   [z.ZodCodec<W, D>, D]
@@ -32,13 +44,18 @@ export type EntityCodec<W extends z.core.SomeType, D extends z.core.SomeType> = 
  *
  * The wire schema is what `X.json` publishes for the field, so make it the
  * canonical spelling `encode` writes rather than everything `decode` accepts.
+ * JSON Schema conversion also publishes that wire form in either direction,
+ * including when the field is nested in an ordinary `z.object`.
  */
 export function codec<const W extends z.core.SomeType, D extends z.core.SomeType>(
   wire: W,
   domain: D,
   transforms: Parameters<typeof z.codec<W, D>>[2],
 ): EntityCodec<W, D> {
-  const union = z.union([z.codec(wire, domain, transforms), domain]);
+  const union = new CodecUnion({
+    type: "union",
+    options: [z.codec(wire, domain, transforms), domain],
+  });
   (union._zod.def as unknown as Record<string, unknown>)[ENTITY_CODEC] = true;
   return union as EntityCodec<W, D>;
 }

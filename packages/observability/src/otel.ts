@@ -11,11 +11,15 @@ import {
   type Histogram,
   type Span,
   type UnitRecord,
+  type DiagnosticPolicy,
 } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
 import { context, metrics, trace, type Span as OtelSpan } from "@opentelemetry/api";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { fromSafePromise } from "unthrown";
+
+import { mergeAttributeDescriptors } from "./attributes.js";
+import { renderCause } from "./json-sink.js";
 
 /**
  * The tracing half of observability — the ADAPTER, not the contract. `Tracer`
@@ -53,6 +57,14 @@ const SECONDS_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 
  */
 const unitSpans = new WeakMap<UnitRecord, OtelSpan>();
 
+const exceptionMessage = (diagnostics: DiagnosticPolicy, cause: unknown): string => {
+  try {
+    return JSON.stringify(renderCause(diagnostics.cause(cause))) ?? "[unserialisable]";
+  } catch {
+    return "[unserialisable]";
+  }
+};
+
 const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
   unit === undefined
     ? {}
@@ -61,6 +73,11 @@ const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
         "btravstack.trace_id": unit.traceId,
         ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
       };
+
+/** SDK configuration plus a shared disclosure policy for starter-owned spans and metrics. */
+export type OtelOptions = Partial<NodeSDKConfiguration> & {
+  readonly diagnostics?: DiagnosticPolicy;
+};
 
 /**
  * The OTel starter: a module providing `Tracer` and `Meter` over a `NodeSDK`
@@ -89,9 +106,7 @@ const unitAttributes = (unit: UnitRecord | undefined): Attributes =>
  * plan time and in `Needs`. Guice's `newSetBinder` declares the empty set for
  * the same reason.
  */
-export const otel = (
-  options?: Partial<NodeSDKConfiguration>,
-): Module<Tracer | Meter | Observers, never, Scope> =>
+export const otel = (options?: OtelOptions): Module<Tracer | Meter | Observers, never, Scope> =>
   Module("Otel")({
     provides: [
       Provider.member(Instrumentations)({ inject: {}, value: () => Promise.resolve(undefined) }),
@@ -136,14 +151,21 @@ export const otel = (
             const open = (startTime?: number): OtelSpan => {
               const parent = unit === undefined ? undefined : unitSpans.get(unit);
               const opened = tracer.startSpan(
-                `${component}.${name}`,
+                options?.diagnostics?.message(`${component}.${name}`) ?? `${component}.${name}`,
                 startTime === undefined ? {} : { startTime },
                 parent === undefined ? undefined : trace.setSpan(context.active(), parent),
               );
               // Details ride the SPAN and not the instruments: a cache key or a
               // URL is one more field on a span and one more time series on a
               // metric.
-              opened.setAttributes({ ...attributes, ...details, ...unitAttributes(unit) });
+              const rendered =
+                options?.diagnostics === undefined
+                  ? { ...attributes, ...details }
+                  : options.diagnostics.attributes(mergeAttributeDescriptors(attributes, details));
+              opened.setAttributes({
+                ...rendered,
+                ...unitAttributes(unit),
+              });
               return opened;
             };
             // Inside a unit whose span is not filed YET — a sibling provider di
@@ -164,14 +186,26 @@ export const otel = (
               }),
             );
 
-            return ({ outcome, attributes: settled }) => {
-              const all = { ...attributes, ...settled, outcome };
+            return ({ outcome, attributes: settled, cause }) => {
+              const rendered =
+                options?.diagnostics === undefined
+                  ? { ...attributes, ...settled }
+                  : options.diagnostics.attributes(mergeAttributeDescriptors(attributes, settled));
+              const all = { ...rendered, outcome };
               operations.add(1, all);
               const endedAt = performance.now();
               duration.record((endedAt - startedAt) / 1000, all);
               const finish = (span: OtelSpan | undefined): void => {
-                if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
-                span?.end(endedAt);
+                try {
+                  if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
+                  if (cause !== undefined && options?.diagnostics !== undefined) {
+                    span?.addEvent("exception", {
+                      "exception.message": exceptionMessage(options.diagnostics, cause),
+                    });
+                  }
+                } finally {
+                  span?.end(endedAt);
+                }
               };
               if (!deferred) finish(started);
               else if (unitSpans.has(unit)) finish(open(startedAt));
@@ -179,7 +213,15 @@ export const otel = (
               // fork: `UnitSpanModule` needs only the parent's `Tracer`, so di
               // builds it in that first level before any microtask runs. Unbound,
               // the span opens then without a unit parent rather than never.
-              else queueMicrotask(() => finish(open(startedAt)));
+              else
+                queueMicrotask(() => {
+                  try {
+                    finish(open(startedAt));
+                  } catch {
+                    // The queued callback runs outside core's synchronous
+                    // observer isolation; its failures must be dropped too.
+                  }
+                });
             };
           };
         },

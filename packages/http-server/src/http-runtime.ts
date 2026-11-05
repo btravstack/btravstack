@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
-import { Config, Env, type ConfigInvalid, type EnvReading } from "@btravstack/config";
+import {
+  Config,
+  Env,
+  type ConfigField,
+  type ConfigInvalid,
+  type EnvReading,
+} from "@btravstack/config";
 import {
   Observers,
   RuntimePort,
@@ -80,6 +86,12 @@ export type HttpOptions = {
    * not cut by it.
    */
   readonly requestTimeoutMs?: number;
+  /** Idle time after a response before closing its reusable connection; `0` disables it. */
+  readonly keepAliveTimeoutMs?: number;
+  /** Extra keepalive time beyond the advertised budget; requires Node 22.19+ or 24.6+. */
+  readonly keepAliveTimeoutBufferMs?: number;
+  /** Socket inactivity budget during requests and responses; `0` disables it. Progress resets it. */
+  readonly socketTimeoutMs?: number;
   /**
    * Headers set on every response, before dispatch. `true` (default) applies
    * {@link DEFAULT_SECURITY_HEADERS}; `false` disables the feature; a record
@@ -114,6 +126,21 @@ export const DEFAULT_HEADERS_TIMEOUT_MS = 60_000;
 
 /** How long a client may take to send a whole request by default: Node's own default, stated rather than inherited. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 300_000;
+
+const bufferInteger = Config.integer("HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS", {
+  min: 0,
+  max: 2_147_483_647,
+});
+const bufferField: ConfigField<
+  number | undefined,
+  "HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS",
+  "optional"
+> = {
+  variable: bufferInteger.variable,
+  parse: (raw) => (raw === undefined ? Ok(undefined) : bufferInteger.parse(raw)),
+  check: (value) =>
+    value === undefined ? Ok(undefined) : (bufferInteger.check?.(value) ?? Ok(value)),
+};
 
 /**
  * Set before dispatch, so they also cover the runtime's own `404` and `500` —
@@ -194,6 +221,9 @@ export type HttpServerEnv = EnvReading<
   | "HOST"
   | "HTTP_HEADERS_TIMEOUT_MS"
   | "HTTP_REQUEST_TIMEOUT_MS"
+  | "HTTP_KEEP_ALIVE_TIMEOUT_MS"
+  | "HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS"
+  | "HTTP_SOCKET_TIMEOUT_MS"
   | "HTTP_BODY_LIMIT"
   | "HTTP_STREAM_BODY_LIMIT"
   | "HTTP_CORS_ORIGIN"
@@ -220,6 +250,9 @@ export const httpServer = <
     hostname,
     headersTimeoutMs,
     requestTimeoutMs,
+    keepAliveTimeoutMs,
+    keepAliveTimeoutBufferMs,
+    socketTimeoutMs,
     cors,
     bodyLimit,
     streamBodyLimit,
@@ -239,6 +272,19 @@ export const httpServer = <
       requestTimeoutMs: Config.pinned(
         requestTimeoutMs,
         Config.integer("HTTP_REQUEST_TIMEOUT_MS", { default: DEFAULT_REQUEST_TIMEOUT_MS, min: 1 }),
+      ),
+      keepAliveTimeoutMs: Config.pinned(
+        keepAliveTimeoutMs,
+        Config.integer("HTTP_KEEP_ALIVE_TIMEOUT_MS", {
+          default: 5_000,
+          min: 0,
+          max: 2_147_483_647,
+        }),
+      ),
+      keepAliveTimeoutBufferMs: Config.pinned(keepAliveTimeoutBufferMs, bufferField),
+      socketTimeoutMs: Config.pinned(
+        socketTimeoutMs,
+        Config.integer("HTTP_SOCKET_TIMEOUT_MS", { default: 0, min: 0, max: 2_147_483_647 }),
       ),
       bodyLimit: Config.pinned(
         bodyLimit === false ? 0 : bodyLimit,
@@ -441,6 +487,7 @@ const listen = (
             {
               headersTimeout,
               requestTimeout: options.requestTimeoutMs,
+              keepAliveTimeout: options.keepAliveTimeoutMs,
               connectionsCheckingInterval: Math.min(30_000, headersTimeout),
             },
             (request, response) => {
@@ -448,7 +495,6 @@ const listen = (
               // drained response alike, not only what oRPC matched.
               for (const [name, value] of headers) response.setHeader(name, value);
               open.add(response);
-              response.once("close", () => open.delete(response));
               const answerer = answererFor(routes, request.url);
               // Settled on `'close'`, not when the unit settles: the unit's own
               // contract is that the response is flushed inside it, so `'close'`
@@ -459,18 +505,24 @@ const listen = (
                 observers,
                 requestOperation(request.method ?? "", answerer?.prefix ?? ""),
               );
-              response.once("close", () => {
-                // `statusCode` defaults to `200` and is only ever what we MEANT
-                // to send, so a socket destroyed mid-handler — by the client, or
-                // by the drain retiring a stream — closes reading `ok 200`
-                // unless the flush is what decides. `writableFinished` is that:
-                // true once the last byte is handed to the socket.
-                const aborted = !response.writableFinished;
-                settle({
-                  outcome: aborted || response.statusCode >= 500 ? "error" : "ok",
-                  attributes: { status: response.statusCode, aborted },
-                });
-              });
+              const closed = fromSafePromise(
+                new Promise<void>((done) =>
+                  response.once("close", () => {
+                    open.delete(response);
+                    // `statusCode` defaults to `200` and is only ever what we MEANT
+                    // to send, so a socket destroyed mid-handler — by the client, or
+                    // by the drain retiring a stream — closes reading `ok 200`
+                    // unless the flush is what decides. `writableFinished` is that:
+                    // true once the last byte is handed to the socket.
+                    const aborted = !response.writableFinished;
+                    settle({
+                      outcome: aborted || response.statusCode >= 500 ? "error" : "ok",
+                      attributes: { status: response.statusCode, aborted },
+                    });
+                    done();
+                  }),
+                ),
+              );
               // Before dispatch, so no answerer — and no unit — ever sees it. No
               // body: a refusal tells a cross-site caller nothing it is entitled
               // to. AFTER the tracking above, so a refusal is an answer the RED
@@ -490,7 +542,7 @@ const listen = (
                   // a request it handles.
                   if (answerer === undefined) {
                     end(response, 404, "NotFound");
-                    return closedOf(response);
+                    return closed;
                   }
                   // Inside the unit, so a host lookup a challenge needs is work
                   // the drain waits on, and a refused or unrouted request costs none.
@@ -499,7 +551,7 @@ const listen = (
                     void answer(answerer.handle(request, response, signal, unit), response);
                     // The unit's lifetime IS the response's, which is what makes the
                     // kernel's "flush inside the unit" contract structural here.
-                    return closedOf(response);
+                    return closed;
                   };
                   if (challenged === undefined) return dispatch();
                   // Settled before the answerer can write a status, a defect there
@@ -507,10 +559,7 @@ const listen = (
                   // lifetime the unit's still is: a client gone mid-lookup settles
                   // it now, and nothing is dispatched.
                   return fromSafePromise(
-                    Promise.race([
-                      challenged.map(() => dispatch),
-                      closedOf(response).map(() => undefined),
-                    ]),
+                    Promise.race([challenged.map(() => dispatch), closed.map(() => undefined)]),
                   )
                     .flatMap((won) => won)
                     .flatMap((next) => (next === undefined ? OkAsync() : next()));
@@ -534,6 +583,38 @@ const listen = (
                 });
             },
           );
+
+          if (
+            !("keepAliveTimeoutBuffer" in server) &&
+            (options.keepAliveTimeoutBufferMs ?? 0) > 0
+          ) {
+            resolve(
+              Err(
+                new RuntimeStartFailed({
+                  runtime: "http",
+                  cause: new Error("keepAliveTimeoutBufferMs requires Node 22.19+ or 24.6+"),
+                }),
+              ),
+            );
+            return;
+          }
+          if (options.keepAliveTimeoutBufferMs !== undefined)
+            server.keepAliveTimeoutBuffer = options.keepAliveTimeoutBufferMs;
+          if (options.keepAliveTimeoutMs + (server.keepAliveTimeoutBuffer ?? 0) > 2_147_483_647) {
+            resolve(
+              Err(
+                new RuntimeStartFailed({
+                  runtime: "http",
+                  cause: new Error(
+                    "keepAliveTimeoutMs plus keepAliveTimeoutBufferMs exceeds 2147483647 ms",
+                  ),
+                }),
+              ),
+            );
+            return;
+          }
+          // Request/response timeout observers suppress Node's default destroy.
+          server.setTimeout(options.socketTimeoutMs, (socket) => socket.destroy());
 
           server.on("connection", (socket) => {
             sockets.add(socket);
@@ -603,14 +684,6 @@ const listen = (
         }),
       ).flatMap((result) => result),
     );
-
-// `closed` is checked first because a response that has already emitted
-// `'close'` never emits it again: a caller reached after an `await` would wait
-// on an event that has fired and hold the unit open for the process lifetime.
-const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
-  response.closed
-    ? OkAsync()
-    : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 const isEventStream = (response: ServerResponse): boolean =>
   String(response.getHeader("content-type") ?? "").startsWith("text/event-stream");

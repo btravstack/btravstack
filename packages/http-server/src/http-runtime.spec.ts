@@ -1,10 +1,309 @@
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { it } from "@btravstack/internal-http-fixtures";
 import { describe, expect, vi } from "vitest";
 
 describe("httpRuntime", () => {
+  it("pins independent listener budgets over deployment values", async ({
+    configured,
+    boundServer,
+  }) => {
+    // GIVEN
+    const { app } = configured(
+      {
+        PORT: "0",
+        HTTP_KEEP_ALIVE_TIMEOUT_MS: "9000",
+        HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS: "900",
+        HTTP_SOCKET_TIMEOUT_MS: "9000",
+      },
+      { keepAliveTimeoutMs: 1000, keepAliveTimeoutBufferMs: 100, socketTimeoutMs: 2000 },
+    );
+
+    // WHEN
+    await app.runtimeInfo();
+    const server = boundServer();
+
+    // THEN
+    expect({
+      keepalive: server.keepAliveTimeout,
+      buffer: server.keepAliveTimeoutBuffer,
+      idle: server.timeout,
+    }).toEqual({ keepalive: 1000, buffer: 100, idle: 2000 });
+  });
+
+  it("reads listener budgets from the deployment", async ({ configured, boundServer }) => {
+    // GIVEN
+    const { app } = configured({
+      PORT: "0",
+      HTTP_KEEP_ALIVE_TIMEOUT_MS: "1200",
+      HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS: "200",
+      HTTP_SOCKET_TIMEOUT_MS: "300",
+    });
+
+    // WHEN
+    await app.runtimeInfo();
+    const server = boundServer();
+
+    // THEN
+    expect({
+      keepalive: server.keepAliveTimeout,
+      buffer: server.keepAliveTimeoutBuffer,
+      idle: server.timeout,
+    }).toEqual({ keepalive: 1200, buffer: 200, idle: 300 });
+  });
+
+  it.for([-1, 0.5, 2_147_483_648, Number.NaN, Number.POSITIVE_INFINITY])(
+    "refuses invalid listener budget %s",
+    async (value, { configured }) => {
+      // GIVEN
+      const { app } = configured(
+        {},
+        { keepAliveTimeoutMs: value, keepAliveTimeoutBufferMs: value, socketTimeoutMs: value },
+      );
+
+      // WHEN
+      const exited = await app.exited;
+
+      // THEN
+      expect(exited).toBeErrTagged(
+        "ConfigInvalid",
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({ path: ["HTTP_KEEP_ALIVE_TIMEOUT_MS"] }),
+            expect.objectContaining({ path: ["HTTP_KEEP_ALIVE_TIMEOUT_BUFFER_MS"] }),
+            expect.objectContaining({ path: ["HTTP_SOCKET_TIMEOUT_MS"] }),
+          ]),
+        }),
+      );
+    },
+  );
+
+  it("closes an idle reusable connection at its keepalive budget", async ({ serve, keepAlive }) => {
+    // GIVEN
+    const { origin } = await serve(undefined, undefined, {
+      keepAliveTimeoutMs: 50,
+      keepAliveTimeoutBufferMs: 0,
+    });
+
+    // WHEN
+    const connection = await keepAlive.call(origin);
+    await connection.head();
+    await connection.closed();
+
+    // THEN
+    expect(await connection.head()).toContain("Keep-Alive: timeout=0");
+  });
+
+  it("allows disabling listener inactivity budgets explicitly", async ({
+    configured,
+    boundServer,
+  }) => {
+    // GIVEN
+    const { app } = configured(
+      { PORT: "0" },
+      { keepAliveTimeoutMs: 0, keepAliveTimeoutBufferMs: 0, socketTimeoutMs: 0 },
+    );
+
+    // WHEN
+    await app.runtimeInfo();
+    const server = boundServer();
+
+    // THEN
+    expect({
+      keepalive: server.keepAliveTimeout,
+      buffer: server.keepAliveTimeoutBuffer,
+      idle: server.timeout,
+    }).toEqual({ keepalive: 0, buffer: 0, idle: 0 });
+  });
+
+  it("refuses an overflowing combined keepalive budget", async ({ configured }) => {
+    // GIVEN
+    const { app } = configured(
+      { PORT: "0" },
+      { keepAliveTimeoutMs: 2_147_483_647, keepAliveTimeoutBufferMs: 1 },
+    );
+
+    // WHEN
+    const exited = await app.exited;
+
+    // THEN
+    expect(exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({
+        cause: expect.objectContaining({ message: expect.stringContaining("exceeds") }),
+      }),
+    );
+  });
+
+  it("refuses a requested buffer when Node lacks the capability", async ({
+    configured,
+    legacyHttp,
+  }) => {
+    // GIVEN
+    void legacyHttp;
+    const { app } = configured({ PORT: "0" }, { keepAliveTimeoutBufferMs: 1 });
+
+    // WHEN
+    const exited = await app.exited;
+
+    // THEN
+    expect(exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({
+        cause: expect.objectContaining({ message: expect.stringContaining("requires Node") }),
+      }),
+    );
+  });
+
+  it("cancels stalled response work when the socket inactivity budget expires", async ({
+    serve,
+    keepAlive,
+  }) => {
+    // GIVEN
+    let aborted = false;
+    const { origin } = await serve(
+      (_request, response, signal) =>
+        new Promise<void>((done) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              done();
+            },
+            { once: true },
+          );
+          response.write("partial");
+        }),
+      undefined,
+      { socketTimeoutMs: 100 },
+    );
+
+    // WHEN
+    const connection = await keepAlive.call(origin);
+    await connection.head();
+    await connection.closed();
+    await vi.waitUntil(() => aborted);
+
+    // THEN
+    expect(aborted).toBe(true);
+  });
+
+  it("closes a stalled socket even when the answerer observes response timeouts", async ({
+    serve,
+    keepAlive,
+  }) => {
+    // GIVEN
+    let timeoutObserved = false;
+    let aborted = false;
+    const { origin } = await serve(
+      (_request, response, signal) =>
+        new Promise<void>((done) => {
+          response.once("timeout", () => {
+            timeoutObserved = true;
+          });
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              done();
+            },
+            { once: true },
+          );
+          response.write("partial");
+        }),
+      undefined,
+      { socketTimeoutMs: 1000 },
+    );
+
+    // WHEN
+    const connection = await keepAlive.call(origin);
+    await connection.head();
+    await connection.closed();
+    await vi.waitUntil(() => aborted);
+
+    // THEN
+    expect({ timeoutObserved, aborted }).toEqual({ timeoutObserved: true, aborted: true });
+  });
+
+  it("keeps a progressing response alive beyond the request receive budget", async ({ serve }) => {
+    // GIVEN
+    const { origin } = await serve(
+      (_request, response) =>
+        pipeline(
+          Readable.from(
+            (async function* () {
+              for (let index = 0; index < 12; index += 1) {
+                yield "chunk";
+                await delay(250);
+              }
+            })(),
+          ),
+          response,
+        ),
+      undefined,
+      { requestTimeoutMs: 1000, socketTimeoutMs: 2000 },
+    );
+
+    // WHEN
+    const response = await fetch(origin);
+    const body = await response.text();
+
+    // THEN
+    expect({ status: response.status, body }).toEqual({ status: 200, body: "chunk".repeat(12) });
+  });
+
+  it("bounds a stalled request body independently of disabled socket inactivity", async ({
+    serve,
+    stall,
+  }) => {
+    // GIVEN
+    const { app } = await serve(
+      async (request, response) => {
+        for await (const chunk of request) void chunk;
+        response.end("received");
+      },
+      undefined,
+      { requestTimeoutMs: 200, socketTimeoutMs: 0 },
+    );
+
+    // WHEN
+    const status = await stall(
+      app,
+      "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1000\r\n\r\nx",
+    );
+
+    // THEN
+    expect(status).toBe("HTTP/1.1 408 Request Timeout");
+  });
+
+  it("shares one response lifecycle listener with streaming adapters", async ({ serve }) => {
+    // GIVEN
+    let peak = 0;
+    let closed = 0;
+    const { origin } = await serve((_request, response) => {
+      const ended = new AbortController();
+      response.once("close", () => {
+        ended.abort();
+        closed += 1;
+      });
+      response.on("newListener", (event) => {
+        if (event === "close") peak = Math.max(peak, response.listenerCount("close") + 1);
+      });
+      return pipeline(Readable.from([Buffer.alloc(65_536)]), response);
+    });
+
+    // WHEN
+    for (let index = 0; index < 35; index += 1) await (await fetch(origin)).arrayBuffer();
+    await vi.waitUntil(() => closed === 35);
+
+    // THEN
+    expect({ withinDefaultBudget: peak <= 10, closed }).toEqual({
+      withinDefaultBudget: true,
+      closed: 35,
+    });
+  });
   it("does not throw when the server emits an error after binding", async ({
     serve,
     boundServer,
@@ -156,6 +455,9 @@ describe("httpRuntime", () => {
         compression: false,
         headersTimeoutMs: 60_000,
         requestTimeoutMs: 300_000,
+        keepAliveTimeoutMs: 5_000,
+        keepAliveTimeoutBufferMs: undefined,
+        socketTimeoutMs: 0,
       },
       listening: true,
     });
@@ -180,6 +482,9 @@ describe("httpRuntime", () => {
       compression: false,
       headersTimeoutMs: 60_000,
       requestTimeoutMs: 300_000,
+      keepAliveTimeoutMs: 5_000,
+      keepAliveTimeoutBufferMs: undefined,
+      socketTimeoutMs: 0,
     });
   });
 

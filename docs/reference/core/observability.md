@@ -34,6 +34,25 @@ observability package is the adapter between the two.
 
 ## `Logger`
 
+The kernel also exports `DiagnosticPolicy`, the structural disclosure contract
+shared by logging, tracing and Temporal adapters. It declares no policy port and
+does not inspect or replace Result channels. Applications pass the same policy
+object to the adapters they compose; the built-in production policy is
+[`diagnosticPolicy`](/reference/observability#a-shared-diagnostic-disclosure-policy).
+
+<!-- doctest: signature=@btravstack/core -->
+
+```ts
+type DiagnosticPolicy = {
+  readonly message: (message: string) => string;
+  readonly attributes: (attributes: Readonly<Record<string, unknown>>) => Attributes;
+  readonly cause: (cause: unknown) => unknown;
+};
+```
+
+Custom policies must be synchronous and must not throw. They render diagnostics
+only; an unknown failure must remain a defect in the original computation.
+
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the kernel itself -->
 
 ```ts
