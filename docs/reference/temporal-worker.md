@@ -611,6 +611,13 @@ choose one credential). A file that cannot be read (`cannot be read (ENOENT)`)
 or is empty (`is empty`) is refused the same way — exit `78`. A server that
 refuses the credentials is `TemporalUnreachable`, exit `1`.
 
+Projected Secret files are read through resolved targets from an immutable
+generation, with the targets verified after the batch. An atomic symlink swap
+retries the batch within a bound, including when the old generation was removed
+mid-read. Persistent generation churn is `ConfigInvalid` naming the changed
+variables. Missing and empty files are still reported together. This does not
+make in-place rewrites or updates of independent Secrets atomic.
+
 **Rotation.** When any `*_PATH` variable is set, the worker reads the files
 again every `TEMPORAL_CREDENTIALS_RELOAD_MS` and compares them with what it
 connected with:

@@ -19,7 +19,9 @@ them from Temporal's own variables (`TEMPORAL_TLS`,
 `TEMPORAL_TLS_CLIENT_CERT_PATH`, `TEMPORAL_TLS_CLIENT_KEY_PATH`,
 `TEMPORAL_API_KEY`, `TEMPORAL_API_KEY_PATH`). Mounted files are read again
 every `TEMPORAL_CREDENTIALS_RELOAD_MS`, so a renewed certificate or key is
-used without a restart; a combination it cannot connect with is a
+used without a restart. Atomic projected Secret generations are read coherently,
+with bounded retry when their targets change; stable missing and empty files
+remain reported together. A combination it cannot connect with is a
 `ConfigInvalid`. See the
 [reference](https://btravstack.github.io/btravstack/reference/temporal-client#securing-the-connection).
 

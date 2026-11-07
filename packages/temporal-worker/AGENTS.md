@@ -217,6 +217,14 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   `instanceof ChannelCredentials` checks, and it serves only the client.
 - **A TLS change is a new connection**, since neither SDK connection can
   change TLS in place; an API-key change alone is `setApiKey` on the open one.
+- **A projected certificate and key are one immutable generation.** File reads
+  resolve their targets before opening them and verify those targets afterwards.
+  A generation change retries the whole batch within a bound, including when
+  garbage collection removed an old target mid-read. Per-file resolution Results
+  remain separate until validation, so a missing file cannot hide another empty
+  one. Persistent churn is `ConfigInvalid`, never a mixed certificate/key pair.
+  This guards atomic symlink generations, not in-place writes or independent
+  Secret updates that have no shared publication boundary.
 - **The worker moves with `worker.connection = fresh`**, the SDK's own
   supported swap. The setter closes the previous connection only when the SDK
   created it, so the starter owns every connection a reload opens — one the

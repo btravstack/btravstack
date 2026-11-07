@@ -1,5 +1,8 @@
 import { once } from "node:events";
+import fs from "node:fs/promises";
 import { createServer, type ServerHttp2Session, type ServerHttp2Stream } from "node:http2";
+import { syncBuiltinESMExports } from "node:module";
+import { basename, dirname, sep } from "node:path";
 
 import type { ConfigInvalid } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -9,9 +12,14 @@ import {
 } from "@btravstack/internal-test-infra/temporal-tls-files";
 import { temporalEnvironment, type TemporalEnvironment } from "@btravstack/temporal-testing";
 import { Connection } from "@temporalio/client";
-import { ErrAsync, Ok, OkAsync, fromSafePromise, type Result } from "unthrown";
+import { ErrAsync, Ok, OkAsync, fromSafePromise, type Result, type AsyncResult } from "unthrown";
 import { expect, inject, test, vi } from "vitest";
 
+import {
+  connectionOptions,
+  type Credentials,
+  type TemporalConnectionSecurity,
+} from "../connection-security.js";
 import {
   temporalConnection,
   type TemporalClientSettings,
@@ -43,6 +51,24 @@ export type Secured = {
 };
 
 export type ClientFixtures = {
+  readonly coherentCredentials: {
+    readonly security: TemporalConnectionSecurity;
+    readonly namespace: string;
+    readonly arm: (removePrevious: boolean) => Promise<void>;
+    readonly churn: () => Promise<void>;
+    readonly swaps: () => number;
+    readonly install: (pair: { readonly cert: string; readonly key: string }) => Promise<void>;
+    readonly inspect: (credentials: Credentials) => AsyncResult<
+      {
+        readonly certificateCurrent: boolean;
+        readonly keyCurrent: boolean;
+        readonly swaps: number;
+      },
+      never
+    >;
+    readonly connect: (credentials: Credentials) => AsyncResult<string | undefined, never>;
+    readonly own: (stop: () => PromiseLike<unknown>) => void;
+  };
   /** The shared server's plaintext address and this file's namespace on it. */
   readonly temporal: TemporalEnvironment;
   /** Mounted credentials of this test's own, and settings using them through the TLS proxy. */
@@ -76,6 +102,110 @@ export type ClientFixtures = {
 };
 
 export const it = test.extend<ClientFixtures>({
+  coherentCredentials: async ({ temporal }, use) => {
+    const mounted = await mountTemporalSecret();
+    const security: TemporalConnectionSecurity = {
+      tls: true,
+      serverCaCertPath: TEMPORAL_TLS_FILES.ca,
+      serverName: TEMPORAL_TLS_FILES.serverName,
+      clientCertPath: mounted.cert,
+      clientKeyPath: mounted.key,
+      credentialsReloadMs: 10,
+    };
+    const address = inject("__BTRAVSTACK_TEMPORAL_TLS_ADDRESS__");
+    const namespace = temporal.TEMPORAL_NAMESPACE;
+    const directory = dirname(mounted.cert);
+    const resolvedDirectory = await fs.realpath(directory);
+    const originalRead = fs.readFile;
+    const owned = new Set<Connection>();
+    const stopping: (() => PromiseLike<unknown>)[] = [];
+    let armed = false;
+    let repeated = false;
+    let holding = false;
+    let removePrevious = false;
+    let swaps = 0;
+    let release: () => void = () => undefined;
+    let swapped: Promise<void> = Promise.resolve();
+    const reading = vi.spyOn(fs, "readFile").mockImplementation((path, options) => {
+      if (
+        typeof path !== "string" ||
+        ![directory, resolvedDirectory].some((prefix) => path.startsWith(`${prefix}${sep}`))
+      )
+        return originalRead(path, options);
+      if (armed && basename(path) === "client-cert.pem") {
+        armed = repeated;
+        holding = true;
+        swapped = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const releaseReading = release;
+        return originalRead(path, options)
+          .then(async (bytes) => {
+            const previous = dirname(await fs.realpath(path));
+            await mounted.publish({ pair: TEMPORAL_TLS_FILES.client });
+            swaps++;
+            if (removePrevious) await fs.rm(previous, { recursive: true });
+            return bytes;
+          })
+          .finally(releaseReading);
+      }
+      return holding && basename(path) === "client-key.pem"
+        ? swapped.then(() => originalRead(path, options))
+        : originalRead(path, options);
+    });
+    syncBuiltinESMExports();
+    await use({
+      security,
+      namespace,
+      arm: async (remove) => {
+        await mounted.publish({ pair: TEMPORAL_TLS_FILES.rotated });
+        removePrevious = remove;
+        repeated = false;
+        armed = true;
+      },
+      churn: async () => {
+        await mounted.publish({ pair: TEMPORAL_TLS_FILES.rotated });
+        repeated = true;
+        armed = true;
+      },
+      swaps: () => swaps,
+      install: (pair) => mounted.publish({ pair }),
+      inspect: (credentials) =>
+        fromSafePromise(
+          Promise.all([
+            originalRead(TEMPORAL_TLS_FILES.client.cert),
+            originalRead(TEMPORAL_TLS_FILES.client.key),
+          ]),
+        ).map(([certificate, key]) => ({
+          certificateCurrent: Buffer.from(credentials.tls?.clientCertPair?.crt ?? []).equals(
+            certificate,
+          ),
+          keyCurrent: Buffer.from(credentials.tls?.clientCertPair?.key ?? []).equals(key),
+          swaps,
+        })),
+      connect: (credentials) =>
+        (() => {
+          const connection = Connection.lazy({ address, ...connectionOptions(credentials) });
+          owned.add(connection);
+          return fromSafePromise(connection.ensureConnected())
+            .flatMap(() =>
+              fromSafePromise(connection.workflowService.describeNamespace({ namespace })),
+            )
+            .flatTap(() => fromSafePromise(connection.close()).tap(() => owned.delete(connection)))
+            .map((response) => response.namespaceInfo?.name ?? undefined);
+        })(),
+      own: (stop) => {
+        stopping.push(stop);
+      },
+    });
+    release();
+    await Promise.all(stopping.map((stop) => stop()));
+    reading.mockRestore();
+    syncBuiltinESMExports();
+    for (const connection of owned) await connection.close();
+    await mounted.remove();
+  },
+
   temporal: temporalEnvironment("temporal-client"),
   failedCleanup: async ({ open }, use) => {
     const initialization = new Error("connection refused");

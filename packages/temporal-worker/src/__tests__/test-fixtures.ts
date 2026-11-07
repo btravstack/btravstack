@@ -1,5 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+import { basename, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
@@ -42,6 +45,11 @@ import { ErrAsync, OkAsync, fromSafePromise, fromSafeThrowable, type AsyncResult
 import { inject, test, vi } from "vitest";
 import { z } from "zod";
 
+import {
+  connectionOptions,
+  type Credentials,
+  type TemporalConnectionSecurity,
+} from "../connection-security.js";
 import type { TemporalDiagnosticsOptions } from "../diagnostics.js";
 import { TemporalApiKeyUnavailable, type TemporalApiKeySource } from "../index.js";
 import { ensureSchedule } from "../schedule.js";
@@ -670,6 +678,24 @@ const reversing: PayloadCodec = {
 };
 
 export type TemporalFixtures = {
+  readonly coherentCredentials: {
+    readonly security: TemporalConnectionSecurity;
+    readonly namespace: string;
+    readonly arm: (removePrevious: boolean) => Promise<void>;
+    readonly churn: () => Promise<void>;
+    readonly swaps: () => number;
+    readonly install: (pair: { readonly cert: string; readonly key: string }) => Promise<void>;
+    readonly inspect: (credentials: Credentials) => AsyncResult<
+      {
+        readonly certificateCurrent: boolean;
+        readonly keyCurrent: boolean;
+        readonly swaps: number;
+      },
+      never
+    >;
+    readonly connect: (credentials: Credentials) => AsyncResult<string | undefined, never>;
+    readonly own: (stop: () => PromiseLike<unknown>) => void;
+  };
   readonly diagnostics: {
     readonly options: TemporalDiagnosticsOptions;
     readonly written: readonly string[];
@@ -939,6 +965,108 @@ export function prepareContractSliceWorkflows(): void {
 }
 
 export const it = bundledTest.extend<TemporalFixtures>({
+  coherentCredentials: async ({ server }, use) => {
+    const mounted = await mountTemporalSecret();
+    const security: TemporalConnectionSecurity = {
+      tls: true,
+      serverCaCertPath: TEMPORAL_TLS_FILES.ca,
+      serverName: TEMPORAL_TLS_FILES.serverName,
+      clientCertPath: mounted.cert,
+      clientKeyPath: mounted.key,
+      credentialsReloadMs: 10,
+    };
+    const address = inject("__BTRAVSTACK_TEMPORAL_TLS_ADDRESS__");
+    const namespace = server.namespace;
+    const directory = dirname(mounted.cert);
+    const resolvedDirectory = await fs.realpath(directory);
+    const originalRead = fs.readFile;
+    const owned = new Set<NativeConnection>();
+    const stopping: (() => PromiseLike<unknown>)[] = [];
+    let armed = false;
+    let repeated = false;
+    let holding = false;
+    let removePrevious = false;
+    let swaps = 0;
+    let release: () => void = () => undefined;
+    let swapped: Promise<void> = Promise.resolve();
+    const reading = vi.spyOn(fs, "readFile").mockImplementation((path, options) => {
+      if (
+        typeof path !== "string" ||
+        ![directory, resolvedDirectory].some((prefix) => path.startsWith(`${prefix}${sep}`))
+      )
+        return originalRead(path, options);
+      if (armed && basename(path) === "client-cert.pem") {
+        armed = repeated;
+        holding = true;
+        swapped = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const releaseReading = release;
+        return originalRead(path, options)
+          .then(async (bytes) => {
+            const previous = dirname(await fs.realpath(path));
+            await mounted.publish({ pair: TEMPORAL_TLS_FILES.client });
+            swaps++;
+            if (removePrevious) await fs.rm(previous, { recursive: true });
+            return bytes;
+          })
+          .finally(releaseReading);
+      }
+      return holding && basename(path) === "client-key.pem"
+        ? swapped.then(() => originalRead(path, options))
+        : originalRead(path, options);
+    });
+    syncBuiltinESMExports();
+    await use({
+      security,
+      namespace,
+      arm: async (remove) => {
+        await mounted.publish({ pair: TEMPORAL_TLS_FILES.rotated });
+        removePrevious = remove;
+        repeated = false;
+        armed = true;
+      },
+      churn: async () => {
+        await mounted.publish({ pair: TEMPORAL_TLS_FILES.rotated });
+        repeated = true;
+        armed = true;
+      },
+      swaps: () => swaps,
+      install: (pair) => mounted.publish({ pair }),
+      inspect: (credentials) =>
+        fromSafePromise(
+          Promise.all([
+            originalRead(TEMPORAL_TLS_FILES.client.cert),
+            originalRead(TEMPORAL_TLS_FILES.client.key),
+          ]),
+        ).map(([certificate, key]) => ({
+          certificateCurrent: Buffer.from(credentials.tls?.clientCertPair?.crt ?? []).equals(
+            certificate,
+          ),
+          keyCurrent: Buffer.from(credentials.tls?.clientCertPair?.key ?? []).equals(key),
+          swaps,
+        })),
+      connect: (credentials) =>
+        fromSafePromise(
+          NativeConnection.connect({ address, ...connectionOptions(credentials) }),
+        ).flatMap((connection) => {
+          owned.add(connection);
+          return fromSafePromise(connection.workflowService.describeNamespace({ namespace }))
+            .flatTap(() => fromSafePromise(connection.close()).tap(() => owned.delete(connection)))
+            .map((response) => response.namespaceInfo?.name ?? undefined);
+        }),
+      own: (stop) => {
+        stopping.push(stop);
+      },
+    });
+    release();
+    await Promise.all(stopping.map((stop) => stop()));
+    reading.mockRestore();
+    syncBuiltinESMExports();
+    for (const connection of owned) await connection.close();
+    await mounted.remove();
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- this fixture owns only its diagnostic defaults and log destination
   diagnostics: async ({}, use) => {
     const previousDefaults = Runtime.defaultOptions;
