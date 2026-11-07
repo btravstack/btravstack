@@ -42,6 +42,13 @@ dependency cannot decide. It stops the authentication walk and every HTTP
 answerer returns `503`, reporting the scheme through `Observers`. See
 [authentication dependency outages](https://btravstack.github.io/btravstack/reference/http-server#authentication-dependency-outages).
 
+`jwtAuthenticator()` retains its JWT-specific `401` response when the issuer's
+key set is unavailable or unusable. It reports the outage through `Observers`
+with `component: "jwt"`, `name: "verify"`, `outcome: "error"` and a bounded
+`reason`, rather than returning `AuthenticatorUnavailable`. See the
+[JWT issuer-outage policy](AUTH.md#surface) and its distinction from
+[authentication dependency outages](AUTH.md#authentication-dependency-outages).
+
 Request-scoped providers may inject `HttpRequestMetadata` to decode headers,
 method and URL independently of authentication. The runtime seeds its immutable
 snapshot and cancellation signal once per request unit; it is unavailable in
