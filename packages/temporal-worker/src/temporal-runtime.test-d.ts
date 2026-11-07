@@ -433,3 +433,32 @@ const withApiKeySource = TemporalModule("PinWithApiKeySource")({
   apiKey: PinApiKey,
 });
 start(withApiKeySource, { signals: false, probes: false });
+
+TemporalModule("PinCapacity")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  maxCachedWorkflows: 2,
+  maxConcurrentWorkflowTaskExecutions: 2,
+  maxConcurrentActivityTaskExecutions: 1,
+});
+
+TemporalModule("PinCapacityType")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  // @ts-expect-error -- capacity pins are numbers, not environment strings
+  maxCachedWorkflows: "2",
+});
+
+TemporalModule("PinTunerRefused")({
+  contract: pinContract,
+  activities: TemporalActivities(pinContract)([plainPiece]),
+  provides: [plainPiece],
+  workflows,
+  maxConcurrentWorkflowTaskExecutions: 2,
+  // @ts-expect-error -- custom tuners cannot be mixed with the starter's named fixed capacity
+  tuner: { tunerOptions: { targetMemoryUsage: 0.5, targetCpuUsage: 0.5 } },
+});

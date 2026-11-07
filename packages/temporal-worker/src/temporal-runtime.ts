@@ -56,6 +56,7 @@ import {
 } from "./connection-security.js";
 import { taskQueueField } from "./task-queue.js";
 import { forkOf, unitsOf } from "./unit.js";
+import { capacityFields, capacityOptions, validateCapacity } from "./worker-capacity.js";
 import type { ActivityInputInstance } from "./workflow-activities.js";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
@@ -93,6 +94,9 @@ export class TemporalConfig extends Port("TemporalConfig")<
     readonly gracePeriodMs: number;
     /** Temporal's `shutdownForceTime`, in milliseconds. */
     readonly forceAfterMs: number;
+    readonly maxCachedWorkflows?: number | undefined;
+    readonly maxConcurrentWorkflowTaskExecutions?: number | undefined;
+    readonly maxConcurrentActivityTaskExecutions?: number | undefined;
   } & TemporalConnectionSecurity
 > {}
 
@@ -188,6 +192,14 @@ export type TemporalTuning<
    * `shutdownGraceTime`.
    */
   readonly gracePeriod?: Duration;
+  /** Pins TEMPORAL_MAX_CACHED_WORKFLOWS. Zero disables caching; otherwise at least two. */
+  readonly maxCachedWorkflows?: number;
+  /** Pins TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASK_EXECUTIONS. Fixed workflow-task slots. */
+  readonly maxConcurrentWorkflowTaskExecutions?: number;
+  /** Pins TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_EXECUTIONS. Fixed non-local activity slots. */
+  readonly maxConcurrentActivityTaskExecutions?: number;
+  /** Custom tuners are not supported by this starter's named fixed-capacity options. */
+  readonly tuner?: never;
   /**
    * The unit module the worker forks around every activity attempt it
    * dispatches, seeded with the validated input on `ActivityInput(contract)`.
@@ -286,6 +298,9 @@ export const temporal = <
       | "TEMPORAL_ADDRESS"
       | "TEMPORAL_NAMESPACE"
       | "TEMPORAL_TASK_QUEUE"
+      | "TEMPORAL_MAX_CACHED_WORKFLOWS"
+      | "TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASK_EXECUTIONS"
+      | "TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_EXECUTIONS"
       | "TEMPORAL_GRACE_PERIOD_MS"
       | "TEMPORAL_FORCE_AFTER_MS"
       | "TEMPORAL_TLS"
@@ -305,28 +320,35 @@ export const temporal = <
 > => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
-  const config = Config.provider(TemporalConfig)(
-    Config.object({
-      address: Config.pinned(
-        address,
-        Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
-      ),
-      namespace: Config.pinned(
-        namespace,
-        Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
-      ),
-      taskQueue: Config.pinned(options.taskQueue, taskQueueField(options.contract)),
-      gracePeriodMs: Config.pinned(
-        durationMs(options.gracePeriod),
-        Config.integer("TEMPORAL_GRACE_PERIOD_MS", { default: DEFAULT_GRACE_MS, min: 0 }),
-      ),
-      forceAfterMs: Config.pinned(
-        durationMs(options.forceAfter),
-        Config.integer("TEMPORAL_FORCE_AFTER_MS", { default: DEFAULT_FORCE_MS, min: 0 }),
-      ),
-      ...temporalSecurity,
-    }),
-  );
+  const schema = Config.object({
+    address: Config.pinned(
+      address,
+      Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
+    ),
+    namespace: Config.pinned(
+      namespace,
+      Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
+    ),
+    taskQueue: Config.pinned(options.taskQueue, taskQueueField(options.contract)),
+    gracePeriodMs: Config.pinned(
+      durationMs(options.gracePeriod),
+      Config.integer("TEMPORAL_GRACE_PERIOD_MS", { default: DEFAULT_GRACE_MS, min: 0 }),
+    ),
+    forceAfterMs: Config.pinned(
+      durationMs(options.forceAfter),
+      Config.integer("TEMPORAL_FORCE_AFTER_MS", { default: DEFAULT_FORCE_MS, min: 0 }),
+    ),
+    ...capacityFields(options),
+    ...temporalSecurity,
+  });
+  const config = Provider(TemporalConfig)({
+    inject: { env: Config.env(schema) },
+    make: ({ env }) =>
+      Config.parse(
+        TemporalConfig.portId,
+        schema,
+      )(env).flatMap((bound) => validateCapacity(bound, options.tuner).map(() => bound)),
+  });
   return Module("Temporal")({
     needs: [Env, activities],
     provides: [
@@ -409,6 +431,9 @@ export const temporal = <
         | "TEMPORAL_ADDRESS"
         | "TEMPORAL_NAMESPACE"
         | "TEMPORAL_TASK_QUEUE"
+        | "TEMPORAL_MAX_CACHED_WORKFLOWS"
+        | "TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASK_EXECUTIONS"
+        | "TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_EXECUTIONS"
         | "TEMPORAL_GRACE_PERIOD_MS"
         | "TEMPORAL_FORCE_AFTER_MS"
         | "TEMPORAL_TLS"
@@ -480,6 +505,7 @@ const createWorker = <
           activities: handler,
           shutdownGraceTime: config.gracePeriodMs,
           shutdownForceTime: config.forceAfterMs,
+          ...capacityOptions(config),
           ...(dataConverter === undefined ? {} : { dataConverter }),
         }),
         startFailed,

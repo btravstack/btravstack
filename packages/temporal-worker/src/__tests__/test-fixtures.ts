@@ -29,7 +29,12 @@ import {
 } from "@temporal-contract/contract";
 import { Client, Connection, type ScheduleOptions, type ScheduleSpec } from "@temporalio/client";
 import type { DataConverter, Duration, Payload, PayloadCodec } from "@temporalio/common";
-import { bundleWorkflowCode, type NativeConnection, type Worker } from "@temporalio/worker";
+import {
+  bundleWorkflowCode,
+  Worker,
+  type NativeConnection,
+  type WorkerOptions,
+} from "@temporalio/worker";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { inject, test, vi } from "vitest";
 import { z } from "zod";
@@ -570,6 +575,10 @@ type ActivitiesProvider = typeof echoing | ReturnType<typeof contractSeamOf>["ac
 
 /** What a spec may vary: the activities, the starter's pins, the environment, the kernel's drain budget. */
 type BootOptions = {
+  readonly maxCachedWorkflows?: number;
+  readonly maxConcurrentWorkflowTaskExecutions?: number;
+  readonly maxConcurrentActivityTaskExecutions?: number;
+  readonly tuner?: never;
   readonly marker?: string;
   readonly taskQueue?: string;
   readonly activities?: ActivitiesProvider;
@@ -657,6 +666,7 @@ const reversing: PayloadCodec = {
 };
 
 export type TemporalFixtures = {
+  readonly created: readonly { readonly input: WorkerOptions; readonly worker: Worker }[];
   /**
    * A `poll()` over a STUB worker. The arm it exists for is `run()` rejecting
    * mid-flight — a worker reaching `FAILED` — and there is no way to make a
@@ -837,6 +847,16 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
         : EchoActivities({ sync: () => ({ runEcho: { echo: () => OkAsync(options.marker!) } }) })),
     ...(options.taskQueue === undefined ? {} : { taskQueue: options.taskQueue }),
     workflows: options.workflows ?? echoWorkflows,
+    ...(options.maxCachedWorkflows === undefined
+      ? {}
+      : { maxCachedWorkflows: options.maxCachedWorkflows }),
+    ...(options.maxConcurrentWorkflowTaskExecutions === undefined
+      ? {}
+      : { maxConcurrentWorkflowTaskExecutions: options.maxConcurrentWorkflowTaskExecutions }),
+    ...(options.maxConcurrentActivityTaskExecutions === undefined
+      ? {}
+      : { maxConcurrentActivityTaskExecutions: options.maxConcurrentActivityTaskExecutions }),
+    ...(options.tuner === undefined ? {} : { tuner: options.tuner }),
     ...(options.address === undefined ? {} : { address: options.address }),
     ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
     ...(options.gracePeriod === undefined ? {} : { gracePeriod: options.gracePeriod }),
@@ -935,6 +955,17 @@ export const it = bundledTest.extend<TemporalFixtures>({
     await connection.close();
   },
   boot: bootFixture(),
+  created: async ({ server }, use) => {
+    const created: { readonly input: WorkerOptions; readonly worker: Worker }[] = [];
+    const create = Worker.create.bind(Worker);
+    const capture = vi.spyOn(Worker, "create").mockImplementation(async (input) => {
+      const worker = await create(input);
+      if (input.namespace === server.namespace) created.push({ input, worker });
+      return worker;
+    });
+    await use(created);
+    capture.mockRestore();
+  },
   serve: async ({ server, client, boot }, use) => {
     await use(async (options = {}) => {
       const { app, taskQueue } = compose(server, boot, options);
