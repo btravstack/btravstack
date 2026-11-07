@@ -1,4 +1,8 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+import { basename, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
@@ -18,6 +22,7 @@ import {
   TEMPORAL_TLS_FILES,
   mountTemporalSecret,
 } from "@btravstack/internal-test-infra/temporal-tls-files";
+import { createLogger, diagnosticPolicy, jsonSink } from "@btravstack/observability";
 import { temporalEnvironment, type TemporalEnvironment } from "@btravstack/temporal-testing";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { TypedClient } from "@temporal-contract/client";
@@ -32,13 +37,20 @@ import type { DataConverter, Duration, Payload, PayloadCodec } from "@temporalio
 import {
   bundleWorkflowCode,
   Worker,
-  type NativeConnection,
+  NativeConnection,
+  Runtime,
   type WorkerOptions,
 } from "@temporalio/worker";
-import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, fromSafeThrowable, type AsyncResult } from "unthrown";
 import { inject, test, vi } from "vitest";
 import { z } from "zod";
 
+import {
+  connectionOptions,
+  type Credentials,
+  type TemporalConnectionSecurity,
+} from "../connection-security.js";
+import type { TemporalDiagnosticsOptions } from "../diagnostics.js";
 import { TemporalApiKeyUnavailable, type TemporalApiKeySource } from "../index.js";
 import { ensureSchedule } from "../schedule.js";
 import { TemporalActivities, TemporalModule } from "../temporal-module.js";
@@ -666,6 +678,45 @@ const reversing: PayloadCodec = {
 };
 
 export type TemporalFixtures = {
+  readonly coherentCredentials: {
+    readonly security: TemporalConnectionSecurity;
+    readonly namespace: string;
+    readonly arm: (removePrevious: boolean) => Promise<void>;
+    readonly churn: () => Promise<void>;
+    readonly swaps: () => number;
+    readonly install: (pair: { readonly cert: string; readonly key: string }) => Promise<void>;
+    readonly inspect: (credentials: Credentials) => AsyncResult<
+      {
+        readonly certificateCurrent: boolean;
+        readonly keyCurrent: boolean;
+        readonly swaps: number;
+      },
+      never
+    >;
+    readonly connect: (credentials: Credentials) => AsyncResult<string | undefined, never>;
+    readonly own: (stop: () => PromiseLike<unknown>) => void;
+  };
+  readonly diagnostics: {
+    readonly options: TemporalDiagnosticsOptions;
+    readonly written: readonly string[];
+    readonly previousDefaults: typeof Runtime.defaultOptions;
+  };
+  readonly diagnosticsProcess: (
+    mode: "refusal" | "defect" | "sync-defect" | "success" | "legacy-refusal",
+  ) => AsyncResult<
+    {
+      readonly exitCode: number | null;
+      readonly signal: NodeJS.Signals | null;
+      readonly timedOut: boolean;
+      readonly snapshot: unknown;
+      readonly stderr: string;
+    },
+    never
+  >;
+  readonly nativeConnections: {
+    readonly open: () => AsyncResult<NativeConnection, never>;
+    readonly close: (connection: NativeConnection) => AsyncResult<void, never>;
+  };
   readonly created: readonly { readonly input: WorkerOptions; readonly worker: Worker }[];
   /**
    * A `poll()` over a STUB worker. The arm it exists for is `run()` rejecting
@@ -914,6 +965,207 @@ export function prepareContractSliceWorkflows(): void {
 }
 
 export const it = bundledTest.extend<TemporalFixtures>({
+  coherentCredentials: async ({ server }, use) => {
+    const mounted = await mountTemporalSecret();
+    const security: TemporalConnectionSecurity = {
+      tls: true,
+      serverCaCertPath: TEMPORAL_TLS_FILES.ca,
+      serverName: TEMPORAL_TLS_FILES.serverName,
+      clientCertPath: mounted.cert,
+      clientKeyPath: mounted.key,
+      credentialsReloadMs: 10,
+    };
+    const address = inject("__BTRAVSTACK_TEMPORAL_TLS_ADDRESS__");
+    const namespace = server.namespace;
+    const directory = dirname(mounted.cert);
+    const resolvedDirectory = await fs.realpath(directory);
+    const originalRead = fs.readFile;
+    const owned = new Set<NativeConnection>();
+    const stopping: (() => PromiseLike<unknown>)[] = [];
+    let armed = false;
+    let repeated = false;
+    let holding = false;
+    let removePrevious = false;
+    let swaps = 0;
+    let release: () => void = () => undefined;
+    let swapped: Promise<void> = Promise.resolve();
+    const reading = vi.spyOn(fs, "readFile").mockImplementation((path, options) => {
+      if (
+        typeof path !== "string" ||
+        ![directory, resolvedDirectory].some((prefix) => path.startsWith(`${prefix}${sep}`))
+      )
+        return originalRead(path, options);
+      if (armed && basename(path) === "client-cert.pem") {
+        armed = repeated;
+        holding = true;
+        swapped = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const releaseReading = release;
+        return originalRead(path, options)
+          .then(async (bytes) => {
+            const previous = dirname(await fs.realpath(path));
+            await mounted.publish({ pair: TEMPORAL_TLS_FILES.client });
+            swaps++;
+            if (removePrevious) await fs.rm(previous, { recursive: true });
+            return bytes;
+          })
+          .finally(releaseReading);
+      }
+      return holding && basename(path) === "client-key.pem"
+        ? swapped.then(() => originalRead(path, options))
+        : originalRead(path, options);
+    });
+    syncBuiltinESMExports();
+    await use({
+      security,
+      namespace,
+      arm: async (remove) => {
+        await mounted.publish({ pair: TEMPORAL_TLS_FILES.rotated });
+        removePrevious = remove;
+        repeated = false;
+        armed = true;
+      },
+      churn: async () => {
+        await mounted.publish({ pair: TEMPORAL_TLS_FILES.rotated });
+        repeated = true;
+        armed = true;
+      },
+      swaps: () => swaps,
+      install: (pair) => mounted.publish({ pair }),
+      inspect: (credentials) =>
+        fromSafePromise(
+          Promise.all([
+            originalRead(TEMPORAL_TLS_FILES.client.cert),
+            originalRead(TEMPORAL_TLS_FILES.client.key),
+          ]),
+        ).map(([certificate, key]) => ({
+          certificateCurrent: Buffer.from(credentials.tls?.clientCertPair?.crt ?? []).equals(
+            certificate,
+          ),
+          keyCurrent: Buffer.from(credentials.tls?.clientCertPair?.key ?? []).equals(key),
+          swaps,
+        })),
+      connect: (credentials) =>
+        fromSafePromise(
+          NativeConnection.connect({ address, ...connectionOptions(credentials) }),
+        ).flatMap((connection) => {
+          owned.add(connection);
+          return fromSafePromise(connection.workflowService.describeNamespace({ namespace }))
+            .flatTap(() => fromSafePromise(connection.close()).tap(() => owned.delete(connection)))
+            .map((response) => response.namespaceInfo?.name ?? undefined);
+        }),
+      own: (stop) => {
+        stopping.push(stop);
+      },
+    });
+    release();
+    await Promise.all(stopping.map((stop) => stop()));
+    reading.mockRestore();
+    syncBuiltinESMExports();
+    for (const connection of owned) await connection.close();
+    await mounted.remove();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- this fixture owns only its diagnostic defaults and log destination
+  diagnostics: async ({}, use) => {
+    const previousDefaults = Runtime.defaultOptions;
+    const written: string[] = [];
+    await use({
+      options: {
+        logger: createLogger(jsonSink({ write: (line) => written.push(line) }), "trace"),
+        diagnostics: diagnosticPolicy({
+          fields: { sdkComponent: ["activity", "worker", "workflow", "core"] },
+        }),
+        nativeLogLevel: "TRACE",
+      },
+      written,
+      previousDefaults,
+    });
+    Runtime.defaultOptions = previousDefaults;
+  },
+  // oxlint-disable-next-line no-empty-pattern -- subprocesses test process lifetime without acquiring the parent server
+  diagnosticsProcess: async ({}, use) => {
+    const owned: { readonly child: ChildProcess; readonly closed: Promise<void> }[] = [];
+    await use((mode) =>
+      fromSafePromise(
+        new Promise((resolve, reject) => {
+          const bootstrap = `
+        import { registerHooks } from "node:module";
+        registerHooks({ resolve(specifier, context, next) {
+          if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.includes("/packages/temporal-worker/src/")) specifier = specifier.slice(0, -3) + ".ts";
+          return next(specifier, context);
+        }});
+        await import(${JSON.stringify(new URL("./diagnostics-startup.ts", import.meta.url).href)});
+      `;
+          const child = spawn(
+            process.execPath,
+            ["--input-type=module", "--eval", bootstrap, mode],
+            {
+              cwd: fileURLToPath(new URL("../../", import.meta.url)),
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
+          let stdout = "";
+          let stderr = "";
+          let timedOut = false;
+          const deadline = setTimeout(() => {
+            timedOut = true;
+            child.kill("SIGKILL");
+          }, 15_000);
+          child.stdout?.on("data", (chunk: Buffer) => {
+            stdout += chunk.toString();
+          });
+          child.stderr?.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+          });
+          child.once("error", reject);
+          const closed = new Promise<void>((finish) => {
+            child.once("close", (exitCode, signal) => {
+              clearTimeout(deadline);
+              const record = stdout
+                .split("\n")
+                .find((line) => line.startsWith("diagnostics-lifetime "));
+              fromSafeThrowable((): unknown =>
+                record === undefined
+                  ? stdout
+                  : JSON.parse(record.slice("diagnostics-lifetime ".length)),
+              )().match({
+                ok: (snapshot) => resolve({ exitCode, signal, timedOut, snapshot, stderr }),
+                errCases: (matcher) => matcher,
+                defect: reject,
+              });
+              finish();
+            });
+          });
+          owned.push({ child, closed });
+        }),
+      ),
+    );
+    for (const { child } of owned) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
+    await Promise.all(owned.map(({ closed }) => closed));
+  },
+  nativeConnections: async ({ server, diagnostics }, use) => {
+    void diagnostics;
+    const owned = new Set<NativeConnection>();
+    const opening: AsyncResult<NativeConnection, never>[] = [];
+    const close = (connection: NativeConnection) =>
+      fromSafePromise(connection.close()).tap(() => owned.delete(connection));
+    await use({
+      open: () => {
+        const result = fromSafePromise(NativeConnection.connect({ address: server.address })).tap(
+          (connection) => owned.add(connection),
+        );
+        opening.push(result);
+        return result;
+      },
+      close,
+    });
+    await Promise.all(opening);
+    for (const connection of owned) await connection.close();
+  },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   stubbed: async ({}, use) => {
     await use(() => {

@@ -53,29 +53,60 @@ import { currentUnit } from "@btravstack/core";
 
 ## Diagnostic disclosure
 
-Temporal has a process-wide native Runtime. Install its diagnostic boundary once,
-before the first native connection or worker; worker-local payload codecs do not
-control runtime logging. The installer returns `Result<void, never>`; a late or
-duplicate installation is a defect, and must prevent startup rather than silently
-retaining an unprotected runtime.
+Temporal has a process-wide native Runtime. Configure its diagnostic boundary
+before startup; worker-local payload codecs do not control runtime logging.
+`withTemporalDiagnostics(options, work)` configures the SDK's public
+`Runtime.defaultOptions` without creating a native Runtime. The callback starts
+the application and remains open until its workers and connections are released.
+A configuration or credential refusal, or a defect before the first native
+connection, then leaves no diagnostic Runtime keeping the process alive.
+
+<!-- doctest: group=order-temporal-worker -->
+<!-- doctest: defer -->
 
 ```ts
 import { createLogger, diagnosticPolicy, jsonSink } from "@btravstack/observability";
-import { installTemporalDiagnostics } from "@btravstack/temporal-worker";
+import { runMain } from "@btravstack/core";
+import { withTemporalDiagnostics } from "@btravstack/temporal-worker";
+import { fromSafePromise } from "unthrown";
 
 const temporalDiagnosticPolicy = diagnosticPolicy({
   fields: { sdkComponent: ["activity", "workflow", "worker", "core"] },
 });
-installTemporalDiagnostics({
-  logger: createLogger(jsonSink()),
-  diagnostics: temporalDiagnosticPolicy,
-}).get();
+await withTemporalDiagnostics(
+  {
+    logger: createLogger(jsonSink()),
+    diagnostics: temporalDiagnosticPolicy,
+  },
+  () => fromSafePromise(runMain(OrderTemporalWorker)),
+).get();
 ```
 
 Pass that same policy to `observability({ diagnostics })` and `otel({ diagnostics })`
-for starter-owned observations. `installTemporalDiagnostics({ logger, diagnostics,
-nativeLogLevel? })` forwards native Core logs into the same policy as TypeScript
-SDK, workflow and activity logs. It disables Temporal's independent signal handlers
+for starter-owned observations. Both helpers accept `TemporalDiagnosticsOptions`:
+`{ logger, diagnostics, nativeLogLevel? }`. The scoped helper preserves the
+callback's success, modeled error or defect, including a synchronous throw while
+creating its Result. Previous defaults are restored on every outcome if they are
+still the configuration this scope owns. An existing Runtime or overlapping
+diagnostics scope is refused as a defect without invoking the callback.
+
+The scope does not close an active Runtime or connection: Temporal owns their
+lifetime and flushes buffered logs as its last native resource closes. Keep
+connection acquisition and release within the callback. Do not call
+`Runtime.install` inside it: explicit SDK installation overrides these defaults.
+A replacement configuration supplied by another owner is preserved. The helper
+does not dispose of native resources leaked by the callback or by an SDK failure
+after native Runtime creation.
+
+`installTemporalDiagnostics(options)` remains an eager installer returning
+`Result<void, never>`. It creates the native Runtime immediately and cannot release
+it if startup fails before any native connection is attempted. Use the scoped
+helper for application startup; retain the eager installer only when explicitly
+owning that lifetime. A late or duplicate installation defects rather than
+retaining an unprotected runtime.
+
+Both helpers forward native Core logs into the same policy as TypeScript SDK,
+workflow and activity logs. They disable Temporal's independent signal handlers
 so the kernel retains shutdown ownership. Temporal owns native buffering and
 flush-on-shutdown. `nativeLogLevel` is the SDK's `LogLevel`, defaults to `WARN`,
 and controls collection before the supplied logger's own severity filter.
@@ -96,6 +127,8 @@ and retention contract, see [the shared policy](/reference/observability#a-share
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                                                                                                                   |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `installTemporalDiagnostics`     | value | Install the shared disclosure policy before the first Temporal connection; forwards native Core logs into the TypeScript logger                                                                                                                                                                                                                                              |
+| `withTemporalDiagnostics`        | value | Scope diagnostic defaults around a startup callback without eagerly creating a native Runtime; restore owned defaults on every outcome                                                                                                                                                                                                                                       |
+| `TemporalDiagnosticsOptions`     | type  | Logger, shared diagnostic policy and optional native Core log level accepted by both diagnostic helpers                                                                                                                                                                                                                                                                      |
 | `temporalDiagnosticLogger`       | value | Build the SDK logger adapter for a deployment owning `Runtime.install`                                                                                                                                                                                                                                                                                                       |
 | `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows?, address?, namespace?, taskQueue?, gracePeriod?, forceAfter?, maxCachedWorkflows?, maxConcurrentWorkflowTaskExecutions?, maxConcurrentActivityTaskExecutions?, unit?, dataConverter?, apiKey?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider       |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                                                                                                              |
@@ -577,6 +610,13 @@ beside a client certificate (`cannot be combined with a client certificate`:
 choose one credential). A file that cannot be read (`cannot be read (ENOENT)`)
 or is empty (`is empty`) is refused the same way — exit `78`. A server that
 refuses the credentials is `TemporalUnreachable`, exit `1`.
+
+Projected Secret files are read through resolved targets from an immutable
+generation, with the targets verified after the batch. An atomic symlink swap
+retries the batch within a bound, including when the old generation was removed
+mid-read. Persistent generation churn is `ConfigInvalid` naming the changed
+variables. Missing and empty files are still reported together. This does not
+make in-place rewrites or updates of independent Secrets atomic.
 
 **Rotation.** When any `*_PATH` variable is set, the worker reads the files
 again every `TEMPORAL_CREDENTIALS_RELOAD_MS` and compares them with what it

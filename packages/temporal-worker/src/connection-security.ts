@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 
 import { Config, ConfigInvalid, type ConfigField, type ConfigIssue } from "@btravstack/config";
 import type { TLSConfig } from "@temporalio/worker";
@@ -7,11 +7,13 @@ import {
   ErrAsync,
   Ok,
   OkAsync,
+  allAsync,
   TaggedError,
   fromPromise,
   validateAllAsync,
   type AsyncResult,
   type FailureView,
+  type Result,
 } from "unthrown";
 
 /**
@@ -65,6 +67,31 @@ const VARIABLES = {
 
 const DEFAULT_RELOAD_MS = 60_000;
 
+const FILE_KEYS = ["serverCaCertPath", "clientCertPath", "clientKeyPath", "apiKeyPath"] as const;
+
+type FilePaths = Readonly<
+  Record<(typeof FILE_KEYS)[number], Result<string | undefined, ConfigIssue>>
+>;
+
+type CredentialFiles = readonly [
+  Buffer | undefined,
+  Buffer | undefined,
+  Buffer | undefined,
+  string | undefined,
+];
+
+class CredentialFilesChanged extends TaggedError("CredentialFilesChanged")<{
+  readonly variables: readonly string[];
+}> {
+  override message = "the Temporal credential files changed while being read";
+}
+
+class CredentialPathUnavailable extends TaggedError("CredentialPathUnavailable")<{
+  readonly issue: ConfigIssue;
+}> {
+  override message = "the Temporal credential path cannot be resolved";
+}
+
 const optional = <T, const V extends string>(
   field: ConfigField<T, V>,
 ): ConfigField<T | undefined, V, "optional"> => ({
@@ -116,15 +143,7 @@ export function credentialsOf(
 ): AsyncResult<Credentials, ConfigInvalid | TemporalApiKeyUnavailable> {
   const issues = refusals(security, source);
   if (issues.length > 0) return ErrAsync(new ConfigInvalid({ port, issues }));
-  return validateAllAsync(
-    [
-      fileOf("serverCaCertPath", security),
-      fileOf("clientCertPath", security),
-      fileOf("clientKeyPath", security),
-      fileOf("apiKeyPath", security),
-    ],
-    (failed) => new ConfigInvalid({ port, issues: failed }),
-  ).flatMap(([ca, crt, key, apiKeyFile]) => {
+  return filesOf(port, security).flatMap(([ca, crt, key, apiKeyFile]) => {
     const credentials: Credentials = {
       tls: tlsOn(security, source)
         ? {
@@ -283,26 +302,132 @@ const refusals = (
   return issues;
 };
 
-function fileOf(
-  key: "serverCaCertPath" | "clientCertPath" | "clientKeyPath",
+const filesOf = (
+  port: string,
   security: TemporalConnectionSecurity,
-): AsyncResult<Buffer | undefined, ConfigIssue>;
-function fileOf(
-  key: "apiKeyPath",
+  attempts = 3,
+): AsyncResult<CredentialFiles, ConfigInvalid> =>
+  pathsOf(security)
+    .flatMap((paths) =>
+      validateAllAsync(
+        [
+          fileOf("serverCaCertPath", paths),
+          fileOf("clientCertPath", paths),
+          fileOf("clientKeyPath", paths),
+          fileOf("apiKeyPath", paths),
+        ],
+        (failed) => new ConfigInvalid({ port, issues: failed }),
+      )
+        .flatTap(() => unchangedPaths(security, paths))
+        .flatMapErrCases((matcher) =>
+          matcher
+            .with({ _tag: "ConfigInvalid" }, (failure) =>
+              unchangedPaths(security, paths).flatMap(() => Err(failure)),
+            )
+            .with({ _tag: "CredentialFilesChanged" }, Err),
+        ),
+    )
+    .flatMapErrCases((matcher) =>
+      matcher
+        .with({ _tag: "ConfigInvalid" }, Err)
+        .with({ _tag: "CredentialFilesChanged" }, (failure) =>
+          attempts > 1
+            ? filesOf(port, security, attempts - 1)
+            : Err(
+                new ConfigInvalid({
+                  port,
+                  issues: failure.variables.map((variable) => ({
+                    message: "changed while being read",
+                    path: [variable],
+                  })),
+                }),
+              ),
+        ),
+    );
+
+const pathsOf = (security: TemporalConnectionSecurity): AsyncResult<FilePaths, never> =>
+  allAsync([
+    pathOf("serverCaCertPath", security),
+    pathOf("clientCertPath", security),
+    pathOf("clientKeyPath", security),
+    pathOf("apiKeyPath", security),
+  ]).map(([serverCaCertPath, clientCertPath, clientKeyPath, apiKeyPath]) => ({
+    serverCaCertPath,
+    clientCertPath,
+    clientKeyPath,
+    apiKeyPath,
+  }));
+
+const pathOf = (
+  key: (typeof FILE_KEYS)[number],
   security: TemporalConnectionSecurity,
-): AsyncResult<string | undefined, ConfigIssue>;
-function fileOf(
-  key: "serverCaCertPath" | "clientCertPath" | "clientKeyPath" | "apiKeyPath",
+): AsyncResult<Result<string | undefined, ConfigIssue>, never> =>
+  resolvePath(key, security)
+    .map((path) => Ok(path))
+    .recoverErrCases((matcher) =>
+      matcher.with({ _tag: "CredentialPathUnavailable" }, ({ issue }) => Err(issue)),
+    );
+
+const resolvePath = (
+  key: (typeof FILE_KEYS)[number],
   security: TemporalConnectionSecurity,
-): AsyncResult<Buffer | string | undefined, ConfigIssue> {
+  attempts = 3,
+): AsyncResult<string | undefined, CredentialPathUnavailable> => {
   const path = security[key];
   if (path === undefined) return OkAsync(undefined);
-  const issue = (message: string): ConfigIssue => ({ message, path: [VARIABLES[key]] });
-  return fromPromise(readFile(path), (cause) =>
-    issue(`cannot be read (${(cause as NodeJS.ErrnoException).code})`),
-  ).flatMap((bytes) => {
-    const content = key === "apiKeyPath" ? bytes.toString("utf8").trim() : bytes;
-    // A file being rewritten in place reads empty for a moment; it is not a credential.
-    return content.length === 0 ? Err(issue("is empty")) : Ok(content);
+  return fromPromise(
+    realpath(path),
+    (cause) =>
+      new CredentialPathUnavailable({
+        issue: {
+          message: `cannot be read (${(cause as NodeJS.ErrnoException).code})`,
+          path: [VARIABLES[key]],
+        },
+      }),
+  ).flatMapErrCases((matcher) =>
+    matcher.with({ _tag: "CredentialPathUnavailable" }, (failure) =>
+      attempts > 1 ? resolvePath(key, security, attempts - 1) : Err(failure),
+    ),
+  );
+};
+
+const unchangedPaths = (
+  security: TemporalConnectionSecurity,
+  before: FilePaths,
+): AsyncResult<void, CredentialFilesChanged> =>
+  pathsOf(security)
+    .ensure(
+      (after) => FILE_KEYS.every((key) => pathIdentity(before[key]) === pathIdentity(after[key])),
+      (after) =>
+        new CredentialFilesChanged({
+          variables: FILE_KEYS.filter(
+            (key) => pathIdentity(before[key]) !== pathIdentity(after[key]),
+          ).map((key) => VARIABLES[key]),
+        }),
+    )
+    .discard();
+
+const pathIdentity = (path: Result<string | undefined, ConfigIssue>): string | undefined =>
+  JSON.stringify(path.getOrElse((issue) => issue));
+
+function fileOf(
+  key: "serverCaCertPath" | "clientCertPath" | "clientKeyPath",
+  paths: FilePaths,
+): AsyncResult<Buffer | undefined, ConfigIssue>;
+function fileOf(key: "apiKeyPath", paths: FilePaths): AsyncResult<string | undefined, ConfigIssue>;
+function fileOf(
+  key: (typeof FILE_KEYS)[number],
+  paths: FilePaths,
+): AsyncResult<Buffer | string | undefined, ConfigIssue> {
+  return paths[key].toAsync().flatMap((path) => {
+    if (path === undefined) return OkAsync(undefined);
+    const issue = (message: string): ConfigIssue => ({ message, path: [VARIABLES[key]] });
+    return fromPromise(readFile(path), (cause) =>
+      issue(`cannot be read (${(cause as NodeJS.ErrnoException).code})`),
+    ).flatMap((bytes) => {
+      const content = key === "apiKeyPath" ? bytes.toString("utf8").trim() : bytes;
+      // A file being rewritten in place reads empty for a moment; it is not a credential.
+      return content.length === 0 ? Err(issue("is empty")) : Ok(content);
+    });
   });
 }

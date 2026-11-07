@@ -201,13 +201,37 @@ workspace reuses. Nothing else here does.
 
 ## Diagnostic disclosure
 
-`installTemporalDiagnostics({ logger, diagnostics, nativeLogLevel? })` installs
-Temporal's process Runtime once, before the first Temporal connection or worker.
-It forwards SDK, workflow, activity and native Core logs through the supplied
-logger and shared `DiagnosticPolicy`. Native Core verbosity defaults to `WARN`;
-the kernel retains ownership of process signals. The installer returns
-`Result<void, never>`: a late or repeated installation is a defect to handle
-before booting the worker.
+`withTemporalDiagnostics(options, work)` scopes Temporal's diagnostic defaults
+without eagerly creating its native Runtime. Start the worker inside the callback
+and keep it open until owned workers and connections close. Startup refusals or
+defects before the first native connection then leave no diagnostic Runtime
+keeping the process alive. The helper returns an `AsyncResult` preserving the
+callback's outcome, restoring owned defaults on success, modeled error or defect, while preserving
+active Runtime instances and replacement configuration.
+
+```ts
+import { createLogger, diagnosticPolicy, jsonSink } from "@btravstack/observability";
+import { withTemporalDiagnostics } from "@btravstack/temporal-worker";
+import { fromSafePromise } from "unthrown";
+
+await withTemporalDiagnostics(
+  { logger: createLogger(jsonSink()), diagnostics: diagnosticPolicy() },
+  () => fromSafePromise(runMain(OrderWorker)),
+).get();
+```
+
+`TemporalDiagnosticsOptions` holds `{ logger, diagnostics, nativeLogLevel? }`.
+SDK, workflow, activity and native Core logs reach the shared `DiagnosticPolicy`;
+native verbosity defaults to `WARN`, and the kernel owns process signals. An
+existing Runtime or overlapping scope is a defect. Do not call `Runtime.install`
+inside the callback: explicit SDK installation overrides scoped defaults.
+Temporal owns connection teardown and log flushing; the helper never closes an
+active Runtime or repairs native resources leaked after Runtime creation.
+
+`installTemporalDiagnostics(options)` remains the eager, process-wide installer
+returning `Result<void, never>`. A late or repeated installation defects. It cannot
+release an idle Runtime after pre-connection startup failure; prefer the scoped
+helper for application startup.
 
 `temporalDiagnosticLogger(logger, diagnostics)` returns a Temporal SDK logger for
 an application that configures `Runtime.install` itself. Native log forwarding
