@@ -42,6 +42,15 @@ dependency cannot decide. It stops the authentication walk and every HTTP
 answerer returns `503`, reporting the scheme through `Observers`. See
 [authentication dependency outages](https://btravstack.github.io/btravstack/reference/http-server#authentication-dependency-outages).
 
+`jwtAuthenticator()` returns `Unauthenticated` when the issuer's key set is
+unavailable or unusable. The answerer determines the response: usually `401`,
+or a `303` login redirect for a navigating browser on an htmx route with a
+configured login route. It reports the outage through `Observers`
+with `component: "jwt"`, `name: "verify"`, `outcome: "error"` and a bounded
+`reason`, rather than returning `AuthenticatorUnavailable`. See the
+[JWT issuer-outage policy](AUTH.md#surface) and its distinction from
+[authentication dependency outages](AUTH.md#authentication-dependency-outages).
+
 Request-scoped providers may inject `HttpRequestMetadata` to decode headers,
 method and URL independently of authentication. The runtime seeds its immutable
 snapshot and cancellation signal once per request unit; it is unavailable in
