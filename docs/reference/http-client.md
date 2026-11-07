@@ -202,7 +202,7 @@ See [OAuth client](/reference/oauth-client).
 The conservative prefix policy was checked on 2026-10-17 against IANA's
 [IPv4 special-purpose registry](https://www.iana.org/assignments/iana-ipv4-special-registry/),
 [IPv6 special-purpose registry](https://www.iana.org/assignments/iana-ipv6-special-registry/),
-[IPv6 address space allocation](https://www.iana.org/assignments/ipv6-address-space/)
+[IPv6 address space allocation](https://www.iana.org/assignments/ipv6-address-space)
 and [global unicast assignments](https://www.iana.org/assignments/ipv6-unicast-address-assignments/).
 By default, all listed IPv4 special-purpose allocations are refused, including their public
 anycast exceptions, as are multicast/reserved IPv4. IPv6 accepts only the listed
