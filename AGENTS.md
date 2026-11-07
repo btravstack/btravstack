@@ -858,7 +858,9 @@ error payloads. That child accepts all six levels, leaving the stack's validated
 An opt-in shared `DiagnosticPolicy` minimizes log, trace and Temporal SDK/native
 diagnostics with static vocabularies and bounded fields. Core declares only the
 structural contract; the observability package builds the policy, and Temporal
-installs its diagnostic adapter before the first native connection. Process
+configures its diagnostic adapter before the first native connection. The scoped
+Temporal diagnostic helper reserves SDK defaults without constructing native
+Core, so pre-connection startup failures retain no diagnostic Runtime. Process
 events use the same policy through `kernelEvents` over a protected logger.
 Malformed `Config.url` diagnostics omit the raw value entirely,
 since malformed credentials cannot be reliably separated from the URL.

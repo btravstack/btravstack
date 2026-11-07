@@ -24,4 +24,9 @@ export type {
   ActivityInputPortOf,
   WorkflowActivitiesPortOf,
 } from "./workflow-activities.js";
-export { installTemporalDiagnostics, temporalDiagnosticLogger } from "./diagnostics.js";
+export {
+  installTemporalDiagnostics,
+  temporalDiagnosticLogger,
+  withTemporalDiagnostics,
+  type TemporalDiagnosticsOptions,
+} from "./diagnostics.js";
