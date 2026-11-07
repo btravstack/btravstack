@@ -331,3 +331,15 @@ recovers; it never keeps polling with the previous credential after source remov
 `api-key-source.spec.ts` uses the shared TLS authentication proxy to exercise real
 namespace RPCs and workers, including renewal and credential removal. Existing
 file-only rotation keeps its previous-credential retry behavior.
+
+## Worker capacity
+
+The named cache and workflow/activity execution options bind the corresponding
+`TEMPORAL_MAX_*` variables. Unset values remain undefined in `TemporalConfig`
+and are omitted from `Worker.create`, preserving the installed SDK defaults.
+Pins and environment values share integer validation. Cross-field validation
+refuses configurations Temporal would clamp; custom tuners remain unsupported,
+including callers bypassing the public types. The capacity spec captures the
+real SDK creation boundary without replacing the worker, checks its compiled
+fixed-slot tuner, and drives queued activities and cache eviction against the
+shared server. Capacity is per worker, not a bound on open workflows or replicas.
