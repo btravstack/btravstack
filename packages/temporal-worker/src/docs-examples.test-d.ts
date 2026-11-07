@@ -8,10 +8,15 @@ import {
 } from "@btravstack/observability";
 import type { Logger as TemporalLogger } from "@temporalio/common";
 import { Runtime } from "@temporalio/worker";
-import type { Result } from "unthrown";
+import { Err, ErrAsync, Ok, TaggedError, type AsyncResult, type Result } from "unthrown";
 import { expectTypeOf } from "vitest";
 
-import { installTemporalDiagnostics, temporalDiagnosticLogger } from "./index.js";
+import {
+  installTemporalDiagnostics,
+  temporalDiagnosticLogger,
+  withTemporalDiagnostics,
+  type TemporalDiagnosticsOptions,
+} from "./index.js";
 
 const production: DiagnosticPolicy = diagnosticPolicy({
   messages: ["worker.unavailable"],
@@ -19,6 +24,23 @@ const production: DiagnosticPolicy = diagnosticPolicy({
   fields: { sdkComponent: ["activity", "workflow", "worker", "core"] },
 });
 const logger = createLogger(jsonSink(), "info", production);
+const options = { logger, diagnostics: production } satisfies TemporalDiagnosticsOptions;
+
+class CredentialsUnavailable extends TaggedError("CredentialsUnavailable") {}
+
+const scopedSuccess = () => withTemporalDiagnostics(options, () => Ok("started"));
+const scopedRefusal = () =>
+  withTemporalDiagnostics(options, () => Err(new CredentialsUnavailable()));
+const scopedAsyncRefusal = () =>
+  withTemporalDiagnostics(options, () => ErrAsync(new CredentialsUnavailable()));
+
+expectTypeOf<ReturnType<typeof scopedSuccess>>().toEqualTypeOf<AsyncResult<string, never>>();
+expectTypeOf<ReturnType<typeof scopedRefusal>>().toEqualTypeOf<
+  AsyncResult<never, CredentialsUnavailable>
+>();
+expectTypeOf<ReturnType<typeof scopedAsyncRefusal>>().toEqualTypeOf<
+  AsyncResult<never, CredentialsUnavailable>
+>();
 // These compile-only startup examples are mutually exclusive: install once.
 const installProduction = () => installTemporalDiagnostics({ logger, diagnostics: production });
 const installProductionAtWarn = () =>
