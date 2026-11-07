@@ -1,5 +1,9 @@
 # @btravstack/temporal-testing
 
+## 0.58.0
+
+No changes in this release.
+
 ## 0.57.0
 
 No changes in this release.

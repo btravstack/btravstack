@@ -1,5 +1,17 @@
 # @btravstack/temporal-client
 
+## 0.58.0
+
+### Patch Changes
+
+- 1ad4e2d: Read projected Temporal credential files from a coherent immutable generation.
+  Resolve and verify file targets around each batch, retry bounded generation
+  changes, and retain all stable validation failures. A Kubernetes Secret swap can
+  no longer mix an old certificate with a new private key or turn old-generation
+  garbage collection into a false reload refusal.
+- @btravstack/config@0.58.0
+  - @btravstack/di@0.58.0
+
 ## 0.57.0
 
 ### Patch Changes
