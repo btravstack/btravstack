@@ -1,5 +1,17 @@
 # @btravstack/temporal-worker
 
+## 0.57.0
+
+### Minor Changes
+
+- dbe4df5: Expose named workflow cache and workflow/activity execution capacity options with matching environment bindings. Preserve SDK defaults when unset and validate fixed-capacity settings before startup.
+
+### Patch Changes
+
+- @btravstack/config@0.57.0
+  - @btravstack/core@0.57.0
+  - @btravstack/di@0.57.0
+
 ## 0.56.1
 
 ### Patch Changes
