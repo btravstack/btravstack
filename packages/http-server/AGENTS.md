@@ -1402,6 +1402,12 @@ A `Clock` here would be machinery bought for one test.
 
 ## `oidc()` — the login answerer, from `@btravstack/http-server/oidc`
 
+The browser's cookie budget applies to the complete sealed transaction, not
+only the context input. Login measures the full Set-Cookie value before its
+provider redirect, retries with a root return destination when necessary, and
+refuses if the protected fields still exceed the budget. It never drops context
+or weakens flow binding to fit a cookie.
+
 **Application intent travels with the protocol transaction.** A login hint or
 return URL cannot establish which application account the browser requested.
 An opt-in context is validated, serialized as bounded JSON inside the encrypted

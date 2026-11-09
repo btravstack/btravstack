@@ -555,7 +555,7 @@ The two rules this half exists to state, before the detail:
   **A refused login is an OPERATION, reported to `Observers` like a cache
   miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
   settles `error` carrying its own `reason` — `transient_missing`,
-  `state_mismatch`, `login_context_refused`, `provider_refused`, `grant_failed`, `principal_refused`,
+  `state_mismatch`, `login_context_refused`, `transient_too_large`, `provider_refused`, `grant_failed`, `principal_refused`,
   `token_store_failed`.
   That matters because a refused login is the one refusal in this package that
   DESTROYS information: the provider's reason must not cross the wire, a `401`

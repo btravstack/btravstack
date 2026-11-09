@@ -3,6 +3,54 @@ import { describe, expect, vi } from "vitest";
 import { it } from "./__tests__/oidc-login-context.fixture.js";
 
 describe("application context bound to the OIDC login transaction", () => {
+  it.for([false, true])(
+    "falls back to root when the complete transient cookie exceeds the browser limit: %s",
+    async (withoutContext, { contextLogin }) => {
+      // GIVEN
+      const tenant = "a".repeat(1000);
+      const browser = await contextLogin({ withoutContext, resolvedTenant: tenant });
+      const destination = `/${"x".repeat(5000)}`;
+      // WHEN
+      const begun = await browser.go(
+        `/auth/login?tenant=${tenant}&return=${encodeURIComponent(destination)}`,
+      );
+      const result = await browser.go(await browser.authorize(begun.location, tenant));
+      // THEN
+      expect({
+        status: result.status,
+        destination: result.location,
+        fits: begun.cookies.every((cookie) => Buffer.byteLength(cookie) <= 4096),
+        admitted: browser.admitted,
+      }).toEqual({
+        status: 303,
+        destination: "/",
+        fits: true,
+        admitted: withoutContext ? [] : [{ tenant }],
+      });
+    },
+  );
+
+  it("refuses an oversized protected binding before redirecting to the provider", async ({
+    contextLogin,
+  }) => {
+    // GIVEN
+    const browser = await contextLogin({ clientId: "client-" + "x".repeat(3000) });
+    // WHEN
+    const result = await browser.begin();
+    // THEN
+    expect({
+      status: result.status,
+      location: result.location,
+      cookies: result.cookies,
+      changes: browser.changes,
+    }).toEqual({
+      status: 400,
+      location: null,
+      cookies: ["__Host-oidc=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0"],
+      changes: [],
+    });
+  });
+
   it("waits for asynchronous application context resolution", async ({ contextLogin }) => {
     // GIVEN
     const browser = await contextLogin({ asyncResolve: true });

@@ -646,6 +646,11 @@ unauthenticated caller here. Without `loginContext`, `as` rides through as
 request hints are not forwarded automatically: derive an allowlisted
 `login_hint` through `authorizationParameters` when the application permits it.
 
+The complete sealed transient cookie, including its name and attributes, must
+fit within 4096 UTF-8 bytes. If it does not, login retries with `/` as the return
+destination. If the protected transaction still cannot fit, login refuses with
+`400` before redirecting; context and binding are never discarded to make room.
+
 **`GET <prefix>/callback`** checks the `state` that came back against that
 cookie, exchanges the code, and seals `principal(claims)` into
 `__Host-session` — clearing the transient in the same answer — then `303`s to
@@ -671,6 +676,8 @@ remember a validated choice made before authentication, such as an account's
 tenant or a permitted federation connection. The callback receives that choice
 as the third argument of `principal(claims, services, context)`. Without the
 option, existing principal callbacks keep working and the context is `undefined`.
+Only the default or exact `undefined` context type permits omitting
+`loginContext`; unions containing `undefined` and `unknown` still require it.
 
 | Member                    | Required | Contract                                                                                                                                                                        |
 | ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -797,7 +804,7 @@ information — the provider's reason must not reach the caller, and a `401` is
 not an error the runtime's RED metrics count, so a rotated client secret, a
 dead token endpoint and a genuinely bad code are otherwise one indistinguishable
 spike. So every refusal settles `error` carrying its own `reason`:
-`transient_missing`, `state_mismatch`, `login_context_refused`, `provider_refused`,
+`transient_missing`, `state_mismatch`, `login_context_refused`, `transient_too_large`, `provider_refused`,
 `grant_failed`, `principal_refused` or `token_store_failed`. These dimensions
 are bounded; the provider's
 own `error_description` and the library error's message are caller-controlled,

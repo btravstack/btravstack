@@ -172,12 +172,19 @@ export type OidcOptions<
   readonly allowInsecureIssuer?: boolean;
 };
 
+type ContextGate<C, D extends Readonly<Record<string, AnyPort>>> = unknown extends C
+  ? { readonly loginContext: OidcLoginContext<C, D> }
+  : [C, undefined] extends [undefined, C]
+    ? unknown
+    : { readonly loginContext: OidcLoginContext<C, D> };
+
 const DEFAULT_PREFIX = "/auth";
 const DEFAULT_SCOPE = "openid";
 const DEFAULT_POST_LOGOUT = "/";
 
 /** The login flow's own state, while the browser is away at the provider. */
 const TRANSIENT_COOKIE = "__Host-oidc";
+const MAX_TRANSIENT_COOKIE_BYTES = 4096;
 
 // `request.url` is a path, so it needs an origin to parse against. Nothing
 // reads this one: every URL built from the request is used for its path and
@@ -285,15 +292,23 @@ const login = async <P>(
   const nonce = randomNonce();
   const challenge = await calculatePKCECodeChallenge(verifier);
   const hint = target.searchParams.get("as");
-  const sealed = await codec.transient
-    .seal({
-      verifier,
-      state,
-      nonce,
-      return: returnTo(target.searchParams.get("return")),
-      ...(context === undefined ? {} : { context: context.serialized, binding: bound.flowBinding }),
-    })
-    .get();
+  const flow = {
+    verifier,
+    state,
+    nonce,
+    return: returnTo(target.searchParams.get("return")),
+    ...(context === undefined ? {} : { context: context.serialized, binding: bound.flowBinding }),
+  };
+  let sealed = await codec.transient.seal(flow).get();
+  let cookie = setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC);
+  if (Buffer.byteLength(cookie) > MAX_TRANSIENT_COOKIE_BYTES) {
+    sealed = await codec.transient.seal({ ...flow, return: "/" }).get();
+    cookie = setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC);
+  }
+  if (Buffer.byteLength(cookie) > MAX_TRANSIENT_COOKIE_BYTES) {
+    refuse(response, 400, settle, "transient_too_large");
+    return;
+  }
 
   send(response, 303, {
     location: buildAuthorizationUrl(bound.config, {
@@ -306,7 +321,7 @@ const login = async <P>(
       nonce,
       ...(hint === null || bound.loginContext !== undefined ? {} : { login_hint: hint }),
     }).href,
-    "set-cookie": setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC),
+    "set-cookie": cookie,
   });
 };
 
@@ -481,6 +496,8 @@ const handlerFor =
  *   `state`, `nonce` and where to return to into the five-minute
  *   `__Host-oidc` cookie and redirects to the provider. `return` is the seam
  *   `htmx({ login })` writes; `as` rides through as `login_hint`.
+ *   An oversized sealed cookie retries with `/` as its return destination;
+ *   if it still exceeds 4096 bytes including cookie attributes, login refuses.
  * - `GET <prefix>/callback` checks `state` against that cookie, exchanges the
  *   code, and seals `principal(claims)` into `__Host-session` — clearing the
  *   transient in the same answer.
@@ -523,9 +540,7 @@ export const oidc =
     const O extends OidcOptions<P, string, D, C> = OidcOptions<P, string, D, C>,
   >(
     options: O &
-      OptionsAs<O, OidcOptions<P, string, D, C>> & { readonly inject?: D } & (undefined extends C
-        ? unknown
-        : { readonly loginContext: OidcLoginContext<C, D> }),
+      OptionsAs<O, OidcOptions<P, string, D, C>> & { readonly inject?: D } & ContextGate<C, D>,
   ): readonly [
     OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O, InstanceType<D[keyof D]>>,
     AnyProvider,

@@ -127,13 +127,12 @@ async function contextLogin(
                     options.resolvedTenant ??
                     new URL(metadata.url ?? "/", "https://app.example").searchParams.get("tenant");
                   resolved.push(metadata.method ?? "");
-                  const resolution = Ok(
+                  const value =
                     tenant !== null &&
-                      (options.resolvedTenant !== undefined || services.tenants.includes(tenant))
+                    (options.resolvedTenant !== undefined || services.tenants.includes(tenant))
                       ? { tenant }
-                      : undefined,
-                  );
-                  return options.asyncResolve ? resolution.toAsync() : resolution;
+                      : undefined;
+                  return options.asyncResolve ? OkAsync(value) : Ok(value);
                 },
                 allowedParameters: options.allowedParameters ?? ["connection", "prompt"],
                 authorizationParameters: (context) =>

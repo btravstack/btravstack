@@ -33,56 +33,56 @@ describe("OIDC login context values", () => {
     Object.defineProperty({}, "intent", { get: () => "tenant", enumerable: true }),
     { [Symbol("hidden")]: "tenant" },
   ])("refuses non-JSON or oversized context %#", async (input) => {
-    // Arrange
+    // GIVEN
     const context = loginContextFor({ schema: z.unknown(), resolve: () => Ok(input) }, {});
-    // Act
+    // WHEN
     const result = await context.prepare(request);
-    // Assert
+    // THEN
     expect(result).toBeOkWith(undefined);
   });
 
   it.each([null, true, false, 4, "tenant", ["tenant", 3], { tenant: "one" }])(
     "preserves JSON intent %#",
     async (input) => {
-      // Arrange
+      // GIVEN
       const context = loginContextFor({ schema: z.unknown(), resolve: () => Ok(input) }, {});
-      // Act
+      // WHEN
       const result = await context
         .prepare(request)
         .flatMap((prepared) => context.read(prepared?.serialized));
-      // Assert
+      // THEN
       expect(result).toBeOkWith(input);
     },
   );
 
   it("revalidates original input instead of transforming schema output twice", async () => {
-    // Arrange
+    // GIVEN
     const context = loginContextFor(
       { schema: z.string().transform(Number), resolve: () => Ok("42") },
       {},
     );
-    // Act
+    // WHEN
     const result = await context
       .prepare(request)
       .flatMap((prepared) => context.read(prepared?.serialized));
-    // Assert
+    // THEN
     expect(result).toBeOkWith(42);
   });
 
   it("refuses explicit policy errors", async () => {
-    // Arrange
+    // GIVEN
     const context = loginContextFor(
       { schema: z.string(), resolve: () => Err(new OidcLoginRefused()) },
       {},
     );
-    // Act
+    // WHEN
     const result = await context.prepare(request);
-    // Assert
+    // THEN
     expect(result).toBeOkWith(undefined);
   });
 
   it("derives allowlisted parameters from validated intent", async () => {
-    // Arrange
+    // GIVEN
     const context = loginContextFor(
       {
         schema: z.object({ connection: z.string() }),
@@ -92,12 +92,12 @@ describe("OIDC login context values", () => {
       },
       {},
     );
-    // Act
+    // WHEN
     const result = await context.prepare(request).map((prepared) => ({
       serialized: prepared?.serialized,
       parameters: [...(prepared?.parameters ?? [])],
     }));
-    // Assert
+    // THEN
     expect(result).toBeOkWith({
       serialized: '{"connection":"enterprise"}',
       parameters: [["connection", "enterprise"]],
@@ -107,27 +107,27 @@ describe("OIDC login context values", () => {
   it.each([undefined, "{", "null", '"wrong"', JSON.stringify("x".repeat(1025))])(
     "refuses invalid callback input %#",
     async (serialized) => {
-      // Arrange
+      // GIVEN
       const context = loginContextFor(
         { schema: z.object({ tenant: z.string() }), resolve: () => Ok({ tenant: "one" }) },
         {},
       );
-      // Act
+      // WHEN
       const result = await context.read(serialized);
-      // Assert
+      // THEN
       expect(result).toBeOkWith(undefined);
     },
   );
 
   it("refuses schema-invalid initial input", async () => {
-    // Arrange
+    // GIVEN
     const context = loginContextFor(
       { schema: z.object({ tenant: z.string() }), resolve: () => Ok({ tenant: 3 }) },
       {},
     );
-    // Act
+    // WHEN
     const result = await context.prepare(request);
-    // Assert
+    // THEN
     expect(result).toBeOkWith(undefined);
   });
 
@@ -147,7 +147,7 @@ describe("OIDC login context values", () => {
     "request",
     "request_uri",
   ])("refuses protected parameter %s even when allowed", async (name) => {
-    // Arrange
+    // GIVEN
     const context = loginContextFor(
       {
         schema: z.string(),
@@ -157,16 +157,16 @@ describe("OIDC login context values", () => {
       },
       {},
     );
-    // Act
+    // WHEN
     const result = await context.prepare(request);
-    // Assert
+    // THEN
     expect(result).toBeOkWith(undefined);
   });
 
   it.each([{ allowedParameters: [] }, { allowedParameters: ["connection"] }])(
     "refuses unallowed or duplicate parameters %#",
     async ({ allowedParameters }) => {
-      // Arrange
+      // GIVEN
       const context = loginContextFor(
         {
           schema: z.string(),
@@ -180,9 +180,9 @@ describe("OIDC login context values", () => {
         },
         {},
       );
-      // Act
+      // WHEN
       const result = await context.prepare(request);
-      // Assert
+      // THEN
       expect(result).toBeOkWith(undefined);
     },
   );

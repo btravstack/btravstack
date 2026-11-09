@@ -53,3 +53,39 @@ const bad: OidcLoginContext<Context> = {
   // @ts-expect-error principal context retains its schema output type
   authorizationParameters: (context: number) => ({ login_hint: String(context) }),
 };
+
+const [explicitlyContextFree] = oidc<unknown, undefined>()({
+  principal: (claims, _services, context) => {
+    expectTypeOf(context).toEqualTypeOf<undefined>();
+    return claims;
+  },
+});
+
+// @ts-expect-error an explicit context union still requires resolution and validation
+const [missingOptional] = oidc<unknown, Context | undefined>()({ principal: (claims) => claims });
+
+// @ts-expect-error unknown is an explicit context contract, not the context-free default
+const [missingUnknown] = oidc<unknown, unknown>()({ principal: (claims) => claims });
+
+// @ts-expect-error an impossible context must not be manufactured by omitting its resolver
+const [missingNever] = oidc<unknown, never>()({ principal: (claims) => claims });
+
+type DynamicContext = ReturnType<typeof JSON.parse>;
+// @ts-expect-error a dynamically typed context still requires resolution and validation
+const [missingDynamic] = oidc<unknown, DynamicContext>()({ principal: (claims) => claims });
+
+const [optionalContext] = oidc<unknown, Context | undefined>()({
+  loginContext: { schema, resolve: () => Ok({ tenant: "example" }) },
+  principal: (_claims, _services, context) => {
+    expectTypeOf(context).toEqualTypeOf<Context | undefined>();
+    return context;
+  },
+});
+
+const [unknownContext] = oidc<unknown, unknown>()({
+  loginContext: { schema, resolve: () => Ok({ tenant: "example" }) },
+  principal: (_claims, _services, context) => {
+    expectTypeOf(context).toEqualTypeOf<unknown>();
+    return context;
+  },
+});
