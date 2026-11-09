@@ -28,18 +28,22 @@ import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
 import { discoverOidc, type OidcUnreachable } from "./oidc-discovery.js";
+import { loginContextFor, type OidcLoginContext } from "./oidc-login-context.js";
 import { logoutLocation } from "./oidc-logout-location.js";
 import { logoutRedirectUri } from "./oidc-logout-uri.js";
 import type { OidcLogoutContext, OidcTokensService } from "./oidc-token-store.js";
 import { injectedDeps, injectedServices } from "./options.js";
 import type { Injected, PrefixOf } from "./options.js";
 import { forLocation, returnTo } from "./redirect.js";
+import { requestMetadataOf } from "./request-metadata.js";
 import {
   SESSION_COOKIE,
   SessionCodec,
   TRANSIENT_TTL_SEC,
   type SessionCodecService,
 } from "./session.js";
+
+export { OidcLoginRefused, type OidcLoginContext } from "./oidc-login-context.js";
 
 export { OidcUnreachable } from "./oidc-discovery.js";
 
@@ -100,6 +104,7 @@ export type OidcOptions<
   P,
   Pre extends string = string,
   D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
+  C = undefined,
 > = {
   /** Pins `<prefix>_ISSUER` — the provider, as its discovery document names itself. */
   readonly issuer?: string | undefined;
@@ -142,7 +147,9 @@ export type OidcOptions<
    * both. Answering `undefined` refuses the login: the claim this application
    * requires and the standard does not, such as a tenant.
    */
-  readonly principal: (claims: IDToken, services: Injected<D>) => P | undefined;
+  readonly principal: (claims: IDToken, services: Injected<D>, context: C) => P | undefined;
+  /** Application context resolved before redirect and validated again before admission. */
+  readonly loginContext?: OidcLoginContext<C, D>;
   /** Server-side token manager. Its binding must match this login. */
   readonly tokens?: PortClassOf<string, OidcTokensService>;
   /**
@@ -165,12 +172,19 @@ export type OidcOptions<
   readonly allowInsecureIssuer?: boolean;
 };
 
+type ContextGate<C, D extends Readonly<Record<string, AnyPort>>> = unknown extends C
+  ? { readonly loginContext: OidcLoginContext<C, D> }
+  : [C, undefined] extends [undefined, C]
+    ? unknown
+    : { readonly loginContext: OidcLoginContext<C, D> };
+
 const DEFAULT_PREFIX = "/auth";
 const DEFAULT_SCOPE = "openid";
 const DEFAULT_POST_LOGOUT = "/";
 
 /** The login flow's own state, while the browser is away at the provider. */
 const TRANSIENT_COOKIE = "__Host-oidc";
+const MAX_TRANSIENT_COOKIE_BYTES = 4096;
 
 // `request.url` is a path, so it needs an origin to parse against. Nothing
 // reads this one: every URL built from the request is used for its path and
@@ -179,6 +193,8 @@ const RELATIVE = "http://request.invalid";
 
 /** Everything the routes close over, decided once at boot. */
 type Bound<P> = {
+  readonly flowBinding: string;
+  readonly loginContext?: ReturnType<typeof loginContextFor<unknown, Record<never, never>>>;
   readonly config: Configuration;
   readonly tokens?: OidcTokensService;
   /** The issuer and client id as configured, sealed into every session so its scheme can tell logins apart. */
@@ -188,7 +204,7 @@ type Bound<P> = {
   readonly scope: string;
   readonly postLogout: string;
   readonly postLogoutRedirectUri?: string;
-  readonly principal: (claims: IDToken) => P | undefined;
+  readonly principal: (claims: IDToken, context: unknown) => P | undefined;
   readonly observers: readonly ((operation: Operation) => Settle)[];
 };
 
@@ -259,31 +275,53 @@ const refuse = (
 
 const login = async <P>(
   target: URL,
+  request: IncomingMessage,
+  signal: AbortSignal,
   response: ServerResponse,
   bound: Bound<P>,
   codec: SessionCodecService,
 ): Promise<void> => {
-  observed(bound.observers, "login", response);
+  const settle = observed(bound.observers, "login", response);
+  const context = await bound.loginContext?.prepare(requestMetadataOf(request, signal)).get();
+  if (bound.loginContext !== undefined && context === undefined) {
+    refuse(response, 400, settle, "login_context_refused");
+    return;
+  }
   const verifier = randomPKCECodeVerifier();
   const state = randomState();
   const nonce = randomNonce();
   const challenge = await calculatePKCECodeChallenge(verifier);
   const hint = target.searchParams.get("as");
-  const sealed = await codec.transient
-    .seal({ verifier, state, nonce, return: returnTo(target.searchParams.get("return")) })
-    .get();
+  const flow = {
+    verifier,
+    state,
+    nonce,
+    return: returnTo(target.searchParams.get("return")),
+    ...(context === undefined ? {} : { context: context.serialized, binding: bound.flowBinding }),
+  };
+  let sealed = await codec.transient.seal(flow).get();
+  let cookie = setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC);
+  if (Buffer.byteLength(cookie) > MAX_TRANSIENT_COOKIE_BYTES) {
+    sealed = await codec.transient.seal({ ...flow, return: "/" }).get();
+    cookie = setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC);
+  }
+  if (Buffer.byteLength(cookie) > MAX_TRANSIENT_COOKIE_BYTES) {
+    refuse(response, 400, settle, "transient_too_large");
+    return;
+  }
 
   send(response, 303, {
     location: buildAuthorizationUrl(bound.config, {
+      ...Object.fromEntries(context?.parameters ?? []),
       redirect_uri: bound.redirectUri,
       scope: bound.scope,
       code_challenge: challenge,
       code_challenge_method: "S256",
       state,
       nonce,
-      ...(hint === null ? {} : { login_hint: hint }),
+      ...(hint === null || bound.loginContext !== undefined ? {} : { login_hint: hint }),
     }).href,
-    "set-cookie": setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC),
+    "set-cookie": cookie,
   });
 };
 
@@ -306,6 +344,16 @@ const callback = async <P>(
   }
   if (held["state"] !== target.searchParams.get("state")) {
     refuse(response, 400, settle, "state_mismatch");
+    return;
+  }
+
+  if (bound.loginContext !== undefined && held["binding"] !== bound.flowBinding) {
+    refuse(response, 400, settle, "login_context_refused");
+    return;
+  }
+  const context = await bound.loginContext?.read(held["context"]).get();
+  if (bound.loginContext !== undefined && context === undefined) {
+    refuse(response, 400, settle, "login_context_refused");
     return;
   }
 
@@ -351,7 +399,7 @@ const callback = async <P>(
   }
 
   const claims = granted.value.claims();
-  const principal = claims === undefined ? undefined : bound.principal(claims);
+  const principal = claims === undefined ? undefined : bound.principal(claims, context);
   if (claims === undefined || principal === undefined) {
     refuse(response, 400, settle, "principal_refused");
     return;
@@ -418,12 +466,12 @@ const logout = async <P>(
 
 const handlerFor =
   <P>(bound: Bound<P>, prefix: `/${string}`, codec: SessionCodecService): HttpAnswerer["handle"] =>
-  async (request, response) => {
+  async (request, response, signal) => {
     const route = `${request.method ?? ""} ${pathUnder(request.url, prefix)}`;
     // Parsed again for its query, and asserted: a target no parser accepts
     // reads as the mount itself, which names no route, so none reads this.
     const target = URL.parse(request.url ?? "/", RELATIVE) as URL;
-    if (route === "GET /login") await login(target, response, bound, codec);
+    if (route === "GET /login") await login(target, request, signal, response, bound, codec);
     else if (route === "GET /callback") await callback(target, request, response, bound, codec);
     else if (route === "POST /logout") await logout(request, response, bound);
     // This answerer owns every path under its mount, so a path naming no route
@@ -448,6 +496,8 @@ const handlerFor =
  *   `state`, `nonce` and where to return to into the five-minute
  *   `__Host-oidc` cookie and redirects to the provider. `return` is the seam
  *   `htmx({ login })` writes; `as` rides through as `login_hint`.
+ *   An oversized sealed cookie retries with `/` as its return destination;
+ *   if it still exceeds 4096 bytes including cookie attributes, login refuses.
  * - `GET <prefix>/callback` checks `state` against that cookie, exchanges the
  *   code, and seals `principal(claims)` into `__Host-session` — clearing the
  *   transient in the same answer.
@@ -484,12 +534,13 @@ const handlerFor =
 // written, naked so a union or an annotated type is inferred whole, and `D` is
 // read off `inject` before `principal` is typed.
 export const oidc =
-  <P = unknown>() =>
+  <P = unknown, C = undefined>() =>
   <
     const D extends Readonly<Record<string, AnyPort>> = Record<never, never>,
-    const O extends OidcOptions<P, string, D> = OidcOptions<P, string, D>,
+    const O extends OidcOptions<P, string, D, C> = OidcOptions<P, string, D, C>,
   >(
-    options: O & OptionsAs<O, OidcOptions<P, string, D>> & { readonly inject?: D },
+    options: O &
+      OptionsAs<O, OidcOptions<P, string, D, C>> & { readonly inject?: D } & ContextGate<C, D>,
   ): readonly [
     OidcAnswerer<PrefixOf<O, "HTTP_OIDC">, O, InstanceType<D[keyof D]>>,
     AnyProvider,
@@ -576,6 +627,20 @@ export const oidc =
               handle: handlerFor(
                 {
                   config,
+                  flowBinding: JSON.stringify([
+                    bound.issuer,
+                    bound.clientId,
+                    bound.redirectUri,
+                    prefix,
+                  ]),
+                  ...(options.loginContext === undefined
+                    ? {}
+                    : {
+                        loginContext: loginContextFor(
+                          options.loginContext,
+                          injectedServices(services) as Injected<D>,
+                        ),
+                      }),
                   ...(tokens === undefined ? {} : { tokens }),
                   issuer: bound.issuer,
                   clientId: bound.clientId,
@@ -585,8 +650,12 @@ export const oidc =
                   ...(bound.postLogoutRedirectUri === undefined
                     ? {}
                     : { postLogoutRedirectUri: bound.postLogoutRedirectUri }),
-                  principal: (claims) =>
-                    options.principal(claims, injectedServices(services) as Injected<D>),
+                  principal: (claims, context) =>
+                    options.principal(
+                      claims,
+                      injectedServices(services) as Injected<D>,
+                      context as C,
+                    ),
                   observers,
                 },
                 prefix,
