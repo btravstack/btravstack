@@ -1,5 +1,22 @@
 # @btravstack/http-server
 
+## 0.59.0
+
+### Minor Changes
+
+- e5da1f6: Bind validated application login context to the protected OIDC transaction and
+  pass it to principal admission before creating a session or retaining tokens.
+  Allow applications to derive explicitly allowlisted provider authorization
+  parameters while preserving the starter's protocol protections. Existing login
+  integrations keep their behavior when no login context is configured.
+
+### Patch Changes
+
+- @btravstack/config@0.59.0
+  - @btravstack/contract@0.59.0
+  - @btravstack/core@0.59.0
+  - @btravstack/di@0.59.0
+
 ## 0.58.0
 
 ### Patch Changes
