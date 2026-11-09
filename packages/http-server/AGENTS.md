@@ -1402,6 +1402,22 @@ A `Clock` here would be machinery bought for one test.
 
 ## `oidc()` — the login answerer, from `@btravstack/http-server/oidc`
 
+**Application intent travels with the protocol transaction.** A login hint or
+return URL cannot establish which application account the browser requested.
+An opt-in context is validated, serialized as bounded JSON inside the encrypted
+transient, and validated again after recovery. The principal callback receives
+it only after the provider's token is verified, before retained credentials or
+the current session are replaced. Tenant lookup, federation choice and the
+comparison with authenticated claims stay application policy.
+
+Provider authorization parameters are derived from that validated context and
+must be explicitly allowlisted. The starter refuses attempts to replace its
+client, redirect, response, scope, state, nonce, PKCE or request-object
+parameters. A context-enabled flow is bound to its configured issuer, client, redirect URI and
+mount, so a shared codec cannot accidentally admit another login's transient.
+The one transient cookie still means the latest login in one browser wins;
+context binding prevents substitution, not competing tabs overwriting cookies.
+
 **It is an ANSWERER, not a scheme, and that is the design.** A login is a
 redirect protocol — three requests, a cookie written on two of them, a browser
 away at somebody else's site in between — where an `AuthenticatorService` is

@@ -434,8 +434,8 @@ The two rules this half exists to state, before the detail:
   header, and a caller presenting a header credential is not a CSRF target, so
   neither sets the marker.
 
-- **`oidc()({ principal, issuer?, clientId?, clientSecret?, redirectUri?, postLogoutRedirectUri?, variablePrefix?, prefix?, scope?, tokens?, postLogout?, allowInsecureIssuer? })`
-  and `OidcUnreachable`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
+- **`oidc()({ principal, inject?, loginContext?, issuer?, clientId?, clientSecret?, redirectUri?, postLogoutRedirectUri?, variablePrefix?, prefix?, scope?, tokens?, postLogout?, allowInsecureIssuer? })`
+  and `OidcUnreachable` / `OidcLoginRefused`** (`oidc.ts`, from `@btravstack/http-server/oidc`) —
   **the one thing in this package on the ISSUING side of the line above, and
   the exception that proves it.** It mints no credential: it walks a browser
   through somebody else's authorization-code flow and hands what comes back to
@@ -458,6 +458,28 @@ The two rules this half exists to state, before the detail:
   passes it to both, and the answer is what goes into `Session.principal`.
   Answering `undefined` refuses the login with a `400`: the claim this
   application requires and the standard does not, a tenant being the usual one.
+
+  **Application login intent is opt-in, not inferred from a hint.**
+  `oidc<P, C>()` accepts `loginContext` to resolve application-owned JSON input
+  from immutable request metadata and injected services. Its Standard Schema
+  validates that input before it is sealed and again after recovery; the
+  resulting context is the third argument of `principal(claims, services, context)`.
+  Principal admission still sees verified claims, and completes before the
+  current session or retained credentials are replaced. Without the option,
+  context is `undefined` and existing callbacks retain their behavior.
+
+  The original JSON input is bounded and encrypted with the protocol state;
+  transformed schema output is not serialized and revalidated as a new input.
+  The flow binds its issuer, client, redirect URI and mount. Context and request
+  details never become observation dimensions. Tenant discovery, federation
+  configuration and matching the authenticated account remain application
+  policy, with no tenant type added to the starter.
+
+  **Provider parameters require both derivation and an explicit allowlist.**
+  `authorizationParameters` runs on validated context and injected services,
+  not an unchecked request parameter record. Protocol-owned parameters cannot
+  be admitted even through the allowlist. The detailed option contract and
+  bounds live in the HTTP reference's application login context section.
 
   **`Session.scopes` comes from the ID token's `scope` claim** — space
   delimited, and a claim the standard does not put in an ID token at all, so
@@ -522,24 +544,18 @@ The two rules this half exists to state, before the detail:
   that came over TLS from the token endpoint, and that is not a trust this
   package extends.
 
-  **That call is knowingly UNPINNED here, and it is the one line in this file
-  no spec on this branch would notice going missing.** Deleting it keeps every
-  `oidc.spec.ts` case green, because Hydra signs correctly and the flow
-  succeeds either way; what it would remove is the check that the signature was
-  verified at all. Pinning it needs a provider that answers a JWKS which cannot
-  verify its own tokens, and a fake-issuer harness bought for one assertion is
-  more machinery than the line it guards. What it rests on instead is the
-  measurement taken against the Ory containers, which is real and is written
-  down in
-  `internal/test-infra/src/ory-login.ts`: `oryClient()` makes the same call for
-  the same reason, and the note there records that without it nothing requests
-  the JWKS. A future change that reaches for a fake issuer for some other
-  reason should pin this on the way past.
+  **Signature verification is tested independently of provider success.** The
+  loopback signed-provider fixture in `oidc-login-context.integration.spec.ts`
+  answers an ID token signed by a key its JWKS does not publish. The callback
+  refuses it before principal admission or retained-token mutation, so removing
+  signature verification cannot silently pass on the strength of Ory signing
+  correctly. The shared Ory flows continue to exercise the real provider's
+  authorization-code protocol.
 
   **A refused login is an OPERATION, reported to `Observers` like a cache
   miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
   settles `error` carrying its own `reason` — `transient_missing`,
-  `state_mismatch`, `provider_refused`, `grant_failed`, `principal_refused`,
+  `state_mismatch`, `login_context_refused`, `provider_refused`, `grant_failed`, `principal_refused`,
   `token_store_failed`.
   That matters because a refused login is the one refusal in this package that
   DESTROYS information: the provider's reason must not cross the wire, a `401`

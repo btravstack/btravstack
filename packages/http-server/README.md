@@ -33,6 +33,13 @@ uses the retained ID token only as the provider's logout hint, after atomically
 deleting the credentials. Without that setting, logout keeps its existing
 parameterless behavior. See [server-side OIDC tokens](https://btravstack.github.io/btravstack/reference/http-server#server-side-oidc-tokens).
 
+`oidc()` can bind application login intent to its protected redirect transaction.
+Use `loginContext` to resolve and validate a small context before redirecting,
+then compare that context with the verified claims in `principal` before a
+session is created. Provider routing parameters need an explicit allowlist;
+the starter retains control of the protocol's security parameters. See
+[application login context](https://btravstack.github.io/btravstack/reference/http-server#application-login-context).
+
 `protectedResource()` publishes Protected Resource Metadata (RFC 9728)
 for one resource, `protectedResourcePerHost()` for one per served host. See [the HTTP reference](https://btravstack.github.io/btravstack/reference/http-server)
 for request units, security, configuration and shutdown behavior.
@@ -83,3 +90,14 @@ Defaults and configuration semantics are in the [HTTP reference](https://btravst
 
 Each has a matching environment variable; defaults, zero semantics and Node
 compatibility are in the [HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#httpconfig-and-the-environment).
+
+## OIDC login context options
+
+- `loginContext.schema`: validates the context before sealing and after recovery.
+- `loginContext.resolve`: resolves login intent from request metadata and injected services.
+- `loginContext.allowedParameters`: names the provider authorization parameters the application may supply.
+- `loginContext.authorizationParameters`: derives those parameters from validated context.
+- `principal`: admits verified claims with the recovered context as its third argument.
+
+Context bounds, refusal behavior and protocol protections are in the
+[HTTP reference](https://btravstack.github.io/btravstack/reference/http-server#application-login-context).

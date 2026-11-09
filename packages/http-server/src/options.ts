@@ -27,7 +27,7 @@ export type PrefixOf<O, Default extends string> = O extends unknown
 
 /** The services an `inject` record resolves to, as a scheme's `principal` receives them. */
 export type Injected<D> = {
-  readonly [K in keyof D]: ServiceOf<InstanceType<D[K] & AnyPort>>;
+  readonly [K in keyof D]: ServiceOf<InstanceType<Extract<D[K], AnyPort>>>;
 };
 
 // A prefix no option key carries, so the application's `inject` names can

@@ -227,6 +227,75 @@ already completed one. The mechanics — why `303` and not `302`, the
 `return` guard against an off-site redirect — are
 [Serve htmx fragments](/how-to/serve-htmx-fragments#send-an-unauthenticated-caller-to-log-in).
 
+## Bind an application account choice to login
+
+For a login that starts from a tenant portal or invitation, resolve that intent
+before redirecting and check it against the account that returns. A provider's
+existing session can authenticate a different account, so a routing hint alone
+does not authorize the intended account.
+
+Declare an application-owned lookup port and provide its implementation in the
+root. It must resolve the request URL against trusted routes or invitations and
+return only a configured tenant and connection. `undefined` or
+`OidcLoginRefused` refuses the login. The port may perform asynchronous work
+through `AsyncResult`:
+
+<!-- doctest: isolate -->
+
+```ts
+import { Port } from "@btravstack/di";
+import { oidc, type OidcLoginRefused } from "@btravstack/http-server/oidc";
+import type { AsyncResult } from "unthrown";
+import { z } from "zod";
+
+const intentSchema = z.strictObject({
+  tenantId: z.string().min(1).max(128),
+  connection: z.string().min(1).max(128),
+});
+type LoginIntent = z.infer<typeof intentSchema>;
+type Identity = { readonly tenantId: string; readonly userId: string };
+
+class LoginRoutes extends Port("LoginRoutes")<{
+  resolve(requestUrl: string | undefined): AsyncResult<LoginIntent | undefined, OidcLoginRefused>;
+}> {}
+
+export const tenantLogin = oidc<Identity, LoginIntent>()({
+  inject: { routes: LoginRoutes },
+  loginContext: {
+    schema: intentSchema,
+    resolve: (request, { routes }) => routes.resolve(request.url),
+    allowedParameters: ["connection"],
+    authorizationParameters: (intent) => ({ connection: intent.connection }),
+  },
+  principal: (claims, _services, intent) =>
+    claims["tenant"] === intent.tenantId
+      ? { tenantId: intent.tenantId, userId: claims.sub }
+      : undefined,
+});
+```
+
+Spread `...tenantLogin` into the root's `provides` beside `sessionCodec()` and
+the provider for `LoginRoutes`. This example assumes the identity provider
+supports a `connection` authorization parameter and a `tenant` claim. Use your
+provider's documented spelling and configured policy; the starter knows neither
+concept.
+
+The context is validated and sealed inside the same short-lived encrypted
+transaction as PKCE, state and nonce, then recovered and validated again. Keep
+it to small nonsecret identifiers; JSON is limited to 1024 UTF-8 bytes. Check the
+recovered intent in `principal` before returning an identity. A refusal happens
+before the current session or retained credentials are replaced.
+
+An authorization parameter needs an explicit `allowedParameters` entry, and
+protocol controls such as `state`, `nonce`, PKCE, client identity and redirect
+URI cannot be overridden. Do not copy a request's parameter record into the
+provider request. The [reference](/reference/http-server#application-login-context)
+lists all reserved parameters and the validation behavior.
+
+One browser still has one transient cookie: starting another login replaces it,
+and a stale callback is refused. Context binding isolates login intent; it does
+not make concurrent tabs' login cookies independent.
+
 ## Logging out
 
 `POST /auth/logout` clears `__Host-session` and redirects to the provider's
@@ -346,7 +415,7 @@ is pinned at the `oidc()` call.
   `sessionCodec`, `sessionAuthenticator`, `SESSION_COOKIE` and the cookie's own
   guarantees.
 - [`oidc()`](/reference/http-server#the-login-answerer) — the three routes,
-  every option, and the five refusal reasons.
+  every option and refusal behavior.
 - [Serve htmx fragments](/how-to/serve-htmx-fragments) — the fragment route
   itself, `requires`, and the redirect mechanics in full.
 - [Protect a procedure](/how-to/protect-a-procedure) — the bearer and API-key

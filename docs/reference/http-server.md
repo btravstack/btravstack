@@ -109,8 +109,8 @@ options/service and `Claims` types — `jose`), `@btravstack/http-server/session
 `sessionAuthenticator`, `SessionCodec`, `SESSION_COOKIE`, `DEFAULT_TTL_SEC`,
 `TRANSIENT_TTL_SEC`, and the `Session` /
 `SessionCodecService` / `SessionOptions` types — `jose` again),
-`@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, and the
-`OidcOptions` type — `openid-client`), and
+`@btravstack/http-server/oidc` (`oidc`, `OidcUnreachable`, `OidcLoginRefused`, and the
+`OidcOptions` and `OidcLoginContext` types — `openid-client`), and
 `@btravstack/orpc-server/openapi` (`openApiDocument`, `openApiDocumentRoute`, `openApiRoutes`, and
 `OpenApiRoutesOptions` — `@orpc/openapi` and `@orpc/json-schema`). The first
 three sit behind an optional peer, so a graph that never imports one installs
@@ -620,28 +620,31 @@ export const BrowserApi = HttpModule("BrowserApi")({
 });
 ```
 
-| Option                  | Required | Default                                                 | What it is                                                                                            |
-| ----------------------- | -------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `principal`             | **yes**  | —                                                       | `(claims, services)` — what the ID token's claims make the caller; `undefined` refuses the login      |
-| `inject`                | no       | none                                                    | the ports `principal` reads, as `jwtAuthenticator`'s `inject`                                         |
-| `issuer`                | no       | read from `HTTP_OIDC_ISSUER`                            | the provider, as its discovery document names itself                                                  |
-| `clientId`              | no       | read from `HTTP_OIDC_CLIENT_ID`                         | this deployment's client                                                                              |
-| `clientSecret`          | no       | read from `HTTP_OIDC_CLIENT_SECRET`                     | its secret — this is a confidential client                                                            |
-| `redirectUri`           | no       | read from `HTTP_OIDC_REDIRECT_URI`                      | the URI **registered** with the provider                                                              |
-| `postLogoutRedirectUri` | no       | read from optional `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` | provider-registered absolute HTTP(S) return URI, without credentials or a fragment; requires `tokens` |
-| `tokens`                | no       | none                                                    | server-side token manager port, also passed to the session authenticator                              |
-| `prefix`                | no       | `/auth`                                                 | where the three routes are mounted                                                                    |
-| `scope`                 | no       | `openid`                                                | what the authorization request asks for                                                               |
-| `postLogout`            | no       | `/`                                                     | where a logout lands when the provider advertises no end-session endpoint                             |
-| `allowInsecureIssuer`   | no       | `false`                                                 | talk to an `http:` issuer that is not on a loopback host                                              |
-| `variablePrefix`        | no       | `HTTP_OIDC`                                             | the prefix of the login's environment variables, so a second login reads its own                      |
+| Option                  | Required | Default                                                 | What it is                                                                                                                           |
+| ----------------------- | -------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `principal`             | **yes**  | —                                                       | `(claims, services, context)` — admits the verified claims and recovered login context; `undefined` refuses the login                |
+| `inject`                | no       | none                                                    | the ports read by principal admission and login-context callbacks, as `jwtAuthenticator`'s `inject`                                  |
+| `loginContext`          | no       | none                                                    | validates and binds application intent to the authorization transaction; see [application login context](#application-login-context) |
+| `issuer`                | no       | read from `HTTP_OIDC_ISSUER`                            | the provider, as its discovery document names itself                                                                                 |
+| `clientId`              | no       | read from `HTTP_OIDC_CLIENT_ID`                         | this deployment's client                                                                                                             |
+| `clientSecret`          | no       | read from `HTTP_OIDC_CLIENT_SECRET`                     | its secret — this is a confidential client                                                                                           |
+| `redirectUri`           | no       | read from `HTTP_OIDC_REDIRECT_URI`                      | the URI **registered** with the provider                                                                                             |
+| `postLogoutRedirectUri` | no       | read from optional `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` | provider-registered absolute HTTP(S) return URI, without credentials or a fragment; requires `tokens`                                |
+| `tokens`                | no       | none                                                    | server-side token manager port, also passed to the session authenticator                                                             |
+| `prefix`                | no       | `/auth`                                                 | where the three routes are mounted                                                                                                   |
+| `scope`                 | no       | `openid`                                                | what the authorization request asks for                                                                                              |
+| `postLogout`            | no       | `/`                                                     | where a logout lands when the provider advertises no end-session endpoint                                                            |
+| `allowInsecureIssuer`   | no       | `false`                                                 | talk to an `http:` issuer that is not on a loopback host                                                                             |
+| `variablePrefix`        | no       | `HTTP_OIDC`                                             | the prefix of the login's environment variables, so a second login reads its own                                                     |
 
 **`GET <prefix>/login?return=<path>&as=<hint>`** mints a PKCE verifier, a
 `state` and a `nonce`, seals them and `return` into the five-minute
 `__Host-oidc` cookie, and answers `303` to the provider's authorization
 endpoint. `return` is the seam `htmx({ login })` writes when it sends an
-unauthenticated caller here; `as` rides through as `login_hint`, so a provider
-can prefill its own form.
+unauthenticated caller here. Without `loginContext`, `as` rides through as
+`login_hint`, so a provider can prefill its own form. With context enabled,
+request hints are not forwarded automatically: derive an allowlisted
+`login_hint` through `authorizationParameters` when the application permits it.
 
 **`GET <prefix>/callback`** checks the `state` that came back against that
 cookie, exchanges the code, and seals `principal(claims)` into
@@ -660,6 +663,60 @@ other cookie-bearing operations.
 
 Anything else under the mount is a `404` from this answerer: it owns every path
 below its prefix.
+
+### Application login context
+
+Use `oidc<Principal, Context>()` with `loginContext` when the application must
+remember a validated choice made before authentication, such as an account's
+tenant or a permitted federation connection. The callback receives that choice
+as the third argument of `principal(claims, services, context)`. Without the
+option, existing principal callbacks keep working and the context is `undefined`.
+
+| Member                    | Required | Contract                                                                                                                                                                        |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema`                  | **yes**  | A Standard Schema accepting the resolver's JSON input and producing `Context`; Zod works without an adapter.                                                                    |
+| `resolve`                 | **yes**  | Receives immutable request metadata and the services declared in `inject`. Returns a `Result` or `AsyncResult` with context, or refuses with `undefined` or `OidcLoginRefused`. |
+| `allowedParameters`       | no       | Explicit names of provider authorization parameters the application may supply; absent means none.                                                                              |
+| `authorizationParameters` | no       | Receives validated context and injected services, and derives parameters typed by `openid-client`'s `buildAuthorizationUrl`.                                                    |
+
+The resolver must validate request input against application policy. Looking up
+a known route or invitation is a suitable source; copying an arbitrary query
+parameter into a trusted tenant field is not. Request metadata has the same
+untrusted header and URL values as [`HttpRequestMetadata`](#non-authentication-request-metadata),
+plus the request cancellation signal.
+
+The resolver's value must be JSON data, nested no more than 16 levels and fitting
+within 1024 UTF-8 bytes. Keep only small, nonsecret intent identifiers in it.
+The original JSON input is encrypted inside the existing
+five-minute transient cookie alongside PKCE, state and nonce, not sent to the
+provider as a context parameter or copied automatically into the session.
+Only explicitly derived authorization parameters leave for the provider.
+
+The schema validates the same JSON input before it is sealed and again on callback;
+its output is the typed context passed to application callbacks. Schema
+transformations therefore do not need to accept their own output as input.
+The transient also binds the configured issuer, client ID, redirect URI and
+mount. Missing, malformed, expired or mismatched context refuses the callback.
+The application must compare recovered intent with the verified claims in
+`principal`; a valid provider session for another account must answer
+`undefined`. This admission happens before session replacement or token
+retention, so a refused callback leaves the existing authenticated session
+intact.
+
+Every supplied authorization parameter must appear in `allowedParameters`.
+Even an allowlist cannot admit `client_id`, `client_secret`, `redirect_uri`, `response_type`,
+`response_mode`, `scope`, `state`, `nonce`, `code_challenge`,
+`code_challenge_method`, `code_verifier`, `request` or `request_uri`. Those
+remain the starter's protocol controls. Reserved names are checked without case
+sensitivity. Repeated parameter names, including case variants, are refused.
+A routing hint selects the provider's
+sign-in experience; enforce the required authentication policy at the provider
+and verify the account context on callback.
+
+The shared transient cookie retains its latest-login-wins behavior. Two cookie
+jars keep independent contexts. Two concurrent tabs in one browser can
+overwrite the transient; a stale callback is refused rather than admitted with
+the other tab's intent.
 
 **Every redirect is a `303`**, `htmx()`'s own ruling and for its reason: RFC
 9110 §15.4.3 leaves a `302`'s POST-to-GET change a MAY, and §15.4.4's `303`
@@ -740,8 +797,9 @@ information — the provider's reason must not reach the caller, and a `401` is
 not an error the runtime's RED metrics count, so a rotated client secret, a
 dead token endpoint and a genuinely bad code are otherwise one indistinguishable
 spike. So every refusal settles `error` carrying its own `reason`:
-`transient_missing`, `state_mismatch`, `provider_refused`, `grant_failed` or
-`principal_refused`. Those five are dimensions and are bounded; the provider's
+`transient_missing`, `state_mismatch`, `login_context_refused`, `provider_refused`,
+`grant_failed`, `principal_refused` or `token_store_failed`. These dimensions
+are bounded; the provider's
 own `error_description` and the library error's message are caller-controlled,
 so they ride the `cause` — a line or a span, never an instrument — and the
 authorization code and the tokens ride nothing. **It costs a root nothing**:
