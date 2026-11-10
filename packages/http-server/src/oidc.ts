@@ -89,12 +89,13 @@ export type OidcAnswerer<Pre extends string = string, O = OidcPins, Needs = neve
   | TokenNeeds<O>
 > & { readonly port: typeof HttpHandler };
 
-// A login context deriving the redirect URI pins its variable the way the option does.
+/** A login context deriving the redirect URI pins its variable the way the option does. */
 type LoginContextOf<O> = O extends { readonly loginContext: infer L }
   ? L
   : O extends { readonly loginContext?: infer L }
     ? L | undefined
     : undefined;
+/** `V` when `O` certainly sets `K`, so the variable leaves the environment. */
 type Pinned<O, K extends PropertyKey, V extends string> = [
   Unpinned<O, K, V> | MaybePinned<O, K, V>,
 ] extends [never]

@@ -113,8 +113,10 @@ export const loginContextFor = <C, D extends Readonly<Record<string, AnyPort>>>(
   };
 };
 
-// The derived URI as a URL serializes it, which is what the code exchange sends;
-// `null` when it breaks the shared rule or names another path than the callback.
+/**
+ * The derived URI as a URL serializes it, which is what the code exchange sends;
+ * `null` when it breaks the shared rule or names another path than the callback.
+ */
 const checked = (value: string, path?: string): string | null => {
   const valid = checkedRedirectUri(value).getOrUndefined();
   const url = valid === undefined ? null : URL.parse(valid);
