@@ -11,6 +11,7 @@ describe("OIDC login context values", () => {
     url: "/auth/login",
     signal: new AbortController().signal,
   };
+  const callbackPath = "/auth/callback";
   const cyclic: unknown[] = [];
   cyclic.push(cyclic);
 
@@ -34,7 +35,11 @@ describe("OIDC login context values", () => {
     { [Symbol("hidden")]: "tenant" },
   ])("refuses non-JSON or oversized context %#", async (input) => {
     // GIVEN
-    const context = loginContextFor({ schema: z.unknown(), resolve: () => Ok(input) }, {});
+    const context = loginContextFor(
+      { schema: z.unknown(), resolve: () => Ok(input) },
+      {},
+      callbackPath,
+    );
     // WHEN
     const result = await context.prepare(request);
     // THEN
@@ -45,11 +50,16 @@ describe("OIDC login context values", () => {
     "preserves JSON intent %#",
     async (input) => {
       // GIVEN
-      const context = loginContextFor({ schema: z.unknown(), resolve: () => Ok(input) }, {});
+      const context = loginContextFor(
+        { schema: z.unknown(), resolve: () => Ok(input) },
+        {},
+        callbackPath,
+      );
       // WHEN
       const result = await context
         .prepare(request)
-        .flatMap((prepared) => context.read(prepared?.serialized));
+        .flatMap((prepared) => context.read(prepared?.serialized))
+        .map((read) => read?.context);
       // THEN
       expect(result).toBeOkWith(input);
     },
@@ -60,11 +70,13 @@ describe("OIDC login context values", () => {
     const context = loginContextFor(
       { schema: z.string().transform(Number), resolve: () => Ok("42") },
       {},
+      callbackPath,
     );
     // WHEN
     const result = await context
       .prepare(request)
-      .flatMap((prepared) => context.read(prepared?.serialized));
+      .flatMap((prepared) => context.read(prepared?.serialized))
+      .map((read) => read?.context);
     // THEN
     expect(result).toBeOkWith(42);
   });
@@ -74,6 +86,7 @@ describe("OIDC login context values", () => {
     const context = loginContextFor(
       { schema: z.string(), resolve: () => Err(new OidcLoginRefused()) },
       {},
+      callbackPath,
     );
     // WHEN
     const result = await context.prepare(request);
@@ -91,6 +104,7 @@ describe("OIDC login context values", () => {
         authorizationParameters: (intent) => ({ connection: intent.connection }),
       },
       {},
+      callbackPath,
     );
     // WHEN
     const result = await context.prepare(request).map((prepared) => ({
@@ -111,9 +125,10 @@ describe("OIDC login context values", () => {
       const context = loginContextFor(
         { schema: z.object({ tenant: z.string() }), resolve: () => Ok({ tenant: "one" }) },
         {},
+        callbackPath,
       );
       // WHEN
-      const result = await context.read(serialized);
+      const result = await context.read(serialized).map((read) => read?.context);
       // THEN
       expect(result).toBeOkWith(undefined);
     },
@@ -124,6 +139,7 @@ describe("OIDC login context values", () => {
     const context = loginContextFor(
       { schema: z.object({ tenant: z.string() }), resolve: () => Ok({ tenant: 3 }) },
       {},
+      callbackPath,
     );
     // WHEN
     const result = await context.prepare(request);
@@ -156,6 +172,7 @@ describe("OIDC login context values", () => {
         authorizationParameters: () => new URLSearchParams([[name, "override"]]),
       },
       {},
+      callbackPath,
     );
     // WHEN
     const result = await context.prepare(request);
@@ -179,6 +196,7 @@ describe("OIDC login context values", () => {
             ]),
         },
         {},
+        callbackPath,
       );
       // WHEN
       const result = await context.prepare(request);
@@ -186,4 +204,92 @@ describe("OIDC login context values", () => {
       expect(result).toBeOkWith(undefined);
     },
   );
+
+  it("derives both redirect URIs from the validated context, as a URL serializes them", async () => {
+    // GIVEN
+    const context = loginContextFor(
+      {
+        schema: z.object({ tenant: z.string() }),
+        resolve: () => Ok({ tenant: "Acme" }),
+        redirectUri: ({ tenant }) => `https://${tenant}.App.Example/auth/callback`,
+        postLogoutRedirectUri: ({ tenant }) => `https://${tenant}.app.example/signed-out?done=1`,
+      },
+      {},
+      callbackPath,
+    );
+    // WHEN
+    const result = await context.prepare(request).flatMap((prepared) =>
+      context.read(prepared?.serialized).map((read) => ({
+        login: [prepared?.redirectUri, prepared?.postLogoutRedirectUri],
+        callback: [read?.redirectUri, read?.postLogoutRedirectUri],
+      })),
+    );
+    // THEN
+    expect(result).toBeOkWith({
+      login: [
+        "https://acme.app.example/auth/callback",
+        "https://acme.app.example/signed-out?done=1",
+      ],
+      callback: [
+        "https://acme.app.example/auth/callback",
+        "https://acme.app.example/signed-out?done=1",
+      ],
+    });
+  });
+
+  it.for([
+    "/auth/callback",
+    "//acme.app.example/auth/callback",
+    "javascript:alert(1)//auth/callback",
+    "ftp://acme.app.example/auth/callback",
+    "https://name:secret@acme.app.example/auth/callback",
+    "https://acme.app.example/auth/callback#fragment",
+    "https://acme.app.example/auth/callback\nother",
+    "https://acme.app.example/other/callback",
+    "https://acme.app.example/auth/callback/",
+  ])("refuses a derived redirect URI breaking the configured rules: %s", async (uri) => {
+    // GIVEN
+    const context = loginContextFor(
+      { schema: z.string(), resolve: () => Ok("acme"), redirectUri: () => uri },
+      {},
+      callbackPath,
+    );
+    // WHEN
+    const result = await context.prepare(request);
+    // THEN
+    expect(result).toBeOkWith(undefined);
+  });
+
+  it.for(["/signed-out", "https://acme.app.example/signed-out#fragment"])(
+    "refuses a derived post-logout redirect URI breaking the configured rules: %s",
+    async (uri) => {
+      // GIVEN
+      const context = loginContextFor(
+        { schema: z.string(), resolve: () => Ok("acme"), postLogoutRedirectUri: () => uri },
+        {},
+        callbackPath,
+      );
+      // WHEN
+      const result = await context.read(JSON.stringify("acme"));
+      // THEN
+      expect(result).toBeOkWith(undefined);
+    },
+  );
+
+  it("leaves both URIs absent when the context derives none", async () => {
+    // GIVEN
+    const context = loginContextFor(
+      { schema: z.string(), resolve: () => Ok("acme") },
+      {},
+      callbackPath,
+    );
+    // WHEN
+    const result = await context.read(JSON.stringify("acme"));
+    // THEN
+    expect(result).toBeOkWith({
+      context: "acme",
+      redirectUri: undefined,
+      postLogoutRedirectUri: undefined,
+    });
+  });
 });

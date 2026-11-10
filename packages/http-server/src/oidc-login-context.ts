@@ -9,6 +9,7 @@ import {
   type Result,
 } from "unthrown";
 
+import { redirectUri as checkedRedirectUri } from "./oidc-logout-uri.js";
 import type { Injected } from "./options.js";
 import type { HttpRequestMetadata } from "./request-metadata.js";
 
@@ -34,49 +35,93 @@ export type OidcLoginContext<
     context: C,
     services: Injected<D>,
   ) => Parameters<typeof buildAuthorizationUrl>[1];
+  /**
+   * This context's absolute redirect URI, registered with the provider and naming
+   * the mount's own `<prefix>/callback`. Derived only from the validated context
+   * and injected policy, never request headers; it replaces the static `redirectUri`
+   * and is derived again, so it must be the same for the same context.
+   */
+  readonly redirectUri?: (context: C, services: Injected<D>) => string;
+  /** This context's absolute post-logout redirect URI, registered with the provider. Requires `tokens`. */
+  readonly postLogoutRedirectUri?: (context: C, services: Injected<D>) => string;
+};
+
+/** The URIs one validated context derives; absent where the option is not set. */
+type OidcContextUris = {
+  readonly redirectUri: string | undefined;
+  readonly postLogoutRedirectUri: string | undefined;
 };
 
 export const loginContextFor = <C, D extends Readonly<Record<string, AnyPort>>>(
   options: OidcLoginContext<C, D>,
   services: Injected<D>,
-) => ({
-  prepare: (request: ServiceOf<HttpRequestMetadata>) =>
-    fromSafePromise(
-      (async () => {
-        const input = (await options.resolve(request, services)).getOrUndefined();
-        if (!jsonValue(input, 0)) return undefined;
-        const serialized = JSON.stringify(input);
-        if (Buffer.byteLength(serialized) > MAX_CONTEXT_BYTES) return undefined;
-        const validated = await options.schema["~standard"].validate(
-          parseJson(serialized).getOrUndefined(),
-        );
-        if (validated.issues !== undefined || validated.value === undefined) return undefined;
-        const parameters = new URLSearchParams(
-          options.authorizationParameters?.(validated.value, services),
-        );
-        const allowed = new Set(options.allowedParameters ?? []);
-        const seen = new Set<string>();
-        for (const [name] of parameters) {
-          const normalized = name.toLowerCase();
-          if (!allowed.has(name) || PROTECTED_PARAMETERS.has(normalized) || seen.has(normalized))
+  callbackPath: string,
+) => {
+  const uris = (context: C): OidcContextUris | undefined => {
+    const redirectUri =
+      options.redirectUri === undefined
+        ? undefined
+        : checked(options.redirectUri(context, services), callbackPath);
+    const postLogoutRedirectUri =
+      options.postLogoutRedirectUri === undefined
+        ? undefined
+        : checked(options.postLogoutRedirectUri(context, services));
+    return redirectUri === null || postLogoutRedirectUri === null
+      ? undefined
+      : { redirectUri, postLogoutRedirectUri };
+  };
+  return {
+    prepare: (request: ServiceOf<HttpRequestMetadata>) =>
+      fromSafePromise(
+        (async () => {
+          const input = (await options.resolve(request, services)).getOrUndefined();
+          if (!jsonValue(input, 0)) return undefined;
+          const serialized = JSON.stringify(input);
+          if (Buffer.byteLength(serialized) > MAX_CONTEXT_BYTES) return undefined;
+          const validated = await options.schema["~standard"].validate(
+            parseJson(serialized).getOrUndefined(),
+          );
+          if (validated.issues !== undefined || validated.value === undefined) return undefined;
+          const parameters = new URLSearchParams(
+            options.authorizationParameters?.(validated.value, services),
+          );
+          const allowed = new Set(options.allowedParameters ?? []);
+          const seen = new Set<string>();
+          for (const [name] of parameters) {
+            const normalized = name.toLowerCase();
+            if (!allowed.has(name) || PROTECTED_PARAMETERS.has(normalized) || seen.has(normalized))
+              return undefined;
+            seen.add(normalized);
+          }
+          const derived = uris(validated.value);
+          return derived === undefined ? undefined : { serialized, parameters, ...derived };
+        })(),
+      ),
+    read: (serialized: string | undefined) =>
+      fromSafePromise(
+        (async () => {
+          if (serialized === undefined || Buffer.byteLength(serialized) > MAX_CONTEXT_BYTES)
             return undefined;
-          seen.add(normalized);
-        }
-        return { serialized, parameters };
-      })(),
-    ),
-  read: (serialized: string | undefined) =>
-    fromSafePromise(
-      (async () => {
-        if (serialized === undefined || Buffer.byteLength(serialized) > MAX_CONTEXT_BYTES)
-          return undefined;
-        const input = parseJson(serialized).getOrUndefined();
-        if (!jsonValue(input, 0)) return undefined;
-        const validated = await options.schema["~standard"].validate(input);
-        return validated.issues === undefined ? validated.value : undefined;
-      })(),
-    ),
-});
+          const input = parseJson(serialized).getOrUndefined();
+          if (!jsonValue(input, 0)) return undefined;
+          const validated = await options.schema["~standard"].validate(input);
+          if (validated.issues !== undefined || validated.value === undefined) return undefined;
+          const derived = uris(validated.value);
+          return derived === undefined ? undefined : { context: validated.value, ...derived };
+        })(),
+      ),
+  };
+};
+
+/**
+ * The derived URI as a URL serializes it, which is what the code exchange sends;
+ * `null` when it breaks the shared rule or names another path than the callback.
+ */
+const checked = (value: string, path?: string): string | null => {
+  const valid = checkedRedirectUri(value).getOrUndefined();
+  const url = valid === undefined ? null : URL.parse(valid);
+  return url !== null && (path === undefined || url.pathname === path) ? url.href : null;
+};
 
 const MAX_CONTEXT_BYTES = 1024;
 const MAX_DEPTH = 16;

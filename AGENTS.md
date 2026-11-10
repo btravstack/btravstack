@@ -224,7 +224,8 @@ measurements behind both rules are in `.changeset/AGENTS.md`.
    revocation transaction; the hint goes only to the provider logout redirect,
    never into cookies or observations. The login answerer
    can bind application login intent through OIDC's existing protected
-   transaction; validating that intent against the authenticated principal
+   transaction, and derive that login's redirect and post-logout URIs from it,
+   never from `Host`; validating that intent against the authenticated principal
    remains application policy. The shared answerer knows no tenant or
    federation model. These packages
    declare their peers explicitly. The order API serves oRPC and htmx in one

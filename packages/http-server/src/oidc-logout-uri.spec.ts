@@ -1,4 +1,6 @@
+import { Ok } from "unthrown";
 import { describe, expect } from "vitest";
+import { z } from "zod";
 
 import { it } from "./__tests__/test-fixtures.js";
 import { logoutRedirectUri } from "./oidc-logout-uri.js";
@@ -87,6 +89,33 @@ describe("registered logout return configuration", () => {
           {
             message: "must be an absolute HTTP(S) URI without credentials or a fragment",
             path: ["STAFF_OIDC_POST_LOGOUT_REDIRECT_URI"],
+          },
+        ],
+      }),
+    );
+  });
+
+  it("refuses a derived return without server-side token retention at boot", async ({ tokens }) => {
+    // GIVEN
+    // WHEN
+    const built = await tokens.loginProvider(
+      {},
+      true,
+      {},
+      {
+        schema: z.string(),
+        resolve: () => Ok("acme"),
+        postLogoutRedirectUri: (tenant) => `https://${tenant}.app.example/signed-out`,
+      },
+    );
+    // THEN
+    expect(built).toBeErrWith(
+      expect.objectContaining({
+        _tag: "ConfigInvalid",
+        issues: [
+          {
+            message: "a post-logout return URI requires a server-side token manager",
+            path: ["loginContext.postLogoutRedirectUri"],
           },
         ],
       }),

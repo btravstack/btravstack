@@ -97,6 +97,8 @@ compatibility are in the [HTTP reference](https://btravstack.github.io/btravstac
 - `loginContext.resolve`: resolves login intent from request metadata and injected services.
 - `loginContext.allowedParameters`: names the provider authorization parameters the application may supply.
 - `loginContext.authorizationParameters`: derives those parameters from validated context.
+- `loginContext.redirectUri`: derives this context's redirect URI, replacing `redirectUri`.
+- `loginContext.postLogoutRedirectUri`: derives this context's post-logout redirect URI; requires `tokens`.
 - `principal`: admits verified claims with the recovered context as its third argument.
 
 Context bounds, refusal behavior and protocol protections are in the

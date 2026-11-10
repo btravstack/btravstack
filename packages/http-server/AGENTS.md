@@ -1421,6 +1421,29 @@ must be explicitly allowlisted. The starter refuses attempts to replace its
 client, redirect, response, scope, state, nonce, PKCE or request-object
 parameters. A context-enabled flow is bound to its configured issuer, client, redirect URI and
 mount, so a shared codec cannot accidentally admit another login's transient.
+
+**A derived redirect URI is derived twice and compared, never read off the
+request.** One login per host needs one redirect URI per host, and the request's
+`Host` is the one source the starter refuses. The application derives the URI
+from its validated context; the derived URI replaces the configured one in the
+binding rather than riding the transient as a field, and the callback derives
+it again from the recovered context, so a transient sealed for another URI does
+not recover. The derived URI reuses the post-logout URI's rule, the stricter
+one already here, rather than `Config.url`'s parse-only check, which would
+admit a fragment or another scheme; the configured `redirectUri` keeps
+`Config.url` so no deployment changes. Its path must be the mount's own
+callback: the starter cannot see a proxy's path rewriting, so a deployment that
+rewrites paths keeps the static URI. The callback's host is compared with the
+request target's authority, else `Host`, and never used to build anything.
+`__Host-` cookies already keep a transient on the host that set it; the
+comparison keeps the guarantee where they do not, such as a client that shares
+one cookie jar across hosts. The scheme is not compared: TLS ends at a proxy
+this process cannot see past.
+
+The derived post-logout URI is stored in the token record beside the ID-token
+hint rather than in the session cookie: it is read in the same transaction that
+deletes the hint, and the `Session` shape stays the authentication contract.
+Logout therefore needs `tokens`, as the configured return already did.
 The one transient cookie still means the latest login in one browser wins;
 context binding prevents substitution, not competing tabs overwriting cookies.
 
@@ -1685,7 +1708,8 @@ a token reference requires the token-aware scheme.
 `oidc()`'s optional `postLogoutRedirectUri` pins
 `<variablePrefix>_POST_LOGOUT_REDIRECT_URI` and requires token retention. It must
 be an absolute HTTP(S) URI without credentials or a fragment, registered with
-the provider. `logout(cookie)` obtains the retained ID-token hint in the same
+the provider. A login context's derived return is stored on the record and
+replaces it for that session. `logout(cookie)` obtains the retained ID-token hint in the same
 transaction that deletes the record; both the cookie and record must match the
 manager's issuer/client binding. Refresh may replace the hint only after its
 signature and subject checks pass, and preserves it when omitted. The configured

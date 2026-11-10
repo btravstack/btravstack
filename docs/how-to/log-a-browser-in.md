@@ -179,13 +179,13 @@ export const BrowserApi = HttpModule("BrowserApi")({
 Five environment variables, each read when the matching option is left
 unset:
 
-| Variable                                                            | What it's for                                                                      |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`HTTP_SESSION_KEYS`](/how-to/configure-from-the-environment)       | `sessionCodec()`'s own keys                                                        |
-| [`HTTP_OIDC_ISSUER`](/how-to/configure-from-the-environment)        | the provider `oidc()` discovers, and whose sessions `sessionAuthenticator` accepts |
-| [`HTTP_OIDC_CLIENT_ID`](/how-to/configure-from-the-environment)     | this deployment's client, read by `sessionAuthenticator` too                       |
-| [`HTTP_OIDC_CLIENT_SECRET`](/how-to/configure-from-the-environment) | its secret — a confidential client                                                 |
-| [`HTTP_OIDC_REDIRECT_URI`](/how-to/configure-from-the-environment)  | the URI **registered** with the provider                                           |
+| Variable                                                            | What it's for                                                                                       |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [`HTTP_SESSION_KEYS`](/how-to/configure-from-the-environment)       | `sessionCodec()`'s own keys                                                                         |
+| [`HTTP_OIDC_ISSUER`](/how-to/configure-from-the-environment)        | the provider `oidc()` discovers, and whose sessions `sessionAuthenticator` accepts                  |
+| [`HTTP_OIDC_CLIENT_ID`](/how-to/configure-from-the-environment)     | this deployment's client, read by `sessionAuthenticator` too                                        |
+| [`HTTP_OIDC_CLIENT_SECRET`](/how-to/configure-from-the-environment) | its secret — a confidential client                                                                  |
+| [`HTTP_OIDC_REDIRECT_URI`](/how-to/configure-from-the-environment)  | the URI **registered** with the provider; unread when [derived per host](#serve-one-login-per-host) |
 
 ## Step 4 — the route
 
@@ -295,6 +295,57 @@ lists all reserved parameters and the validation behavior.
 One browser still has one transient cookie: starting another login replaces it,
 and a stale callback is refused. Context binding isolates login intent; it does
 not make concurrent tabs' login cookies independent.
+
+## Serve one login per host
+
+When each tenant has its own host, such as `acme.app.example` and
+`globex.app.example`, each host registers its own redirect URI with the provider
+and keeps its session cookie. Derive the redirect URIs from the validated login
+context instead of composing one `oidc()` per host:
+
+<!-- doctest: isolate -->
+
+```ts
+import { oidc } from "@btravstack/http-server/oidc";
+import { OidcTokens } from "@btravstack/http-server/oidc-tokens";
+import { Ok } from "unthrown";
+import { z } from "zod";
+
+const tenantHosts = { acme: "acme.app.example", globex: "globex.app.example" } as const;
+const hostSchema = z.strictObject({ tenant: z.enum(["acme", "globex"]) });
+type HostLogin = z.infer<typeof hostSchema>;
+type Identity = { readonly tenant: string; readonly userId: string };
+
+export const hostLogin = oidc<Identity, HostLogin>()({
+  tokens: OidcTokens,
+  loginContext: {
+    schema: hostSchema,
+    resolve: (request) =>
+      Ok({
+        tenant: Object.entries(tenantHosts).find(([, host]) => host === request.headers["host"])?.[0],
+      }),
+    redirectUri: ({ tenant }) => `https://${tenantHosts[tenant]}/auth/callback`,
+    postLogoutRedirectUri: ({ tenant }) => `https://${tenantHosts[tenant]}/signed-out`,
+  },
+  principal: (claims, _services, { tenant }) =>
+    claims["tenant"] === tenant ? { tenant, userId: claims.sub } : undefined,
+});
+```
+
+The resolver chooses among configured hosts, and the schema refuses any other,
+so an unknown `Host` refuses the login. The URIs are built from the validated
+tenant and the application's own table, never from the header. Register every
+derived URI with the provider. `HTTP_OIDC_REDIRECT_URI` is then not read.
+
+Each derived URI must be absolute HTTP(S) without credentials or a fragment,
+and the redirect URI's path must be the mount's `/auth/callback`; otherwise the
+login is refused before the browser leaves for the provider. The derived
+redirect URI is sent in the authorization request and the code exchange and
+bound into the encrypted transaction. A callback that arrives on another host
+is refused before any session or credential changes, so a proxy must forward
+the browser's `Host` unchanged. Logout returns to the post-logout URI the
+session was admitted with, which needs the [server-side token
+manager](/reference/http-server#server-side-oidc-tokens) described below.
 
 ## Logging out
 
