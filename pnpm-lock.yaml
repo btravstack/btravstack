@@ -252,8 +252,8 @@ catalogs:
       specifier: 2.0.0-beta.44
       version: 2.0.0-beta.44
     '@pothos/core':
-      specifier: 4.15.1
-      version: 4.15.1
+      specifier: 4.16.0
+      version: 4.16.0
     '@pothos/plugin-errors':
       specifier: 4.9.3
       version: 4.9.3
@@ -988,13 +988,13 @@ importers:
         version: 2.0.0-beta.44(@tanstack/query-core@5.104.5)
       '@pothos/core':
         specifier: 'catalog:'
-        version: 4.15.1(graphql@17.0.2)
+        version: 4.16.0(graphql@17.0.2)
       '@pothos/plugin-errors':
         specifier: 'catalog:'
-        version: 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+        version: 4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)
       '@pothos/plugin-relay':
         specifier: 'catalog:'
-        version: 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+        version: 4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)
       '@prisma/orm-postgres':
         specifier: 'catalog:'
         version: 8.0.0-rc.20(@prisma/cli-engine@0.9.0(magicast@0.5.5))(magicast@0.5.5)(temporal-polyfill@1.0.4)(typescript@7.0.2)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1006,7 +1006,7 @@ importers:
         version: 26.6.5
       '@unthrown/pothos':
         specifier: 'catalog:'
-        version: 0.1.2(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)
+        version: 0.1.2(@pothos/core@4.16.0(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
@@ -1205,7 +1205,7 @@ importers:
         version: 2.0.0-beta.44
       '@pothos/core':
         specifier: 'catalog:'
-        version: 4.15.1(graphql@17.0.2)
+        version: 4.16.0(graphql@17.0.2)
       dataloader:
         specifier: 'catalog:'
         version: 2.2.3
@@ -2551,19 +2551,19 @@ importers:
         version: 2.0.0-beta.44
       '@pothos/core':
         specifier: 'catalog:'
-        version: 4.15.1(graphql@17.0.2)
+        version: 4.16.0(graphql@17.0.2)
       '@pothos/plugin-errors':
         specifier: 'catalog:'
-        version: 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+        version: 4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)
       '@pothos/plugin-relay':
         specifier: 'catalog:'
-        version: 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+        version: 4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
       '@unthrown/pothos':
         specifier: 'catalog:'
-        version: 0.1.2(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)
+        version: 0.1.2(@pothos/core@4.16.0(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.1(unthrown@5.12.1)(vitest@5.0.3)
@@ -5811,8 +5811,8 @@ packages:
     resolution: {integrity: sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A==}
     engines: {node: '>=22.13'}
 
-  '@pothos/core@4.15.1':
-    resolution: {integrity: sha512-G0riOIbF6zer2SU7V1MmivkSdoKk+gYRf+Ru8JVcy3p9GhyJ8OzQj92RgCfCpEvkTgl6EdH8VueLe1Lm7lY4aA==}
+  '@pothos/core@4.16.0':
+    resolution: {integrity: sha512-csiYUWWgxdpw7drDAIPcsuFu4/FFCZpooa3OWsItwlbcYCfMzTr3//tRev6H7FivKanhX6c9TGwGEpDfppQb8g==}
     peerDependencies:
       graphql: ^16.10.0 || ^17.0.0
 
@@ -6658,12 +6658,16 @@ packages:
   '@smithy/core@3.35.2':
     resolution: {integrity: sha512-ejTukBuP/Pg3t9N8Ux+0zKsXeHWm7p6W3HbXFOyltKasSxZwCFmvTut7kBdZSCF3m9y1bXXyVu6p2xuMFcsTyQ==}
     engines: {node: '>=18.0.0'}
-    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/core@3.36.2':
     resolution: {integrity: sha512-oRw0rB9QSUiCZfEs23G5F4Af+b2rQt1lItIICWu5IejFNd+uPM8SWqiKLMpQ6bX1Q7slsLbjuoE2niErFtkVPQ==}
     engines: {node: '>=18.0.0'}
-    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -13946,18 +13950,18 @@ snapshots:
 
   '@pnpm/deps.graph-sequencer@1100.0.1': {}
 
-  '@pothos/core@4.15.1(graphql@17.0.2)':
+  '@pothos/core@4.16.0(graphql@17.0.2)':
     dependencies:
       graphql: 17.0.2
 
-  '@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)':
+  '@pothos/plugin-errors@4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)':
     dependencies:
-      '@pothos/core': 4.15.1(graphql@17.0.2)
+      '@pothos/core': 4.16.0(graphql@17.0.2)
       graphql: 17.0.2
 
-  '@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)':
+  '@pothos/plugin-relay@4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)':
     dependencies:
-      '@pothos/core': 4.15.1(graphql@17.0.2)
+      '@pothos/core': 4.16.0(graphql@17.0.2)
       graphql: 17.0.2
 
   '@prisma/cli-engine@0.4.0(@prisma/management-api-sdk@1.69.0)(magicast@0.5.5)':
@@ -15394,14 +15398,14 @@ snapshots:
       '@oxlint/plugins': 1.86.0
       oxlint: 1.89.0
 
-  '@unthrown/pothos@0.1.2(@pothos/core@4.15.1(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)':
+  '@unthrown/pothos@0.1.2(@pothos/core@4.16.0(graphql@17.0.2))(@pothos/plugin-errors@4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2))(@pothos/plugin-relay@4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2))(graphql@17.0.2)(unthrown@5.12.1)':
     dependencies:
-      '@pothos/core': 4.15.1(graphql@17.0.2)
-      '@pothos/plugin-errors': 4.9.3(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+      '@pothos/core': 4.16.0(graphql@17.0.2)
+      '@pothos/plugin-errors': 4.9.3(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)
       graphql: 17.0.2
       unthrown: 5.12.1
     optionalDependencies:
-      '@pothos/plugin-relay': 4.8.1(@pothos/core@4.15.1(graphql@17.0.2))(graphql@17.0.2)
+      '@pothos/plugin-relay': 4.8.1(@pothos/core@4.16.0(graphql@17.0.2))(graphql@17.0.2)
 
   '@unthrown/saga@5.11.0(unthrown@5.12.1)':
     dependencies:
