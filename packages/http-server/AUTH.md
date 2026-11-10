@@ -470,7 +470,7 @@ The two rules this half exists to state, before the detail:
 
   The original JSON input is bounded and encrypted with the protocol state;
   transformed schema output is not serialized and revalidated as a new input.
-  The flow binds its issuer, client, redirect URI and mount. Context and request
+  The flow binds its issuer, client, redirect URI in use and mount. Context and request
   details never become observation dimensions. Tenant discovery, federation
   configuration and matching the authenticated account remain application
   policy, with no tenant type added to the starter.
@@ -480,6 +480,33 @@ The two rules this half exists to state, before the detail:
   not an unchecked request parameter record. Protocol-owned parameters cannot
   be admitted even through the allowlist. The detailed option contract and
   bounds live in the HTTP reference's application login context section.
+
+  **A redirect URI per context comes from the context, never from `Host`.**
+  `loginContext.redirectUri` and `loginContext.postLogoutRedirectUri` derive
+  absolute URIs from the validated context and injected services, so one
+  `oidc()` serves an application whose hosts each register their own redirect
+  URI. Both meet the rule of a configured `postLogoutRedirectUri` (absolute
+  HTTP(S), no credentials, no fragment), and the redirect URI must name this
+  mount's own `<prefix>/callback`; one that fails refuses the login before the
+  provider redirect. The configured `redirectUri` keeps its `Config.url` rule:
+  tightening it would change existing deployments. The derived redirect URI is
+  the authorization request's and the code exchange's `redirect_uri`, and takes
+  the configured one's place in the transaction binding. The callback derives
+  it again from the recovered context and refuses, as `redirect_uri_mismatch`,
+  one that did not arrive on its host and path — compared with the request
+  target's authority or `Host`, never built from them — before principal
+  admission, token retention or session replacement. The derived post-logout
+  URI is stored with the retained credentials, so logout returns to the
+  destination the session was admitted with, whichever host submits it; it
+  requires `tokens`, like the configured one.
+
+  **The static redirect URI is not required beside a derived one.** With
+  `loginContext.redirectUri`, the answerer reads neither the `redirectUri` pin
+  nor `<variablePrefix>_REDIRECT_URI`, and its typed environment drops the
+  variable — required, optional or absent exactly as `Unpinned`/`MaybePinned`
+  already decide for a pin, with the derivation counted as one. A fallback
+  would be a URI no context asked for, sent to a provider that may not have it
+  registered for that host.
 
   **`Session.scopes` comes from the ID token's `scope` claim** — space
   delimited, and a claim the standard does not put in an ID token at all, so
@@ -518,7 +545,8 @@ The two rules this half exists to state, before the detail:
   that `%` would land a real user on `/orders/a%2520b/row`.
 
   **The code grant is checked against the REGISTERED redirect URI, never
-  `Host`.** `currentUrl` is `redirectUri` carrying this request's query, so a
+  `Host`.** `currentUrl` is the bound redirect URI — `redirectUri`, or the one
+  the login context derived — carrying this request's query, so a
   forged `Host` cannot move the check — and a deployment behind a proxy needs
   no trust in that header for this to be right.
 
@@ -555,7 +583,7 @@ The two rules this half exists to state, before the detail:
   **A refused login is an OPERATION, reported to `Observers` like a cache
   miss.** Each of the three routes is one, `component: "oidc"`, and a refusal
   settles `error` carrying its own `reason` — `transient_missing`,
-  `state_mismatch`, `login_context_refused`, `transient_too_large`, `provider_refused`, `grant_failed`, `principal_refused`,
+  `state_mismatch`, `login_context_refused`, `redirect_uri_mismatch`, `transient_too_large`, `provider_refused`, `grant_failed`, `principal_refused`,
   `token_store_failed`.
   That matters because a refused login is the one refusal in this package that
   DESTROYS information: the provider's reason must not cross the wire, a `401`
@@ -601,7 +629,8 @@ The two rules this half exists to state, before the detail:
   then sends `id_token_hint` and `post_logout_redirect_uri` to the discovered
   end-session endpoint. The cookie still carries no token. Neither destination
   comes from request parameters or `Host`, and access/refresh tokens never enter
-  the redirect. Without the setting or an available hint, provider logout keeps
+  the redirect. A return the login context derived is stored with the session's
+  credentials and replaces the configured one for that session. Without the setting or an available hint, provider logout keeps
   its parameterless behavior. An issuer without an end-session endpoint still
   uses `postLogout`, default `/`. `POST` makes the state change subject to the
   CSRF protection the answerer itself enables. Every redirect is a `303`.

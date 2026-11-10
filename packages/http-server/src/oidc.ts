@@ -23,7 +23,7 @@ import {
   type Configuration,
   type IDToken,
 } from "openid-client";
-import { ErrAsync, TaggedError, fromPromise, type AsyncResult } from "unthrown";
+import { ErrAsync, Ok, TaggedError, fromPromise, type AsyncResult } from "unthrown";
 
 import { clearCookie, cookieScheme, cookieValue, setCookie } from "./cookie.js";
 import { HttpHandler, pathUnder, send, type HttpAnswerer } from "./handler.js";
@@ -69,11 +69,17 @@ export type OidcAnswerer<Pre extends string = string, O = OidcPins, Needs = neve
       | Unpinned<O, "issuer", `${Pre}_ISSUER`>
       | Unpinned<O, "clientId", `${Pre}_CLIENT_ID`>
       | Unpinned<O, "clientSecret", `${Pre}_CLIENT_SECRET`>
-      | Unpinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>,
+      | (Unpinned<O, "redirectUri", `${Pre}_REDIRECT_URI`> &
+          Unpinned<LoginContextOf<O>, "redirectUri", `${Pre}_REDIRECT_URI`>),
       | MaybePinned<O, "issuer", `${Pre}_ISSUER`>
       | MaybePinned<O, "clientId", `${Pre}_CLIENT_ID`>
       | MaybePinned<O, "clientSecret", `${Pre}_CLIENT_SECRET`>
-      | MaybePinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>
+      | Exclude<
+          | MaybePinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>
+          | MaybePinned<LoginContextOf<O>, "redirectUri", `${Pre}_REDIRECT_URI`>,
+          | Pinned<O, "redirectUri", `${Pre}_REDIRECT_URI`>
+          | Pinned<LoginContextOf<O>, "redirectUri", `${Pre}_REDIRECT_URI`>
+        >
       | Unpinned<O, "postLogoutRedirectUri", `${Pre}_POST_LOGOUT_REDIRECT_URI`>
       | MaybePinned<O, "postLogoutRedirectUri", `${Pre}_POST_LOGOUT_REDIRECT_URI`>
     >
@@ -82,6 +88,18 @@ export type OidcAnswerer<Pre extends string = string, O = OidcPins, Needs = neve
   | Needs
   | TokenNeeds<O>
 > & { readonly port: typeof HttpHandler };
+
+// A login context deriving the redirect URI pins its variable the way the option does.
+type LoginContextOf<O> = O extends { readonly loginContext: infer L }
+  ? L
+  : O extends { readonly loginContext?: infer L }
+    ? L | undefined
+    : undefined;
+type Pinned<O, K extends PropertyKey, V extends string> = [
+  Unpinned<O, K, V> | MaybePinned<O, K, V>,
+] extends [never]
+  ? V
+  : never;
 
 type TokenNeeds<O> = O extends { readonly tokens?: infer T }
   ? InstanceType<Extract<T, AnyPort>>
@@ -115,7 +133,8 @@ export type OidcOptions<
   /**
    * Pins `<prefix>_REDIRECT_URI` — the URI REGISTERED with the provider, which
    * is also what the code grant is checked against. It is never rebuilt from
-   * the request's `Host`.
+   * the request's `Host`. Neither it nor the variable is read when
+   * `loginContext.redirectUri` derives one per context.
    */
   readonly redirectUri?: string | undefined;
   /**
@@ -188,22 +207,25 @@ const MAX_TRANSIENT_COOKIE_BYTES = 4096;
 
 // `request.url` is a path, so it needs an origin to parse against. Nothing
 // reads this one: every URL built from the request is used for its path and
-// query alone, and the grant's own is built from the REGISTERED redirect URI.
+// query alone, and the grant's own is built from the BOUND redirect URI.
 const RELATIVE = "http://request.invalid";
 
 /** Everything the routes close over, decided once at boot. */
 type Bound<P> = {
-  readonly flowBinding: string;
+  readonly flowBinding: (redirectUri: string) => string;
   readonly loginContext?: ReturnType<typeof loginContextFor<unknown, Record<never, never>>>;
   readonly config: Configuration;
   readonly tokens?: OidcTokensService;
   /** The issuer and client id as configured, sealed into every session so its scheme can tell logins apart. */
   readonly issuer: string;
   readonly clientId: string;
-  readonly redirectUri: string;
+  /** The static redirect URI; absent when the login context derives one. */
+  readonly redirectUri: string | undefined;
   readonly scope: string;
   readonly postLogout: string;
   readonly postLogoutRedirectUri?: string;
+  /** Whether logout asks the token manager for a hint and a return to send the provider. */
+  readonly logoutReturns: boolean;
   readonly principal: (claims: IDToken, context: unknown) => P | undefined;
   readonly observers: readonly ((operation: Operation) => Settle)[];
 };
@@ -283,7 +305,8 @@ const login = async <P>(
 ): Promise<void> => {
   const settle = observed(bound.observers, "login", response);
   const context = await bound.loginContext?.prepare(requestMetadataOf(request, signal)).get();
-  if (bound.loginContext !== undefined && context === undefined) {
+  const redirectUri = context?.redirectUri ?? bound.redirectUri;
+  if ((bound.loginContext !== undefined && context === undefined) || redirectUri === undefined) {
     refuse(response, 400, settle, "login_context_refused");
     return;
   }
@@ -297,7 +320,9 @@ const login = async <P>(
     state,
     nonce,
     return: returnTo(target.searchParams.get("return")),
-    ...(context === undefined ? {} : { context: context.serialized, binding: bound.flowBinding }),
+    ...(context === undefined
+      ? {}
+      : { context: context.serialized, binding: bound.flowBinding(redirectUri) }),
   };
   let sealed = await codec.transient.seal(flow).get();
   let cookie = setCookie(TRANSIENT_COOKIE, sealed, TRANSIENT_TTL_SEC);
@@ -313,7 +338,7 @@ const login = async <P>(
   send(response, 303, {
     location: buildAuthorizationUrl(bound.config, {
       ...Object.fromEntries(context?.parameters ?? []),
-      redirect_uri: bound.redirectUri,
+      redirect_uri: redirectUri,
       scope: bound.scope,
       code_challenge: challenge,
       code_challenge_method: "S256",
@@ -347,13 +372,22 @@ const callback = async <P>(
     return;
   }
 
-  if (bound.loginContext !== undefined && held["binding"] !== bound.flowBinding) {
+  // The context's URIs are derived again, so the binding names the redirect URI
+  // this transaction was sent with.
+  const recovered = await bound.loginContext?.read(held["context"]).get();
+  const redirectUri = recovered?.redirectUri ?? bound.redirectUri;
+  if (
+    redirectUri === undefined ||
+    (bound.loginContext !== undefined &&
+      (recovered === undefined || held["binding"] !== bound.flowBinding(redirectUri)))
+  ) {
     refuse(response, 400, settle, "login_context_refused");
     return;
   }
-  const context = await bound.loginContext?.read(held["context"]).get();
-  if (bound.loginContext !== undefined && context === undefined) {
-    refuse(response, 400, settle, "login_context_refused");
+  // A derived redirect URI names one host: a callback the browser delivered
+  // anywhere else would seal another context's session there.
+  if (recovered?.redirectUri !== undefined && !arrivedAt(target, request, recovered.redirectUri)) {
+    refuse(response, 400, settle, "redirect_uri_mismatch");
     return;
   }
 
@@ -376,10 +410,11 @@ const callback = async <P>(
     return;
   }
 
-  // The REGISTERED redirect URI carrying this request's query. Never `Host`,
-  // which the caller writes — and it is also what makes the app reachable on
-  // a port the provider was never told about.
-  const currentUrl = new URL(bound.redirectUri);
+  // The BOUND redirect URI carrying this request's query, which `openid-client`
+  // also sends as the exchange's `redirect_uri`. Never `Host`, which the caller
+  // writes — and it is also what makes the app reachable on a port the
+  // provider was never told about.
+  const currentUrl = new URL(redirectUri);
   currentUrl.search = target.search;
 
   const granted = await fromPromise(
@@ -399,7 +434,7 @@ const callback = async <P>(
   }
 
   const claims = granted.value.claims();
-  const principal = claims === undefined ? undefined : bound.principal(claims, context);
+  const principal = claims === undefined ? undefined : bound.principal(claims, recovered?.context);
   if (claims === undefined || principal === undefined) {
     refuse(response, 400, settle, "principal_refused");
     return;
@@ -423,7 +458,9 @@ const callback = async <P>(
       ? await codec.seal(session).get()
       : await tokens
           .invalidate(cookieValue(request.headers.cookie, SESSION_COOKIE))
-          .flatMap(() => tokens.create(session, claims.sub, granted.value))
+          .flatMap(() =>
+            tokens.create(session, claims.sub, granted.value, recovered?.postLogoutRedirectUri),
+          )
           .getOrUndefined();
   if (sealed === undefined) {
     refuse(response, 503, settle, "token_store_failed");
@@ -448,9 +485,9 @@ const logout = async <P>(
   let context: OidcLogoutContext | undefined;
   if (bound.tokens !== undefined) {
     const cookie = cookieValue(request.headers.cookie, SESSION_COOKIE);
-    const invalidated = await (bound.postLogoutRedirectUri === undefined
-      ? bound.tokens.invalidate(cookie).map(() => undefined)
-      : bound.tokens.logout(cookie));
+    const invalidated = await (bound.logoutReturns
+      ? bound.tokens.logout(cookie)
+      : bound.tokens.invalidate(cookie).map(() => undefined));
     if (!invalidated.isOk()) {
       invalidated.getOrUndefined();
       send(response, 503, { "set-cookie": clearCookie(SESSION_COOKIE) });
@@ -462,6 +499,18 @@ const logout = async <P>(
     location: logoutLocation(bound.config, bound.postLogout, bound.postLogoutRedirectUri, context),
     "set-cookie": clearCookie(SESSION_COOKIE),
   });
+};
+
+/**
+ * Whether the browser addressed `redirectUri`'s host and path: the request
+ * target's own authority in absolute form, `Host` otherwise. A comparison, never
+ * a source — no URI is built from either. The scheme is not compared: behind a
+ * TLS-terminating proxy this process cannot observe it.
+ */
+const arrivedAt = (target: URL, request: IncomingMessage, redirectUri: string): boolean => {
+  const expected = new URL(redirectUri);
+  const host = URL.parse(request.url ?? "/")?.host ?? request.headers.host?.toLowerCase();
+  return host === expected.host && target.pathname === expected.pathname;
 };
 
 const handlerFor =
@@ -548,6 +597,7 @@ export const oidc =
     type Pre = PrefixOf<O, "HTTP_OIDC">;
     const prefix = options.prefix ?? DEFAULT_PREFIX;
     const variables = (options.variablePrefix ?? "HTTP_OIDC") as Pre;
+    const loginContext = options.loginContext;
     const schema = Config.object({
       issuer: Config.pinned(options.issuer, Config.url(`${variables}_ISSUER`)),
       clientId: Config.pinned(options.clientId, Config.string(`${variables}_CLIENT_ID`)),
@@ -555,7 +605,11 @@ export const oidc =
         options.clientSecret,
         Config.string(`${variables}_CLIENT_SECRET`),
       ),
-      redirectUri: Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`)),
+      redirectUri:
+        loginContext?.redirectUri === undefined
+          ? Config.pinned(options.redirectUri, Config.url(`${variables}_REDIRECT_URI`))
+          : // Never read: the login context derives the redirect URI per context.
+            { variable: `${variables}_REDIRECT_URI`, parse: () => Ok(undefined) },
       postLogoutRedirectUri: Config.pinned(
         options.postLogoutRedirectUri,
         logoutRedirectUri(`${variables}_POST_LOGOUT_REDIRECT_URI`),
@@ -583,14 +637,22 @@ export const oidc =
           "HttpOidc",
           schema,
         )(env).flatMap((bound): AsyncResult<HttpAnswerer, ConfigInvalid | OidcUnreachable> => {
-          if (bound.postLogoutRedirectUri !== undefined && tokens === undefined)
+          if (
+            (bound.postLogoutRedirectUri !== undefined ||
+              loginContext?.postLogoutRedirectUri !== undefined) &&
+            tokens === undefined
+          )
             return ErrAsync(
               new ConfigInvalid({
                 port: "HttpOidc",
                 issues: [
                   {
                     message: "a post-logout return URI requires a server-side token manager",
-                    path: [`${variables}_POST_LOGOUT_REDIRECT_URI`],
+                    path: [
+                      bound.postLogoutRedirectUri === undefined
+                        ? "loginContext.postLogoutRedirectUri"
+                        : `${variables}_POST_LOGOUT_REDIRECT_URI`,
+                    ],
                   },
                 ],
               }),
@@ -627,18 +689,15 @@ export const oidc =
               handle: handlerFor(
                 {
                   config,
-                  flowBinding: JSON.stringify([
-                    bound.issuer,
-                    bound.clientId,
-                    bound.redirectUri,
-                    prefix,
-                  ]),
-                  ...(options.loginContext === undefined
+                  flowBinding: (redirectUri) =>
+                    JSON.stringify([bound.issuer, bound.clientId, redirectUri, prefix]),
+                  ...(loginContext === undefined
                     ? {}
                     : {
                         loginContext: loginContextFor(
-                          options.loginContext,
+                          loginContext,
                           injectedServices(services) as Injected<D>,
+                          `${prefix.replace(/\/+$/, "")}/callback`,
                         ),
                       }),
                   ...(tokens === undefined ? {} : { tokens }),
@@ -650,6 +709,9 @@ export const oidc =
                   ...(bound.postLogoutRedirectUri === undefined
                     ? {}
                     : { postLogoutRedirectUri: bound.postLogoutRedirectUri }),
+                  logoutReturns:
+                    bound.postLogoutRedirectUri !== undefined ||
+                    loginContext?.postLogoutRedirectUri !== undefined,
                   principal: (claims, context) =>
                     options.principal(
                       claims,

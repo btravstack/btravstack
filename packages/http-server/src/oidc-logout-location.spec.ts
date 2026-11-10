@@ -49,4 +49,26 @@ describe("oidc logout destination", () => {
     // THEN
     expect(location).toBe("https://issuer.example/logout?client_id=staff");
   });
+
+  it("returns to the destination the session was admitted with rather than the static one", () => {
+    // GIVEN
+    const configuration = new Configuration(
+      { issuer: "https://issuer.example", end_session_endpoint: "https://issuer.example/logout" },
+      "staff",
+    );
+    // WHEN
+    const location = logoutLocation(
+      configuration,
+      "/signed-out",
+      "https://app.example/registered",
+      {
+        idToken: "private-hint",
+        postLogoutRedirectUri: "https://acme.app.example/signed-out",
+      },
+    );
+    // THEN
+    expect(new URL(location).searchParams.get("post_logout_redirect_uri")).toBe(
+      "https://acme.app.example/signed-out",
+    );
+  });
 });

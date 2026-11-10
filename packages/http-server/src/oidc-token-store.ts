@@ -15,6 +15,8 @@ export type StoredOidcTokens = {
   readonly accessToken: string;
   readonly refreshToken?: string;
   readonly idToken?: string;
+  /** The post-logout redirect URI the login context derived for this session. */
+  readonly postLogoutRedirectUri?: string;
   readonly accessExpiresAt: number;
   readonly refreshAfter: number;
   readonly sessionExpiresAt: number;
@@ -59,6 +61,8 @@ export type OidcTokenResponse = {
 /** A validated login's provider logout hint; never session principal or cookie data. */
 export type OidcLogoutContext = {
   readonly idToken: string;
+  /** The return the session was admitted with, when its login context derived one. */
+  readonly postLogoutRedirectUri?: string;
 };
 
 /**
@@ -74,6 +78,7 @@ export type OidcTokensService = {
     session: Omit<Session<unknown>, "iat" | "exp" | "tokenRef">,
     subject: string,
     tokens: OidcTokenResponse,
+    postLogoutRedirectUri?: string,
   ) => AsyncResult<string, Unauthenticated | OidcTokenStoreUnavailable>;
   readonly session: (
     cookie: string | undefined,

@@ -628,7 +628,7 @@ export const BrowserApi = HttpModule("BrowserApi")({
 | `issuer`                | no       | read from `HTTP_OIDC_ISSUER`                            | the provider, as its discovery document names itself                                                                                 |
 | `clientId`              | no       | read from `HTTP_OIDC_CLIENT_ID`                         | this deployment's client                                                                                                             |
 | `clientSecret`          | no       | read from `HTTP_OIDC_CLIENT_SECRET`                     | its secret — this is a confidential client                                                                                           |
-| `redirectUri`           | no       | read from `HTTP_OIDC_REDIRECT_URI`                      | the URI **registered** with the provider                                                                                             |
+| `redirectUri`           | no       | read from `HTTP_OIDC_REDIRECT_URI`                      | the URI **registered** with the provider; neither read when `loginContext.redirectUri` derives one                                   |
 | `postLogoutRedirectUri` | no       | read from optional `HTTP_OIDC_POST_LOGOUT_REDIRECT_URI` | provider-registered absolute HTTP(S) return URI, without credentials or a fragment; requires `tokens`                                |
 | `tokens`                | no       | none                                                    | server-side token manager port, also passed to the session authenticator                                                             |
 | `prefix`                | no       | `/auth`                                                 | where the three routes are mounted                                                                                                   |
@@ -685,6 +685,8 @@ Only the default or exact `undefined` context type permits omitting
 | `resolve`                 | **yes**  | Receives immutable request metadata and the services declared in `inject`. Returns a `Result` or `AsyncResult` with context, or refuses with `undefined` or `OidcLoginRefused`. |
 | `allowedParameters`       | no       | Explicit names of provider authorization parameters the application may supply; absent means none.                                                                              |
 | `authorizationParameters` | no       | Receives validated context and injected services, and derives parameters typed by `openid-client`'s `buildAuthorizationUrl`.                                                    |
+| `redirectUri`             | no       | Receives validated context and injected services, and returns this context's absolute redirect URI, which replaces `redirectUri` (see below).                                   |
+| `postLogoutRedirectUri`   | no       | Receives validated context and injected services, and returns this context's absolute post-logout redirect URI. Requires `tokens`.                                              |
 
 The resolver must validate request input against application policy. Looking up
 a known route or invitation is a suitable source; copying an arbitrary query
@@ -702,8 +704,8 @@ Only explicitly derived authorization parameters leave for the provider.
 The schema validates the same JSON input before it is sealed and again on callback;
 its output is the typed context passed to application callbacks. Schema
 transformations therefore do not need to accept their own output as input.
-The transient also binds the configured issuer, client ID, redirect URI and
-mount. Missing, malformed, expired or mismatched context refuses the callback.
+The transient also binds the configured issuer, client ID, the redirect URI in
+use and the mount. Missing, malformed, expired or mismatched context refuses the callback.
 The application must compare recovered intent with the verified claims in
 `principal`; a valid provider session for another account must answer
 `undefined`. This admission happens before session replacement or token
@@ -724,6 +726,37 @@ The shared transient cookie retains its latest-login-wins behavior. Two cookie
 jars keep independent contexts. Two concurrent tabs in one browser can
 overwrite the transient; a stale callback is refused rather than admitted with
 the other tab's intent.
+
+**Per-context redirect URIs.** An application serving one login per host, such as one subdomain per tenant,
+registers one redirect URI per host. `loginContext.redirectUri` and
+`loginContext.postLogoutRedirectUri` derive them from the validated context and
+injected services, never from request headers; compute them from the
+application's own allow-list.
+
+- Each derived URI must be an absolute HTTP(S) URI without credentials or a
+  fragment, the rule a configured `postLogoutRedirectUri` meets. The redirect
+  URI's path must also be this mount's own `<prefix>/callback`. An invalid URI
+  refuses the login with `400` before the provider redirect, and the callback
+  derives them again under the same rules.
+- The derived redirect URI, as a URL serializes it, is the authorization
+  request's `redirect_uri` and the code exchange's. It replaces the configured
+  one in the transaction binding, so a transient recovers only on a callback
+  whose context derives the same URI.
+- A callback must arrive on the derived URI's host and path, read from the
+  request target's own authority or else `Host`. Anything else is refused with
+  `400` and reason `redirect_uri_mismatch`, before principal admission, token
+  retention or session replacement. The scheme is not compared, since a
+  TLS-terminating proxy hides it; a proxy must forward the browser's `Host`
+  unchanged.
+- The derived post-logout URI is stored with the retained credentials, so
+  logout returns to the destination the session was admitted with, whichever
+  host submits it. Like the configured one, it needs a retained ID-token hint
+  to be sent, and composing it without `tokens` fails boot with `ConfigInvalid`.
+
+With `loginContext.redirectUri`, neither the `redirectUri` pin nor
+`<variablePrefix>_REDIRECT_URI` is read, and the variable leaves the login's
+typed environment. The deriving function is called again on callback, so it
+must answer the same URI for the same context.
 
 **Every redirect is a `303`**, `htmx()`'s own ruling and for its reason: RFC
 9110 §15.4.3 leaves a `302`'s POST-to-GET change a MAY, and §15.4.4's `303`
@@ -748,7 +781,8 @@ so `/订单/1` — an ordinary path — would otherwise pass every guard and the
 goes out as `/%E8%AE%A2%E5%8D%95/1`, and a CR/LF one as `/%0A…`, unsplittable.
 
 **The code grant is checked against the REGISTERED redirect URI, never
-`Host`.** `currentUrl` is `redirectUri` carrying this request's query string,
+`Host`.** `currentUrl` is the bound redirect URI — `redirectUri`, or the one the
+login context derived — carrying this request's query string,
 so a forged `Host` header cannot move the check — and a deployment behind a
 proxy, or a test on an ephemeral port, needs no trust in that header either.
 
@@ -775,7 +809,9 @@ endpoint, which is not a trust this package extends.
 **A registered logout return is opt-in.** Set `postLogoutRedirectUri`, or
 `<variablePrefix>_POST_LOGOUT_REDIRECT_URI`, to the absolute HTTP(S) URI registered
 with the provider. Credentials and fragments are refused. Configuring a return
-without a `tokens` manager fails boot with `ConfigInvalid`.
+without a `tokens` manager fails boot with `ConfigInvalid`. A return the login
+context derived for the session takes its place; see
+[application login context](#application-login-context).
 
 When that setting and a retained ID token are present, the answerer obtains the
 issuer/client-bound hint while deleting the credentials, then sends
@@ -804,7 +840,7 @@ information — the provider's reason must not reach the caller, and a `401` is
 not an error the runtime's RED metrics count, so a rotated client secret, a
 dead token endpoint and a genuinely bad code are otherwise one indistinguishable
 spike. So every refusal settles `error` carrying its own `reason`:
-`transient_missing`, `state_mismatch`, `login_context_refused`, `transient_too_large`, `provider_refused`,
+`transient_missing`, `state_mismatch`, `login_context_refused`, `redirect_uri_mismatch`, `transient_too_large`, `provider_refused`,
 `grant_failed`, `principal_refused` or `token_store_failed`. These dimensions
 are bounded; the provider's
 own `error_description` and the library error's message are caller-controlled,
@@ -1026,6 +1062,8 @@ missing records never authenticate; storage failures use
 `StoredOidcTokens.idToken` is optional so existing records remain readable.
 Persist it with the access/refresh credentials when supplied; adapters that
 select stored fields explicitly must include it to support a hinted logout.
+The same holds for the optional `postLogoutRedirectUri`, the return a login
+context derived for that session.
 
 ### Request capabilities and lifetime
 
@@ -1036,7 +1074,9 @@ credentials before returning success and keeps its `AsyncResult<void,
 OidcTokenStoreUnavailable>` result. `logout(cookie)` deletes in the same store
 transaction that obtains its hint, returning `AsyncResult<OidcLogoutContext |
 undefined, OidcTokenStoreUnavailable>`. `OidcLogoutContext` contains only
-`{ idToken: string }`; absent or unusable sessions return `undefined`.
+`{ idToken: string }`, plus `postLogoutRedirectUri` when the session's login
+context derived one (`create` takes it as an optional fourth argument); absent
+or unusable sessions return `undefined`.
 These methods accept a raw cookie, never a reference from a URL or form.
 The service validates the cookie's signature, lifetime, issuer and client
 before using its opaque reference. A session from a different login is refused.

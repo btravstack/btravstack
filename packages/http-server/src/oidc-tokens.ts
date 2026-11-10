@@ -182,19 +182,25 @@ export const createOidcTokens = (
               record: owns(record) ? undefined : record,
               value:
                 live(record) && record.idToken !== undefined
-                  ? { idToken: record.idToken }
+                  ? {
+                      idToken: record.idToken,
+                      ...(record.postLogoutRedirectUri === undefined
+                        ? {}
+                        : { postLogoutRedirectUri: record.postLogoutRedirectUri }),
+                    }
                   : undefined,
             }),
           ),
     );
   const service: OidcTokensService = {
     ...binding,
-    create: (session, subject, tokens) =>
+    create: (session, subject, tokens, postLogoutRedirectUri) =>
       operation<string, Unauthenticated | OidcTokenStoreUnavailable>("create", () => {
         const record = stored(tokens, clock.now(), {
           ...binding,
           subject,
           sessionExpiresAt: clock.now() + codec.ttlSec * SECOND_MS,
+          ...(postLogoutRedirectUri === undefined ? {} : { postLogoutRedirectUri }),
         });
         if (
           session.iss !== binding.issuer ||
@@ -286,6 +292,7 @@ function stored(
   previous: Pick<StoredOidcTokens, "issuer" | "clientId" | "subject" | "sessionExpiresAt"> & {
     readonly refreshToken?: string;
     readonly idToken?: string;
+    readonly postLogoutRedirectUri?: string;
   },
 ): StoredOidcTokens | undefined {
   const lifetime = response.expires_in;
@@ -311,6 +318,9 @@ function stored(
     ...((response.id_token ?? previous.idToken) === undefined
       ? {}
       : { idToken: response.id_token ?? previous.idToken }),
+    ...(previous.postLogoutRedirectUri === undefined
+      ? {}
+      : { postLogoutRedirectUri: previous.postLogoutRedirectUri }),
     accessExpiresAt: issuedAt + duration,
     refreshAfter: issuedAt + duration - Math.min(REFRESH_SKEW_MS, duration / 2),
   };

@@ -31,7 +31,7 @@ import {
   OidcTokenStoreUnavailable,
   type OidcTokensOptions,
 } from "../oidc-tokens.js";
-import { oidc, type OidcOptions } from "../oidc.js";
+import { oidc, type OidcLoginContext, type OidcOptions } from "../oidc.js";
 import { SessionCodec, sessionCodec } from "../session.js";
 
 type TokenFixtures = {
@@ -161,7 +161,12 @@ async function tokenFixture() {
       { issuer, clientId },
     );
   const service = manager();
-  const login = (subject = "alice", refresh = true, idToken?: string) =>
+  const login = (
+    subject = "alice",
+    refresh = true,
+    idToken?: string,
+    postLogoutRedirectUri?: string,
+  ) =>
     service
       .create(
         { principal: { userId: subject }, iss: "https://issuer.example", clientId: "staff" },
@@ -173,8 +178,15 @@ async function tokenFixture() {
           ...(refresh ? { refresh_token: `refresh-${subject}` } : {}),
           ...(idToken === undefined ? {} : { id_token: idToken }),
         },
+        postLogoutRedirectUri,
       )
       .getOrThrow();
+  const pins = {
+    issuer: "https://issuer.example",
+    clientId: "staff",
+    clientSecret: "secret",
+    redirectUri: "https://app.example/auth/callback",
+  };
   return {
     codec,
     clock,
@@ -196,6 +208,7 @@ async function tokenFixture() {
       > = {},
       withoutTokens = false,
       environment: Record<string, string | undefined> = {},
+      loginContext?: OidcLoginContext<string>,
     ) =>
       Module.scoped(
         Module("LogoutConfigurationFixture")({
@@ -204,15 +217,20 @@ async function tokenFixture() {
             noObserverMember,
             Provider(SessionCodec)({ inject: {}, value: codec }),
             Provider(OidcTokens)({ inject: {}, value: service }),
-            ...oidc()({
-              issuer: "https://issuer.example",
-              clientId: "staff",
-              clientSecret: "secret",
-              redirectUri: "https://app.example/auth/callback",
-              ...options,
-              ...(withoutTokens ? {} : { tokens: OidcTokens }),
-              principal: (claims) => claims,
-            }),
+            ...(loginContext === undefined
+              ? oidc()({
+                  ...pins,
+                  ...options,
+                  ...(withoutTokens ? {} : { tokens: OidcTokens }),
+                  principal: (claims) => claims,
+                })
+              : oidc<unknown, string>()({
+                  ...pins,
+                  ...options,
+                  ...(withoutTokens ? {} : { tokens: OidcTokens }),
+                  loginContext,
+                  principal: (claims) => claims,
+                })),
           ],
           exports: [HttpHandler],
         }),

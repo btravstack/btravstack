@@ -204,4 +204,23 @@ describe("oidc logout context", () => {
     // THEN
     expect(context).toBeErrTagged("OidcTokenStoreUnavailable");
   });
+
+  it("returns the derived return with the hint, across a refresh", async ({ tokens }) => {
+    // GIVEN
+    const cookie = await tokens.login(
+      "alice",
+      true,
+      "original-id-token",
+      "https://acme.app.example/signed-out",
+    );
+    await tokens.clock.advance(60_000);
+    await tokens.service.accessToken(cookie).getOrThrow();
+    // WHEN
+    const context = await tokens.service.logout(cookie);
+    // THEN
+    expect(context).toBeOkWith({
+      idToken: "original-id-token",
+      postLogoutRedirectUri: "https://acme.app.example/signed-out",
+    });
+  });
 });
