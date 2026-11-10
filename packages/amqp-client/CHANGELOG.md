@@ -1,5 +1,11 @@
 # @btravstack/amqp-client
 
+## 0.60.0
+
+### Patch Changes
+
+- @btravstack/di@0.60.0
+
 ## 0.59.0
 
 ### Patch Changes

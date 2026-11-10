@@ -1,5 +1,25 @@
 # @btravstack/http-server
 
+## 0.60.0
+
+### Minor Changes
+
+- f2317a3: Let an OIDC login context derive its redirect URI and post-logout redirect URI
+  from the validated context and injected services, so one `oidc()` serves an
+  application whose hosts each register their own redirect URI. Derived URIs are
+  validated before the provider redirect, bound into the protected transaction,
+  used for the authorization request and the code exchange, and checked against
+  the host and path the callback arrives on. Logout returns to the post-logout URI
+  the session was admitted with. The static redirect URI is not read when the
+  context derives one; existing integrations keep their behavior.
+
+### Patch Changes
+
+- @btravstack/config@0.60.0
+  - @btravstack/contract@0.60.0
+  - @btravstack/core@0.60.0
+  - @btravstack/di@0.60.0
+
 ## 0.59.0
 
 ### Minor Changes
