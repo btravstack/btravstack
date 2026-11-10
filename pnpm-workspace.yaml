@@ -103,12 +103,12 @@ catalog:
   "@temporal-contract/contract": 8.0.0-beta.15
   "@temporal-contract/testing": 8.0.0-beta.15
   "@temporal-contract/worker": 8.0.0-beta.15
-  "@temporalio/activity": 1.24.0
-  "@temporalio/client": 1.24.0
-  "@temporalio/common": 1.24.0
-  "@temporalio/testing": 1.24.0
-  "@temporalio/worker": 1.24.0
-  "@temporalio/workflow": 1.24.0
+  "@temporalio/activity": 1.25.0
+  "@temporalio/client": 1.25.0
+  "@temporalio/common": 1.25.0
+  "@temporalio/testing": 1.25.0
+  "@temporalio/worker": 1.25.0
+  "@temporalio/workflow": 1.25.0
   # The weekly mutation run (`.github/workflows/mutation.yml`) over `core` and
   # `di`. Never on the gate: a pass takes minutes where the suites take a
   # second, so it recomputes the kernel's "mutation-verified" claim once a week
