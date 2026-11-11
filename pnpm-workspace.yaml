@@ -117,7 +117,7 @@ catalog:
   "@stryker-mutator/vitest-runner": 10.0.0
   "@types/nodemailer": 8.0.2
   "@types/node": 26.6.5
-  "@unthrown/oxlint": 5.12.1
+  "@unthrown/oxlint": 5.12.2
   "@unthrown/orpc": 0.4.2
   "@unthrown/pothos": 0.1.2
   "@unthrown/standard-schema": 5.12.1
@@ -161,7 +161,7 @@ catalog:
   # by anything: they are invoked as binaries, once per package, from a script.
   publint: 0.3.25
   "@arethetypeswrong/cli": 0.18.5
-  unthrown: 5.12.1
+  unthrown: 5.12.2
   "@vitest/coverage-v8": 5.0.3
   # vitest 5 takes vite as a PEER (4.x shipped its own), and so does the Prisma
   # 8 toolchain; with `autoInstallPeers: false` nothing else provides one, so
