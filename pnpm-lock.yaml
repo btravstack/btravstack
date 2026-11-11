@@ -363,8 +363,8 @@ catalogs:
       specifier: 10.2.1
       version: 10.2.1
     openid-client:
-      specifier: 6.8.8
-      version: 6.8.8
+      specifier: 6.8.9
+      version: 6.8.9
     oxfmt:
       specifier: 0.77.0
       version: 0.77.0
@@ -930,7 +930,7 @@ importers:
         version: 6.2.12
       openid-client:
         specifier: 'catalog:'
-        version: 6.8.8
+        version: 6.8.9
       unthrown:
         specifier: 'catalog:'
         version: 5.12.1
@@ -1514,7 +1514,7 @@ importers:
         version: 6.2.12
       openid-client:
         specifier: 'catalog:'
-        version: 6.8.8
+        version: 6.8.9
       unthrown:
         specifier: 'catalog:'
         version: 5.12.1
@@ -1593,7 +1593,7 @@ importers:
         version: 6.2.12
       openid-client:
         specifier: 'catalog:'
-        version: 6.8.8
+        version: 6.8.9
       testcontainers:
         specifier: 'catalog:'
         version: 12.2.1(supports-color@8.1.1)
@@ -2137,7 +2137,7 @@ importers:
         version: 6.2.12
       openid-client:
         specifier: 'catalog:'
-        version: 6.8.8
+        version: 6.8.9
       tsdown:
         specifier: 'catalog:'
         version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2347,7 +2347,7 @@ importers:
         version: 5.0.3(vitest@5.0.3)
       openid-client:
         specifier: 'catalog:'
-        version: 6.8.8
+        version: 6.8.9
       tsdown:
         specifier: 'catalog:'
         version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -2470,7 +2470,7 @@ importers:
         version: 5.0.3(vitest@5.0.3)
       openid-client:
         specifier: 'catalog:'
-        version: 6.8.8
+        version: 6.8.9
       temporal-polyfill:
         specifier: 1.0.6
         version: 1.0.6
@@ -8912,6 +8912,9 @@ packages:
   jose@6.2.12:
     resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
+  jose@6.2.15:
+    resolution: {integrity: sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA==}
+
   js-base64@3.9.4:
     resolution: {integrity: sha512-PtOMXpEGuP0RRiRXsjzHzl44dMHxSu2CPvAhinupR1tBa88me+1DPqsobl7eupn5UukjLkln1ZnAOAOXOrYG0Q==}
 
@@ -9598,8 +9601,8 @@ packages:
   openapi-typescript-helpers@0.0.15:
     resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
 
-  openid-client@6.8.8:
-    resolution: {integrity: sha512-ZsucJA5Ad04Uv7YN4ql+s4GXNmb9uAYQwyJTsJx7CH/MX3JZioLE2pVKi1SC+YrbSLA4Px3Gi30dMjgOZtb6pA==}
+  openid-client@6.8.9:
+    resolution: {integrity: sha512-6mXMRNJxDOf6BflEWLXul1UwzLFz++9Ofz1PYwPwwsJsyXBsbfkO+Jo255SW1qnFNLYz4EJWHz42X4OJJrya/g==}
 
   oxc-parser@0.155.0:
     resolution: {integrity: sha512-C/ReSf1JUFukK/zvk6jhcNibSssvas5+ktIzK7fbKVd3CedWe59C3QwHEOrEZj/4Rt9+xg0Jeis/Jv1F/KM1mw==}
@@ -17130,6 +17133,8 @@ snapshots:
 
   jose@6.2.12: {}
 
+  jose@6.2.15: {}
+
   js-base64@3.9.4: {}
 
   js-md4@0.3.2: {}
@@ -17867,9 +17872,9 @@ snapshots:
 
   openapi-typescript-helpers@0.0.15: {}
 
-  openid-client@6.8.8:
+  openid-client@6.8.9:
     dependencies:
-      jose: 6.2.12
+      jose: 6.2.15
       oauth4webapi: 3.8.8
 
   oxc-parser@0.155.0:
