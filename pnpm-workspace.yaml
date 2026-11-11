@@ -93,7 +93,7 @@ catalog:
   # Each entry here is the head of its own train, and aligning them by hand
   # would mean naming a version one of these packages has never published.
   "@prisma/cli-engine": 0.9.0
-  "@prisma/orm-postgres": 8.0.0-rc.20
+  "@prisma/orm-postgres": 8.0.0-rc.23
   "@tanstack/query-core": 5.104.5
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.1. 8.x also
@@ -138,7 +138,7 @@ catalog:
   nodemailer: 10.2.1
   openid-client: 6.8.9
   temporal-polyfill: 1.0.4
-  prisma: 8.0.0-rc.27
+  prisma: 8.0.0-rc.33
   uuidv7: 1.2.1
   redis: 6.3.0
   tsdown: 0.23.2
