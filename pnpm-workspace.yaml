@@ -141,7 +141,7 @@ catalog:
   prisma: 8.0.0-rc.34
   uuidv7: 1.2.1
   redis: 6.3.1
-  tsdown: 0.23.2
+  tsdown: 0.23.7
   tsx: 4.23.15
   turbo: 2.11.11
   typedoc: 0.28.20
