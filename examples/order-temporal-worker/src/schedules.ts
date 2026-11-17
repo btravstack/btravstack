@@ -1,31 +1,21 @@
 import { Config, Env, type Environment } from "@btravstack/config";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
-import { temporalClient, temporalConnection } from "@btravstack/temporal-client";
+import { temporalClient } from "@btravstack/temporal-client";
 import { ensureSchedule, type ScheduleOutcome } from "@btravstack/temporal-worker/schedule";
 import {
   type TypedClient,
   type ScheduleNotFoundError,
   type WorkflowValidationError,
 } from "@temporal-contract/client";
-import {
-  ScheduleNotFoundError as ScheduleGone,
-  type Client,
-  type Connection,
-} from "@temporalio/client";
+import { ScheduleNotFoundError as ScheduleGone, type Client } from "@temporalio/client";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 const scheduleConfig = Config.provider("ScheduleConfig")(
-  Config.object({
-    address: Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
-    namespace: Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
-    tenants: Config.list("SWEEP_TENANTS"),
-  }),
+  Config.object({ tenants: Config.list("SWEEP_TENANTS") }),
 );
 
 type SweepNotEnsured = WorkflowValidationError | ScheduleNotFoundError;
-
-class ScheduleConnection extends Port("ScheduleConnection")<Connection> {}
 
 class ScheduleTypedClient extends Port("ScheduleTypedClient")<TypedClient> {}
 
@@ -33,12 +23,8 @@ const PREFIX = "sweep-stale-orders-";
 
 const scheduling = (env: Environment) =>
   Module("Scheduling")({
-    provides: [
-      Provider(Env)({ inject: {}, value: env }),
-      scheduleConfig,
-      temporalConnection(ScheduleConnection, scheduleConfig.port),
-      temporalClient(ScheduleTypedClient, ScheduleConnection, scheduleConfig.port),
-    ],
+    imports: [temporalClient(ScheduleTypedClient)],
+    provides: [Provider(Env)({ inject: {}, value: env }), scheduleConfig],
     exports: [ScheduleTypedClient, scheduleConfig.port],
   });
 

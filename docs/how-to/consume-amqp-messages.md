@@ -196,8 +196,8 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   handlers: orderHandlers,
   // outbox() relays what the writes committed, through the publisher below —
   // see [Publish a message](/how-to/publish-a-message).
-  imports: [OrderPersistenceModule, observability(), otel(), outbox()],
-  provides: [orderAmqpClient, orderPublisher],
+  imports: [OrderPersistenceModule, observability(), otel(), outbox(), orderAmqpClient],
+  provides: [orderPublisher],
   unit: { message: MessageUnitModule },
   exports: [OutboxStore, OrderDatabase, Logger],
 });

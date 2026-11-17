@@ -16,7 +16,7 @@ import {
   type Boot,
 } from "@btravstack/testing";
 import { metrics, trace } from "@opentelemetry/api";
-import { metrics as sdkMetrics } from "@opentelemetry/sdk-node";
+import * as sdkMetrics from "@opentelemetry/sdk-metrics";
 import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
 import { Err, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, test } from "vitest";

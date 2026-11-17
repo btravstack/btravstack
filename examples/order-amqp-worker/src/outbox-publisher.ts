@@ -1,6 +1,5 @@
 import type { TypedAmqpClient } from "@amqp-contract/client";
 import { amqpClient } from "@btravstack/amqp-client";
-import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { decodeOrderPayload } from "@btravstack/example-order-infrastructure";
@@ -8,13 +7,14 @@ import { OutboxPublisher } from "@btravstack/outbox";
 import { OkAsync } from "unthrown";
 
 /**
- * The client, as a port of its own: a resourceful provider hands `release` the
- * service it acquired, and the thing to close is the client, not the publisher
- * over it.
+ * The client, as a port of its own: the module closes the client, not the
+ * publisher over it, as the scope ends. It reads `AMQP_URL` and
+ * `AMQP_CONNECT_TIMEOUT_MS` itself, the variables the worker reads, so the
+ * publisher and the consumer share one broker over separate connections.
  */
 class OrderAmqpClient extends Port("OrderAmqpClient")<TypedAmqpClient<typeof orderContract>> {}
 
-export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract, AmqpConfig);
+export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract);
 
 /**
  * What "publish" means for this application — the one half of the outbox

@@ -5,7 +5,8 @@ import { logSink, OrderAmqpWorker } from "./module.js";
 
 /**
  * The broadcast process — the whole of it. The graph reads its own
- * environment: `AMQP_URL` through `@btravstack/amqp-worker`'s `AmqpConfig`,
+ * environment: `AMQP_URL` through `@btravstack/amqp-worker`'s `AmqpConfig`
+ * and the publisher's `amqpClient`,
  * `OUTBOX_TENANTS` and `OUTBOX_POLL_MS` through `@btravstack/outbox`'s
  * `outbox()`, `PROBE_PORT` through the kernel; a bad value is a `startFailed`
  * event and exit code 78, reported by `runMain` itself. No connection dance

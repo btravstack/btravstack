@@ -1,25 +1,46 @@
 # packages/temporal-client
 
-This package binds the calling half of Temporal to application-declared DI
-ports. `temporalConnection(connectionPort, settingsPort)` opens and closes the
-native connection. `temporalClient(clientPort, connectionPort, settingsPort)`
-constructs `@temporal-contract/client`'s `TypedClient` over that connection.
-The two providers keep connection cleanup correct if a later provider fails.
-The caller binds its contract through `client.for(contract)`.
+This package binds the calling half of Temporal to an application-declared DI
+port. `temporalClient(port, options?)` is a `Module`, like the other starters
+that peer on `@btravstack/core`: it provides `@temporal-contract/client`'s
+`TypedClient` on `port` and a `temporal-client:<port id>` health check, exports
+both, and composes `noObserverMember`. The caller binds its contract through
+`client.for(contract)`.
 
-An optional fourth port supplies the `DataConverter`. It is a port rather
-than a value so a codec's provider can inject its key store, and so the worker
-and the client resolve one provider; the converter is not a settings field
-because the worker's `TemporalConfig` is bound from the environment and could
-not carry one, and the two starters take it in the same shape.
+- **The application names the port; the connection is private.** A process
+  can hold several clients, so the client port stays the application's. The
+  settings and the `Connection` are ports derived from its id
+  (`TemporalClientSettings:<id>`, `TemporalClientConnection:<id>`), memoised
+  so a second call for the same port reuses them, and never exported. The
+  connection stays a provider of its own so its cleanup is correct when the
+  client provider fails. Nothing outside the module needs the raw connection:
+  `client.raw.connection` is the escape hatch.
+- **Configuration is the worker's, from `Env`.** `TEMPORAL_ADDRESS` and
+  `TEMPORAL_NAMESPACE`, with the worker's defaults, each pinned by its option
+  through `Config.pinned`; the security variables are never pinned, as on the
+  worker. `ConfigInvalid` names the client's port. The module's type spells
+  its needs with `EnvReading` / `Unpinned` / `MaybePinned` (both variables
+  default, so they are only ever optional), pinned by `index.test-d.ts`.
+- **`dataConverter` and `apiKey` are ports, not values.** A codec's provider
+  can inject its key store, and the worker and the client resolve one
+  provider; the converter cannot be a variable. Each port joins the needs only
+  when given, and `TemporalApiKeyUnavailable` joins the errors only with
+  `apiKey`.
+- **The health check asks gRPC health for the workflow service**, as the Go
+  SDK's `CheckHealth` does, through the provided connection — the rotating
+  `Proxy` when files rotate — so it reaches the current connection. It is not
+  a readiness gate. Temporal's retry interceptor keeps an `UNAVAILABLE` call
+  alive with its own backoff, past the kernel's health timeout: the call
+  carries a deadline so it ends, and every close of a physical connection waits
+  for the calls in flight on it — scope release, a rotation closing the
+  replaced connection, and a failed key source closing the current one — since a retry fired on a closed channel throws uncaught from the
+  interceptor's timer. `TemporalClientUnreachable` models a failed connection.
 
-The settings port supplies `address` and `namespace`, and optionally the
-connection's security (see below); `TemporalClientUnreachable`
-models a failed connection. This package has no worker dependency and owns no
-schedule policy. Package tests cover connection cleanup, namespace binding,
-and connection error qualification. The worked consumer is
-`examples/order-temporal-worker/src/schedules.ts`, exercised by its real
-Temporal suite.
+This package has no worker dependency and owns no schedule policy. The worked
+consumer is `examples/order-temporal-worker/src/schedules.ts`, exercised by
+its real Temporal suite. `index.spec.ts`'s configuration and health cases run
+against a fake connection or a scripted gRPC server of the test's own, so they
+need no container.
 
 The starter owns the SDK's lazy connection before verifying connectivity:
 `Connection.connect()` does not close its allocation after a failed handshake.
@@ -79,8 +100,10 @@ as a file, and `TEMPORAL_CREDENTIALS_RELOAD_MS`.
   grpc-js lets started calls finish. A `with*` call-context scope lives in
   the connection it was opened on (the SDK makes one `AsyncLocalStorage` per
   connection and offers no way to share it), so a call inside one after a
-  rotation loses it; documented rather than worked around. An unreadable file is retried silently:
-  this package has no observers.
+  rotation loses it; documented rather than worked around. An unreadable file
+  is reported to `Observers` as `temporal-client` / `reload`, through
+  `reloading`'s `unreadable` hook as on the worker, and retried on the next
+  tick.
 
 ## Application-owned renewable credentials
 
@@ -92,7 +115,9 @@ TLS and excludes inline/file API keys and mTLS. Configuration refusals precede
 source reads, and an empty answer is unavailable. Successful changes use
 `setApiKey`; credential values never enter diagnostics.
 
-A failed read or apply closes the client connection immediately. The next
+A failed read or apply fails closed immediately: the key is cleared, so no new
+call carries it, and the connection closes once its in-flight health probes
+settle (a retry on a closed channel throws uncaught). The next
 successful reading opens a fresh connection even if the credential is unchanged.
 Scope teardown stops the polling and waits for an in-flight read before closing.
 

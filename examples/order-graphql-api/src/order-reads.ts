@@ -3,8 +3,7 @@ import { createOrderApiClient, type OrderApiClient } from "@btravstack/example-o
 import type { OrderRef, OrderView } from "@btravstack/example-order-api-contract";
 import { ORPCError } from "@orpc/client";
 import DataLoader from "dataloader";
-import type { GraphQLError } from "graphql";
-import { createGraphQLError } from "graphql-yoga";
+import { GraphQLError } from "graphql";
 import { Err, Ok, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** Where the order API answers — `ORDER_API_URL`. */
@@ -35,14 +34,14 @@ export class OrderReads extends Port("OrderReads")<{
  */
 export const refusedByService = (cause: unknown): Result<never, GraphQLError> => {
   if (cause instanceof ORPCError && (cause.code === "UNAUTHORIZED" || cause.code === "FORBIDDEN"))
-    return Err(createGraphQLError(cause.message, { extensions: { code: cause.code } }));
+    return Err(new GraphQLError(cause.message, { extensions: { code: cause.code } }));
   // oxlint-disable-next-line unthrown/no-throw -- recoverDefect keeps a rethrown cause a defect
   throw cause;
 };
 
 /** A refusal the contract declares, as this field's error. */
 export const refusal = (error: { readonly code: string; readonly message: string }) =>
-  createGraphQLError(error.message, { extensions: { code: error.code } });
+  new GraphQLError(error.message, { extensions: { code: error.code } });
 
 const callerReads = (client: OrderApiClient): CallerReads => {
   const found = new DataLoader<OrderRef["id"], Result<OrderView | null, GraphQLError>>((ids) =>

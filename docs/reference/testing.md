@@ -199,8 +199,9 @@ const recording = AmqpModule("RecordingAmqpWorker")({
     OrderPersistenceModule,
     observability({ sink: (line) => lines.push(line) }),
     outbox(),
+    orderAmqpClient,
   ],
-  provides: [orderAmqpClient, orderPublisher],
+  provides: [orderPublisher],
   exports: [PlaceOrder, OrderRepository, OutboxStore],
 });
 

@@ -33,7 +33,7 @@ admits are tested:
 | Train  | `@prisma/orm-postgres` | `prisma` CLI  | `@prisma/cli-engine` | Tested by                                                        |
 | ------ | ---------------------- | ------------- | -------------------- | ---------------------------------------------------------------- |
 | Floor  | `8.0.0-rc.11`          | `8.0.0-rc.15` | `0.4.0`              | `internal/prisma-floor`: migrations released under it, unedited  |
-| Latest | `8.0.0-rc.20`          | `8.0.0-rc.27` | `0.9.0`              | the rest of the gate, including the order infrastructure example |
+| Latest | `8.0.0-rc.24`          | `8.0.0-rc.34` | `0.10.0`             | the rest of the gate, including the order infrastructure example |
 
 The starter's middleware carries the hooks of both: `beforeQuery` /
 `afterQuery` / `beforeExecute` / `afterExecute` up to rc.17, and
@@ -76,9 +76,9 @@ requires `temporal-polyfill@^1.0.4` as a peer, and from rc.18 a policy's
 The pinned Prisma 8 Postgres facade has **no supported toolchain-free
 production install**. Importing `@prisma/orm-postgres/runtime` selects the
 runtime JavaScript entry point; it does not select a smaller package manifest.
-The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.20)
+The [published Postgres manifest](https://registry.npmjs.org/@prisma/orm-postgres/8.0.0-rc.24)
 requires `@prisma/orm-toolchain`, whose
-[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.20)
+[published manifest](https://registry.npmjs.org/@prisma/orm-toolchain/8.0.0-rc.24)
 requires the `@prisma/cli-engine` peer and declares build-tool dependencies.
 
 Keep the application manifest split by responsibility:

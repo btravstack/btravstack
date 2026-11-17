@@ -57,7 +57,7 @@
     "@unthrown/standard-schema": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
-    "temporal-polyfill": "1.0.6",
+    "temporal-polyfill": "1.0.8",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "typescript-consumer": "catalog:",

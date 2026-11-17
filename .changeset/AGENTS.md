@@ -92,7 +92,11 @@ failure existed in CI and nowhere else.
 `templates/http-app` is outside the workspace, so Changesets cannot update its
 pins. The root `version` script runs `.changeset/sync-template.mjs` after
 Changesets to copy each framework package's new version into the template,
-leaving third-party pins unchanged. The release workflow uses that script,
+and to move its exact `@orpc/*` pins to `orpc-server`'s `@orpc/server` peer
+floor. Other third-party pins stay unchanged. The oRPC pins move with the
+release, never before it: until the release is published the template installs
+the previous `@btravstack/*` from npm, which a newer beta can break (#746
+renamed an export the old answerer imports). The release workflow uses that script,
 so the release PR carries the template update too.
 
 The consumer gate rejects template pins that differ from repository versions.

@@ -137,11 +137,12 @@ export const amqpSubscription = <
               },
             ]),
           );
+          const connectTimeoutMs = services.settings.connectTimeoutMs ?? 5_000;
           return TypedAmqpWorker.create({
             contract: options.contract,
             handlers: wrapped as never,
             urls: [services.settings.url],
-            connectTimeoutMs: services.settings.connectTimeoutMs ?? 5_000,
+            connectTimeoutMs,
             logger: brokerLog(observers),
           });
         },

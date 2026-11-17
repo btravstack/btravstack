@@ -27,9 +27,8 @@ import type {
   UnitsOf,
 } from "@btravstack/http-server/internal";
 import { forkUnit } from "@btravstack/http-server/internal";
-import type { GraphQLSchema, ValidationRule } from "graphql";
+import { GraphQLError, type GraphQLSchema, type ValidationRule } from "graphql";
 import {
-  createGraphQLError,
   createYoga,
   handleStreamOrSingleExecutionResult,
   maskError,
@@ -47,6 +46,13 @@ const causeOf = (error: unknown): unknown =>
     ? error.originalError
     : error;
 
+// By name: Yoga exposes a `GraphQLError` by `instanceof` against its own copy
+// of `graphql`, and graphql 17's `development` condition can load a second one.
+const isExposed = (error: unknown): error is Error =>
+  error instanceof Error &&
+  error.name === "GraphQLError" &&
+  (!("originalError" in error) || error.originalError == null || isExposed(error.originalError));
+
 const pathOf = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "path" in error && Array.isArray(error.path)
     ? error.path.join(".")
@@ -57,7 +63,7 @@ const noIntrospection: ValidationRule = (context) => ({
   Field: (node) => {
     if (node.name.value === "__schema" || node.name.value === "__type")
       context.reportError(
-        createGraphQLError(
+        new GraphQLError(
           `GraphQL introspection is not allowed, but the query contained ${node.name.value}`,
           { nodes: [node] },
         ),
@@ -281,6 +287,7 @@ export const graphql = <
           // defect is reported to `Observers` here instead, or nowhere.
           maskedErrors: {
             maskError: (error, message, isDev) => {
+              if (isExposed(error)) return error;
               const masked = maskError(error, message, isDev);
               if (masked !== error)
                 observe(observers, {

@@ -31,7 +31,7 @@ import { HttpUnit } from "@btravstack/http-server/internal";
 import type { Principal, SchemesOf } from "@btravstack/http-server/internal";
 import type { SchemePortsOf } from "@btravstack/http-server/internal";
 import {
-  getAsyncIteratorObjectSchemaDetails,
+  getAsyncIteratorObjectSchemasDetails,
   type AnyProcedureContract,
   type ProcedureContract,
   type RouterContract,
@@ -236,7 +236,7 @@ const RPC_METHODS: ReadonlySet<string> = new Set(RPC_DEFAULT_ALLOW_METHODS);
 /** Whether a procedure's declared output is an event iterator — the shape `EventSource` consumes. */
 const streamsOutput = (procedure: AnyProcedure): boolean =>
   (procedure["~orpc"].outputSchemas ?? []).some(
-    (schema) => getAsyncIteratorObjectSchemaDetails(schema) !== undefined,
+    (schema) => getAsyncIteratorObjectSchemasDetails([schema]) !== undefined,
   );
 
 /** Whether a procedure's OpenAPI route declares a body read or answered as a stream. */

@@ -41,7 +41,7 @@ while the runtime still admits the GET:
 
 ```ts
 import {
-  getAsyncIteratorObjectSchemaDetails,
+  getAsyncIteratorObjectSchemasDetails,
   getContractRouter,
   type AnyContractProcedure,
   type AnyContractRouter,
@@ -55,7 +55,7 @@ const streams = (segments: readonly string[]): boolean => {
   return (
     isProcedure(procedure) &&
     (procedure["~orpc"].outputSchemas ?? []).some(
-      (schema) => getAsyncIteratorObjectSchemaDetails(schema) !== undefined,
+      (schema) => getAsyncIteratorObjectSchemasDetails([schema]) !== undefined,
     )
   );
 };

@@ -27,7 +27,7 @@ gives a type and a validator; a plain class gives a type and behaviour — and
 stitching the rest together by hand is exactly the repetitive, error-prone work
 a library should absorb.
 
-[Effect's `Schema.Class`](https://www.effect.website/docs/v3/schema/classes)
+[Effect's `Schema.Class`](https://effect.website/docs/v4/schema/classes)
 gets all four right at once and is the closest prior art. This package targets
 the same shape on top of **zod v4** and
 **[Standard Schema](https://standardschema.dev)**, with entry points named for

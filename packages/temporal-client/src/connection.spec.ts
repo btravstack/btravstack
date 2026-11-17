@@ -42,7 +42,7 @@ describe("connection initialization", () => {
 
   it("should retain the endpoint and original protocol refusal", async ({ refusing }) => {
     // GIVEN
-    const settings = refusing.settings;
+    const env = refusing.env;
 
     // WHEN
     const outcome = await refusing.attempt();
@@ -51,7 +51,7 @@ describe("connection initialization", () => {
     expect(outcome).toBeErrWith(
       expect.objectContaining({
         _tag: "TemporalClientUnreachable",
-        address: settings.address,
+        address: env.TEMPORAL_ADDRESS,
         cause: expect.objectContaining({
           cause: expect.objectContaining({ code: 7, details: "fixture refused" }),
         }),

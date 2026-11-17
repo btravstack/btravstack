@@ -114,7 +114,7 @@ trigger, the answer is no.
   `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole
   transport and delivered the serving side of it. The calling side uses
   upstream libraries. `@btravstack/amqp-client` and
-  `@btravstack/temporal-client` bind resourceful callers to DI scopes without
+  `@btravstack/temporal-client` are modules binding resourceful callers to DI scopes without
   worker peers; the oRPC caller uses `@orpc/client` directly.
   Three things decided the spelling:
   - **The neighbours qualify both sides** — `@orpc/server`/`@orpc/client`,

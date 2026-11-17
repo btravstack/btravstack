@@ -240,7 +240,7 @@ export const it = test.extend<CacheFixtures>({
               spanProcessors: [
                 new BatchSpanProcessor({ exporter, scheduledDelayMillis: 3_600_000 }),
               ],
-              metricReader: reader,
+              metricReaders: [reader],
             }),
           ],
           exports: [Cache],

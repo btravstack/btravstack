@@ -1,6 +1,5 @@
 import type { AnySchema, ErrorMap, InferSchemaOutput, ProcedureContract } from "@orpc/contract";
-import type { GraphQLError } from "graphql";
-import { createGraphQLError } from "graphql-yoga";
+import { GraphQLError } from "graphql";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
@@ -22,7 +21,7 @@ export const inputOf = <I extends AnySchema>(
               outcome.issues === undefined
                 ? Ok(outcome.value)
                 : Err(
-                    createGraphQLError(outcome.issues.map((issue) => issue.message).join("; "), {
+                    new GraphQLError(outcome.issues.map((issue) => issue.message).join("; "), {
                       extensions: { code: "BAD_REQUEST" },
                     }),
                   ),

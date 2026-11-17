@@ -1,5 +1,4 @@
-import type { GraphQLError } from "graphql";
-import { createGraphQLError } from "graphql-yoga";
+import { GraphQLError } from "graphql";
 import type { AsyncResult, Result } from "unthrown";
 
 /**
@@ -27,10 +26,9 @@ export const fieldResult = async <T>(
   if (settled.isDefect())
     // oxlint-disable-next-line unthrown/no-throw -- a resolver reports its field's error by throwing it
     throw new Error("fieldResult: the field's result was a defect", { cause: settled.cause });
-  // Rebuilt without `originalError`, which would make Yoga mask the refusal —
-  // and by Yoga, whose `graphql` may be another module instance than ours.
+  // Rebuilt without `originalError`, which would make Yoga mask the refusal.
   if (settled.isErr())
     // oxlint-disable-next-line unthrown/no-throw -- a resolver reports its field's error by throwing it
-    throw createGraphQLError(settled.error.message, { extensions: settled.error.extensions });
+    throw new GraphQLError(settled.error.message, { extensions: settled.error.extensions });
   return settled.value;
 };

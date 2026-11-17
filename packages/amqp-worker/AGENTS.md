@@ -29,6 +29,21 @@ page, never this file.
   `AMQP_CONNECT_TIMEOUT_MS` for that initialization cost; the starter defaults to
   5s.
 
+- **A silent broker is bounded upstream, which is the `^3.0.1` peer floor.**
+  Before `@amqp-contract` 3.0.1 (btravstack/amqp-contract#796), `close()` on
+  the failure path awaited an in-flight connect that amqplib bounds only with
+  a socket timeout, so a broker accepting TCP and never answering hung
+  start-up. 3.0.1 defaults that timeout to half `connectTimeoutMs` and stops
+  `close()` waiting for the dial; a caller's own
+  `connectionOptions.connectionOptions.timeout` is kept and should stay below
+  the connect timeout. `amqp-runtime.spec.ts` and `subscription.spec.ts` keep
+  the silent-broker cases as the floor's regression guard.
+  `@btravstack/amqp-client` holds its own copy of the rule.
+- **`broker-log.ts` has a copy in `@btravstack/amqp-client`**, which routes
+  the client library's `warn` and `error` lines to `Observers` the same way
+  under `component: "amqp-client"`. Neither package depends on the other;
+  change both copies together.
+
 - **`AmqpModule`'s return type is di's own `Module(name)({...})` over the
   augmented tuples, never a named alias.** A named generic alias was tried and
   removed: declaration emit keeps it unreduced and cannot name imported

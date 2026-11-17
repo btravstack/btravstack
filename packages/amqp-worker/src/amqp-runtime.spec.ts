@@ -98,6 +98,29 @@ describe("amqp", () => {
     );
   });
 
+  it("fails start-up within its connect timeout when the broker never answers", async ({
+    serveSilent,
+  }) => {
+    // GIVEN a broker that accepts the connection and never speaks AMQP
+    const started = performance.now();
+
+    // WHEN the application is started with a half-second connect timeout
+    const exited = await serveSilent().exited;
+
+    // THEN start-up fails with the timed-out handshake as its cause, well before
+    // a reconnect interval
+    expect({
+      error: exited.isErr() && exited.error,
+      withinBudget: performance.now() - started < 2_000,
+    }).toEqual({
+      error: expect.objectContaining({
+        _tag: "RuntimeStartFailed",
+        cause: expect.objectContaining({ message: expect.stringContaining("connect ETIMEDOUT") }),
+      }),
+      withinBudget: true,
+    });
+  });
+
   it("binds the broker and its connect timeout from the environment", async ({
     boundFrom,
     amqpConnectionUrl,

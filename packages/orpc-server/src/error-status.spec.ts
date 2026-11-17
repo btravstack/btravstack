@@ -5,6 +5,7 @@ import { HttpAuthenticator, Unauthenticated, granted } from "@btravstack/http-se
 import { it } from "@btravstack/internal-http-fixtures";
 import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
+import { DEFAULT_ERROR_STATUS } from "@orpc/server";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 import { z } from "zod";
@@ -85,7 +86,7 @@ describe("contract-local OpenAPI error statuses", () => {
       const response = await fetch(`http://127.0.0.1:${info?.port}/api/refuse`, { method: "POST" });
 
       // THEN undeclared statuses retain oRPC's default
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(DEFAULT_ERROR_STATUS);
     },
   );
 

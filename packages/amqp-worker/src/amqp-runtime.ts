@@ -346,9 +346,7 @@ const createWorker = <TContract extends AnyAmqpContract, Unit extends AnyUnitMod
     // discarded every one of them.
     logger: brokerLog(observers),
     urls: [config.url],
-    ...(options.connectionOptions === undefined
-      ? {}
-      : { connectionOptions: options.connectionOptions }),
+    connectionOptions: options.connectionOptions,
     ...(options.defaultConsumerOptions === undefined
       ? {}
       : { defaultConsumerOptions: options.defaultConsumerOptions }),

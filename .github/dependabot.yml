@@ -56,9 +56,9 @@ updates:
           - tsdown
           - tsx
           - "@changesets/cli"
-      # The three pinned-beta families are ignored below, but they keep a group
-      # each: the day a line goes stable and its ignore is lifted, the family
-      # already moves together instead of arriving as four separate PRs.
+      # oRPC is pinned to an exact beta and ignored below, but it keeps a group:
+      # the day its line goes stable and the ignore is lifted, the family
+      # already moves together instead of arriving as separate PRs.
       orpc:
         patterns:
           - "@orpc/*"
@@ -75,13 +75,11 @@ updates:
         patterns:
           - "@aws-sdk/*"
     ignore:
-      # Three families are pinned to an exact beta because their `latest`
-      # dist-tag is an older major that fails `strictPeerDependencies`. The
-      # root AGENTS.md says of each: "raise it deliberately, not on a bot
-      # bump." Lift the entry when the line goes stable.
+      # oRPC is pinned to an exact beta because its `latest` dist-tag is an
+      # older major that fails `strictPeerDependencies`. The root AGENTS.md
+      # says: "raise it deliberately, not on a bot bump." Lift the entry when
+      # the line goes stable.
       - dependency-name: "@orpc/*"
-      - dependency-name: "@amqp-contract/*"
-      - dependency-name: "@temporal-contract/*"
       # An alias for the TypeScript a *consumer* is realistically on, compiled
       # as the second declaration-emit pass in `examples/di-hexagonal`.
       # Bumping it toward the version this repo builds with defeats its purpose.

@@ -477,8 +477,7 @@ SDK's defaults** — for an unconfigured process: an OTLP/HTTP span exporter at
 `http://localhost:4318`, a periodic OTLP **metric** reader alongside it unless
 `OTEL_METRICS_EXPORTER=none`, and a resource combining the `OTEL_*` resource
 variables with the SDK's environment, process and host detectors. The two
-fields this repository's own specs set are `spanProcessors` and `metricReader`
-— the latter accepted but superseded by `metricReaders`, which takes a list —
+fields this repository's own specs set are `spanProcessors` and `metricReaders`,
 and that is how a test collects without a collector.
 
 There is **no config slice, deliberately**: the SDK reads the `OTEL_*`

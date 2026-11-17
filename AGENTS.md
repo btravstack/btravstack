@@ -55,12 +55,12 @@ loop, a per-tenant claim, a lag health check and a Prisma 8 store behind a
 `/prisma` subpath; `outboxRuntime()` also boots a standalone delivery process
 through the same kernel runtime contract, while `outbox()` embeds the relay; the application keeps the transaction that writes the row
 and says what publishing means), and the three
-**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus four HTTP answerer packages: `orpc-server`, `htmx-server`, `graphql-server` and `mcp-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, which bind upstream typed clients to application ports and release connections with the DI scope without a worker dependency, and `http-client`, an application-policy-bound outbound HTTPS capability, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
+**servers**, each named for the half it implements: `http-server` (the protocol-neutral Node HTTP runtime), `temporal-worker` and `amqp-worker`, plus four HTTP answerer packages: `orpc-server`, `htmx-server`, `graphql-server` and `mcp-server`, and `pothos`, the Pothos plugin a GraphQL gateway builds its schema with when its fields call oRPC procedures. The calling side has `amqp-client` and `temporal-client`, modules that bind upstream typed clients to application ports, read the same environment variables as their worker, contribute a health check and observations, and release connections with the DI scope without a worker dependency, and `http-client`, an application-policy-bound outbound HTTPS capability, and `oauth-client`, a `TokenSource` port over client credentials and RFC 8693 token exchange, so a service calls another as itself or for a subject. `di` was its own repository until it was merged here
 **with its history**; it, `contract` and `entity` are packages that depend on
 nothing else in
 this workspace. Pothos peers on the contract tier for schema access. The dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability`, the three application-service ports,
-`keys`, `outbox`, `http-client`, `oauth-client` and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
+`keys`, `outbox`, `http-client`, `oauth-client`, the two transport clients and the three servers on `core`. Its own spec is `packages/di/AGENTS.md`; `contract`'s is
 `packages/contract/AGENTS.md`; the harness's is
 `packages/testing/AGENTS.md`; the logging starter's is
 `packages/observability/AGENTS.md`; the relay's is `packages/outbox/AGENTS.md`.
@@ -670,9 +670,11 @@ those three in sync.
 
 A starter that owns a dependency declares a health check; the kernel folds every
 one into `GET /healthz`. `@btravstack/cache`, `@btravstack/storage`,
-`@btravstack/prisma`, `@btravstack/mailer`, `@btravstack/outbox` and
-`@btravstack/oauth-client` each
-contribute one, named for the component — the mailer's on its SMTP **adapter**
+`@btravstack/prisma`, `@btravstack/mailer`, `@btravstack/outbox`,
+`@btravstack/oauth-client`, `@btravstack/amqp-client` and
+`@btravstack/temporal-client` each
+contribute one, named for the component (a transport client by its port, since a
+process may hold several) — the mailer's on its SMTP **adapter**
 rather than on the composition, since the recording adapter sends nowhere and
 would report healthy for free, the outbox's on its LAG rather than on its
 store, since a reachable table whose oldest pending row is an hour old is the
@@ -1119,11 +1121,10 @@ in its place.
   `latest` dist-tag is still the **1.x** line while `@unthrown/orpc` peers on
   `^2.0.0-beta`: an unpinned range resolves 1.x and fails
   `strictPeerDependencies`. The exact beta is the contract until v2 goes
-  stable; raise it deliberately, not on a bot bump.
-- **`temporal-contract` is pinned to an exact beta, for the same shape of
-  reason**: its `latest` dist-tag is the **7.x** line, which peers on an older
-  `unthrown` major and ships neither the `test-rig` nor the `workflow-bundle`
-  subpath the Temporal example's specs are built on.
+  stable; raise it deliberately, not on a bot bump. A package's `@orpc/*`
+  peer floor is the oldest beta exporting everything it imports, because
+  betas rename exports: `@btravstack/orpc-server` starts at `beta.46`, where
+  `getAsyncIteratorObjectSchemasDetails` replaced the singular (#746).
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies of `@btravstack/core` — the dual-copy hazard is real for both
   (di's port identity and unthrown's `isResult` each compare across copies) —

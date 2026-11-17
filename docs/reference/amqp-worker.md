@@ -90,7 +90,7 @@ and hands the augmented tuples to di's own `Module(name)`.
 | `contract`               | yes      | —                                                             | an `amqp-contract` contract; the queues consumed are read off its `consumers` and `rpcs`                                                                                                                                                                                                                                                                                                                                    |
 | `handlers`               | yes      | —                                                             | the handlers **provider** — a `Provider<HandlersInstanceOf<TContract>, E, N>`, what `AmqpHandlers(contract)({ inject?, unit?, sync })` returns for **this** `contract`, one entry per `consumers` / `rpcs` key; one built for another contract fails at the call                                                                                                                                                            |
 | `url`                    | no       | read from `AMQP_URL`                                          | pins the broker — a test's container                                                                                                                                                                                                                                                                                                                                                                                        |
-| `connectionOptions`      | no       | unset — `amqp-connection-manager`'s own defaults              | `AmqpConnectionOptions`, the connection tuning `TypedAmqpWorker.create` accepts: heartbeat, reconnect interval, `findServers`, TLS/socket options                                                                                                                                                                                                                                                                           |
+| `connectionOptions`      | no       | `amqp-connection-manager`'s own, plus a handshake timeout     | `AmqpConnectionOptions`, the connection tuning `TypedAmqpWorker.create` accepts: heartbeat, reconnect interval, `findServers`, TLS/socket options. Unless `connectionOptions.connectionOptions.timeout` is set, amqplib's handshake socket timeout is half the connect timeout                                                                                                                                              |
 | `defaultConsumerOptions` | no       | unset — and `@amqp-contract/core` then applies `prefetch: 10` | `@amqp-contract/worker`'s `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob — `"unbounded"` is the no-cap spelling, and unset is **`10`**, not uncapped), `priority`, `arguments`, `consumerTag`, `exclusive`                                                                                                                                                                                    |
 | `connectTimeoutMs`       | no       | read from `AMQP_CONNECT_TIMEOUT_MS` (default `5000`)          | pins how long `create` waits for the connection; a **top-level** `CreateWorkerOptions` field, not one under `connectionOptions`, where setting it is silently inert. The library's own default is 30 s — longer than most orchestrators wait before restarting the pod                                                                                                                                                      |
 | `unit`                   | no       | unset — dispatch runs unchanged                               | `{ message?: Unit }`, the unit module forked around every delivery and **seeded with the validated message on `AmqpMessage(contract)`** — built after validation, before the handler runs, torn down when the unit closes; a bound module's own unmet needs join this root's (less the seeded port), refused the same way an unmet handlers port is. **Gated** against what the pieces declared — see [The unit](#the-unit) |
@@ -114,8 +114,9 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     observability(),
     otel(),
     outbox(),
+    orderAmqpClient,
   ],
-  provides: [orderAmqpClient, orderPublisher],
+  provides: [orderPublisher],
   // Forked per delivery, after the message is validated: where the envelope's
   // `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
@@ -343,6 +344,14 @@ is reachable. Set `connectTimeoutMs` or `AMQP_CONNECT_TIMEOUT_MS` to fit the
 topology and the deployment's startup budget; an expired deadline is a
 `RuntimeStartFailed`.
 
+A broker that accepts TCP but never answers the AMQP handshake is bounded the
+same way. `@amqp-contract` sets amqplib's socket timeout to half the connect
+timeout unless `connectionOptions.connectionOptions.timeout` is set; amqplib
+clears it once the connection opens, so an idle connection is unaffected. The
+`RuntimeStartFailed` cause then reads `connect ETIMEDOUT`. A caller's own
+socket timeout should stay below the connect timeout: at or above it, start-up
+also waits out a reconnect interval and the cause loses that reason.
+
 ## `AmqpRuntime` and `AmqpInfo`
 
 Declared over the kernel's `RuntimePort` with service
@@ -497,8 +506,9 @@ type its own tests. Node `>=22.22`.
   `retry: { mode: "ttl-backoff", maxRetries: 3 }` means **four** total
   attempts, not the three Temporal's `maximumAttempts: 3` names.
 - **A publisher.** The starter runs a consumer; publishing is
-  `@amqp-contract/client`'s job (the worked example's outbox publisher creates
-  its own client from the same `AmqpConfig`, and
+  `@amqp-contract/client`'s job (the worked example's outbox publisher binds
+  its own client through [`@btravstack/amqp-client`](/reference/amqp-client),
+  from the same `AMQP_URL`, and
   [`@btravstack/outbox`](/reference/outbox) relays through it).
 - **A context channel.** A handler reads nothing out of a context; what it
   needs, its provider declares.
@@ -528,12 +538,16 @@ It keeps private infrastructure hidden and business exports explicit.
 
 ## Broadcast subscriptions beside another runtime
 
-Subscriptions require `@amqp-contract/worker >=3.0.0-beta.12` for its public connectivity check, and `unthrown >=5.11.0` for that train's dependency closure.
+Subscriptions require `@amqp-contract/worker >=3.0.1`, the worker's peer floor, for its public connectivity check and a bounded start-up against a silent broker, and `unthrown >=5.12.2` for that train's dependency closure.
 
 `amqpSubscription(name, { contract, settings, inject?, sync })` imports a
 scoped consumer resource without exporting a runtime. Compose it in an HTTP
 root's `imports` for per-replica cache eviction. The settings port supplies
-`url` and optionally `connectTimeoutMs` (default `5000`). `sync` receives the
+`url` and optionally `connectTimeoutMs` (default `5000`), which also bounds a
+broker that never answers the handshake, as for the runtime. A failed
+connection is the upstream `ConnectionError`; its `_tag`,
+`@amqp-contract/ConnectionError`, is the code a production
+`diagnosticPolicy({ codes })` lists to keep it named. `sync` receives the
 services named by `inject` and returns one typed handler per contract consumer.
 Handlers may return `void`, a synchronous `Result`, or an `AsyncResult`.
 
