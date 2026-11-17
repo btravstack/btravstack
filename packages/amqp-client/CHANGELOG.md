@@ -1,5 +1,51 @@
 # @btravstack/amqp-client
 
+## 0.61.0
+
+### Minor Changes
+
+- bad02b1: **Breaking:** `amqpClient(port, contract, options?)` now returns a `Module`
+  that peers on `@btravstack/core` and `@btravstack/config`, instead of a bare
+  provider over an application settings port. It reads `AMQP_URL` (default
+  `amqp://127.0.0.1:5672`) and `AMQP_CONNECT_TIMEOUT_MS` (default `5000`), the
+  worker starter's variables, each pinned by the `url` and `connectTimeoutMs`
+  options. Its error channel is `ConfigInvalid | ConnectionError`. It contributes
+  an `amqp-client:<port id>` health check that fails while the client is not
+  connected, and reports the client library's warnings and errors, such as a
+  failed connection attempt, to `Observers`.
+
+  Migration: install the two new peers, drop the settings port, and move the
+  call from `provides` to `imports`.
+
+  ```ts
+  // Before
+  Module("Publisher")({
+    provides: [amqpClient(OrderClient, orderContract, AmqpConfig), orderPublisher],
+  });
+
+  // After
+  Module("Publisher")({
+    imports: [amqpClient(OrderClient, orderContract)],
+    provides: [orderPublisher],
+  });
+  ```
+
+  A settings port that did not read those variables becomes options:
+  `amqpClient(OrderClient, orderContract, { url, connectTimeoutMs })`.
+
+### Patch Changes
+
+- 117b4cd: Bound start-up against a broker that accepts TCP but never answers the AMQP
+  handshake. The `@amqp-contract/client` and `@amqp-contract/worker` peers now
+  start at `^3.0.1`, the release that fixes it upstream, and their `unthrown`
+  peer at `^5.12.2`, the floor that release's dependencies require: start-up fails within
+  `connectTimeoutMs` (`AMQP_CONNECT_TIMEOUT_MS`) with a `ConnectionError` that
+  reads `connect ETIMEDOUT`, instead of never settling. A caller's own
+  `connectionOptions.connectionOptions.timeout` is kept.
+- @btravstack/config@0.61.0
+  - @btravstack/core@0.61.0
+  - @btravstack/di@0.61.0
+
 ## 0.60.0
 
 ### Patch Changes

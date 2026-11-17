@@ -1,5 +1,11 @@
 # @btravstack/pothos
 
+## 0.61.0
+
+### Patch Changes
+
+- @btravstack/contract@0.61.0
+
 ## 0.60.0
 
 ### Patch Changes

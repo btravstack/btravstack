@@ -1,5 +1,12 @@
 # @btravstack/http-client
 
+## 0.61.0
+
+### Patch Changes
+
+- @btravstack/core@0.61.0
+  - @btravstack/di@0.61.0
+
 ## 0.60.0
 
 ### Patch Changes
