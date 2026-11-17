@@ -7,7 +7,7 @@ description: One small domain model written three ways, with plain zod and funct
 
 The same small model, written three ways: plain zod plus functions, this
 package, and [Effect's `Schema.Class`](https://effect.website/docs/v3/schema/classes)
-(effect 3.22.2). All three run in
+(effect 3.22.4). All three run in
 [`examples/billing-domain/src/comparison.spec.ts`](https://github.com/btravstack/btravstack/blob/main/examples/entity-billing-domain/src/comparison.spec.ts),
 and every behaviour this page states is a test there.
 
@@ -156,7 +156,7 @@ brings its own schema language rather than zod, and a wider ecosystem with it.
 | failures as values                  | `safeParse` result                 | `Result<T, InvalidEntity>`                  | `Either` from `decodeUnknownEither`            |
 | value equality                      | `isDeepStrictEqual` yourself       | `isDeepStrictEqual` over `toJSON()`         | `Equal.equals(a, b)`                           |
 | identity equality                   | compare the ids yourself           | `sameIdentityAs`, from `identity` flags     | compare the ids yourself                       |
-| runtime-immutable instance          | `Object.freeze`, shallow, yourself | non-writable fields, plain data deep-frozen | not frozen in 3.22.2; `readonly` is type-level |
+| runtime-immutable instance          | `Object.freeze`, shallow, yourself | non-writable fields, plain data deep-frozen | not frozen in 3.22.4; `readonly` is type-level |
 
 Each row is exercised for all three columns by the spec.
 
@@ -170,7 +170,7 @@ validation and no invariant. The seal steers code to `make`; it is not a
 runtime trust boundary. See [Sealed construction](/entity/explanation/sealed-construction).
 
 **Assignment through a cast.** On the frozen plain object and on an entity,
-assigning `seats` through a cast throws a `TypeError`. On the Effect 3.22.2
+assigning `seats` through a cast throws a `TypeError`. On the Effect 3.22.4
 instance the same assignment succeeds.
 
 **The class as JSON Schema.** `JSONSchema.make(EffectCustomer)` produces a

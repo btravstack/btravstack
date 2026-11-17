@@ -154,9 +154,9 @@ does, the first package alone suffices.
 ```sh [HTTP API]
 pnpm add @btravstack/http-server @btravstack/orpc-server @btravstack/htmx-server \
   @btravstack/core @btravstack/config @btravstack/di @btravstack/contract unthrown \
-  @orpc/server@2.0.0-beta.44 @orpc/contract@2.0.0-beta.44 \
-  @orpc/openapi@2.0.0-beta.44 @orpc/json-schema@2.0.0-beta.44 \
-  @orpc/client@2.0.0-beta.44 @unthrown/orpc@^0.4.2
+  @orpc/server@2.0.0-beta.50 @orpc/contract@2.0.0-beta.50 \
+  @orpc/openapi@2.0.0-beta.50 @orpc/json-schema@2.0.0-beta.50 \
+  @orpc/client@2.0.0-beta.50 @unthrown/orpc@^0.4.2
 ```
 
 ```sh [GraphQL gateway]
@@ -168,29 +168,29 @@ pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
 pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
   @btravstack/config @btravstack/di @btravstack/contract unthrown graphql@^17.0.0 graphql-yoga@^5.24.1 \
   @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
-  @unthrown/pothos@^0.1.2 zod @orpc/client@2.0.0-beta.44 @orpc/contract@2.0.0-beta.44
+  @unthrown/pothos@^0.1.2 zod @orpc/client@2.0.0-beta.50 @orpc/contract@2.0.0-beta.50
 ```
 
 ```sh [Temporal worker]
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15
+  @temporal-contract/worker@8.0.0 @temporal-contract/contract@8.0.0
 ```
 
 ```sh [AMQP worker]
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@3.0.0-beta.12 @opentelemetry/api
+  @amqp-contract/worker@3.0.0 @opentelemetry/api
 ```
 
 ```sh [Temporal client]
 pnpm add @btravstack/temporal-client @btravstack/config @btravstack/di unthrown \
-  @temporal-contract/client@8.0.0-beta.15 @temporal-contract/contract@8.0.0-beta.15 \
+  @temporal-contract/client@8.0.0 @temporal-contract/contract@8.0.0 \
   @temporalio/client @temporalio/common
 ```
 
 ```sh [AMQP client]
 pnpm add @btravstack/amqp-client @btravstack/di unthrown \
-  @amqp-contract/client@3.0.0-beta.12 @opentelemetry/api
+  @amqp-contract/client@3.0.0 @opentelemetry/api
 ```
 
 ```sh [Calling as a service]

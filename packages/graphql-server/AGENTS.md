@@ -32,9 +32,8 @@ through `Env`, pinned by `developerTools`, which is why a root providing
 `graphql()` declares `needs: [Env]`. Off, introspection is refused by a
 validation rule that reads field names only: graphql's
 `NoSchemaIntrospectionCustomRule` asserts the schema's class and throws when
-the application and Yoga load two copies of `graphql` (measured under vitest),
-and its error is Yoga's `createGraphQLError` for the same reason as
-`fieldResult`'s. Yoga registers GraphiQL ahead of every plugin, so on a
+the application and Yoga load two copies of `graphql` (measured under vitest).
+Yoga registers GraphiQL ahead of every plugin, so on a
 protected mount the page renders before the refusal; the operations it sends
 are authenticated like any other.
 
@@ -76,10 +75,12 @@ refusal is thrown as a fresh error carrying only its message and
 `extensions`: one carrying an `originalError` is what Yoga masks as
 unexpected. A defect is thrown wrapped in a plain `Error`, whatever its cause,
 since a `GraphQLError` cause would otherwise be exposed as a refusal and never
-reported. The refusal is minted with Yoga's `createGraphQLError`, not
-`graphql`'s class: the two can be different module instances (measured under
-vitest), and Yoga's check is `instanceof` against its own. Its `Promise`
-return is the fourth exception root thesis #6 names.
+reported. The refusal is `graphql`'s own `GraphQLError`, and the answerer's
+`maskError` recognises one by `name`, not by `instanceof` as Yoga does:
+graphql 17's `development` export condition gives an application under vitest
+a second copy of `graphql` beside Yoga's, and Yoga 6 no longer ships the
+`createGraphQLError` that used to mint from Yoga's own. Its `Promise` return
+is the fourth exception root thesis #6 names.
 
 **`fieldResult` maps nothing.** The resolver's triage of `E` into
 `GraphQLError`s is the transport's own mapping, as thesis #3 has it for every

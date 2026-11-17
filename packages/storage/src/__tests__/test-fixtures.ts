@@ -459,7 +459,7 @@ export const it = test.extend<StorageFixtures>({
               spanProcessors: [
                 new BatchSpanProcessor({ exporter, scheduledDelayMillis: 3_600_000 }),
               ],
-              metricReader: reader,
+              metricReaders: [reader],
             }),
           ],
           exports: [Storage],

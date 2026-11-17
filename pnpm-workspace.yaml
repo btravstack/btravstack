@@ -8,22 +8,7 @@ engineStrict: true
 minimumReleaseAge: 4320
 # First-party releases taken inside the window on purpose, each pinned to the
 # exact version reviewed. Drop an entry once it is older than three days.
-minimumReleaseAgeExclude:
-  - unthrown@5.12.1
-  - "@unthrown/oxlint@5.12.1"
-  - "@unthrown/standard-schema@5.12.1"
-  - "@unthrown/vitest@5.12.1"
-  - "@amqp-contract/client@3.0.0-beta.12"
-  - "@amqp-contract/contract@3.0.0-beta.12"
-  - "@amqp-contract/core@3.0.0-beta.12"
-  - "@amqp-contract/testing@3.0.0-beta.12"
-  - "@amqp-contract/worker@3.0.0-beta.12"
-  - "@unthrown/pothos@0.1.2"
-  - "@unthrown/orpc@0.4.2"
-  - "@temporal-contract/client@8.0.0-beta.15"
-  - "@temporal-contract/contract@8.0.0-beta.15"
-  - "@temporal-contract/testing@8.0.0-beta.15"
-  - "@temporal-contract/worker@8.0.0-beta.15"
+minimumReleaseAgeExclude: []
 saveExact: true
 strictPeerDependencies: true
 
@@ -34,21 +19,17 @@ packages:
   - docs
 
 catalog:
-  # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
-  # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
-  # this repo pins 5.12.1. The exact beta is the contract until v3 goes stable;
-  # raise it deliberately, not on a bot bump.
-  "@amqp-contract/client": 3.0.0-beta.12
-  "@amqp-contract/contract": 3.0.0-beta.12
-  "@amqp-contract/testing": 3.0.0-beta.12
-  "@amqp-contract/worker": 3.0.0-beta.12
-  "@aws-sdk/client-kms": 3.1164.0
-  "@aws-sdk/client-s3": 3.1164.0
-  "@electric-sql/pglite": 0.4.6
-  "@pothos/core": 4.16.0
-  "@pothos/plugin-errors": 4.9.3
-  "@pothos/plugin-relay": 4.8.1
-  "@aws-sdk/s3-request-presigner": 3.1164.0
+  "@amqp-contract/client": 3.0.0
+  "@amqp-contract/contract": 3.0.0
+  "@amqp-contract/testing": 3.0.0
+  "@amqp-contract/worker": 3.0.0
+  "@aws-sdk/client-kms": 3.1169.0
+  "@aws-sdk/client-s3": 3.1169.0
+  "@electric-sql/pglite": 0.5.16
+  "@pothos/core": 4.17.0
+  "@pothos/plugin-errors": 4.9.4
+  "@pothos/plugin-relay": 4.8.2
+  "@aws-sdk/s3-request-presigner": 3.1169.0
   "@btravstack/commitlint": 0.1.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
@@ -64,21 +45,21 @@ catalog:
   # anything that imports `@amqp-contract/worker` fails to load at all without
   # this installed. Not a `devDependency` alone: a real consumer of
   # `@btravstack/amqp-worker` hits the same load failure.
-  "@modelcontextprotocol/sdk": 1.32.1
-  "@opentelemetry/api": 1.9.1
-  "@opentelemetry/sdk-node": 0.222.0
-  "@opentelemetry/sdk-metrics": 2.12.0
-  "@opentelemetry/sdk-trace": 2.12.0
+  "@modelcontextprotocol/sdk": 1.32.2
+  "@opentelemetry/api": 1.10.0
+  "@opentelemetry/sdk-node": 0.301.2
+  "@opentelemetry/sdk-metrics": 3.1.1
+  "@opentelemetry/sdk-trace": 3.1.1
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
-  "@orpc/client": 2.0.0-beta.44
-  "@orpc/contract": 2.0.0-beta.44
-  "@orpc/json-schema": 2.0.0-beta.44
-  "@orpc/openapi": 2.0.0-beta.44
-  "@orpc/server": 2.0.0-beta.44
-  "@orpc/zod": 2.0.0-beta.44
-  "@orpc/tanstack-query": 2.0.0-beta.44
+  "@orpc/client": 2.0.0-beta.50
+  "@orpc/contract": 2.0.0-beta.50
+  "@orpc/json-schema": 2.0.0-beta.50
+  "@orpc/openapi": 2.0.0-beta.50
+  "@orpc/server": 2.0.0-beta.50
+  "@orpc/zod": 2.0.0-beta.50
+  "@orpc/tanstack-query": 2.0.0-beta.50
   # Prisma 8 is a different package family, not a version bump: the runtime is
   # `@prisma/orm-postgres` ("the one package a Postgres application installs")
   # and `@prisma/client` / `@prisma/adapter-pg` / `@prisma/instrumentation` have
@@ -87,22 +68,18 @@ catalog:
   # the surface moves between release candidates.
   #
   # The three numbers do not match because upstream ships three release trains
-  # and pins across them exactly: `prisma@8.0.0-rc.27` depends on
-  # `@prisma/cli-engine@0.9.0` and `@prisma/orm-toolchain@8.0.0-rc.20`.
+  # and pins across them exactly: `prisma@8.0.0-rc.33` depends on
+  # `@prisma/cli-engine@0.9.0` and `@prisma/orm-toolchain@8.0.0-rc.23`.
   # The Postgres facade must use that same ORM train for contract emission.
   # Each entry here is the head of its own train, and aligning them by hand
   # would mean naming a version one of these packages has never published.
   "@prisma/cli-engine": 0.9.0
-  "@prisma/orm-postgres": 8.0.0-rc.20
-  "@tanstack/query-core": 5.104.5
-  # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
-  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.12.1. 8.x also
-  # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
-  # specs are built on. The exact beta is the contract until v8 goes stable.
-  "@temporal-contract/client": 8.0.0-beta.15
-  "@temporal-contract/contract": 8.0.0-beta.15
-  "@temporal-contract/testing": 8.0.0-beta.15
-  "@temporal-contract/worker": 8.0.0-beta.15
+  "@prisma/orm-postgres": 8.0.0-rc.23
+  "@tanstack/query-core": 5.107.1
+  "@temporal-contract/client": 8.0.0
+  "@temporal-contract/contract": 8.0.0
+  "@temporal-contract/testing": 8.0.0
+  "@temporal-contract/worker": 8.0.0
   "@temporalio/activity": 1.25.0
   "@temporalio/client": 1.25.0
   "@temporalio/common": 1.25.0
@@ -113,37 +90,37 @@ catalog:
   # `di`. Never on the gate: a pass takes minutes where the suites take a
   # second, so it recomputes the kernel's "mutation-verified" claim once a week
   # instead of on every PR.
-  "@stryker-mutator/core": 10.0.0
-  "@stryker-mutator/vitest-runner": 10.0.0
+  "@stryker-mutator/core": 10.1.1
+  "@stryker-mutator/vitest-runner": 10.1.1
   "@types/nodemailer": 8.0.2
   "@types/node": 26.6.6
   "@unthrown/oxlint": 5.12.2
   "@unthrown/orpc": 0.4.2
   "@unthrown/pothos": 0.1.2
-  "@unthrown/standard-schema": 5.12.1
-  "@unthrown/vitest": 5.12.1
-  effect: 3.22.2
+  "@unthrown/standard-schema": 5.12.2
+  "@unthrown/vitest": 5.12.2
+  effect: 3.22.4
   dataloader: 2.2.3
-  graphql: 17.0.2
-  graphql-yoga: 5.24.6
-  jose: 6.2.12
-  kysely: 0.29.7
-  kysely-pglite-dialect: 1.3.1
-  knip: 6.43.0
-  markdownlint-cli2: 0.24.0
+  graphql: 17.1.0
+  graphql-yoga: 6.1.0
+  jose: 6.2.17
+  kysely: 0.29.9
+  kysely-pglite-dialect: 1.4.0
+  knip: 6.45.1
+  markdownlint-cli2: 0.24.1
   lefthook: 2.2.2
-  oxfmt: 0.77.0
-  oxlint: 1.92.0
+  oxfmt: 0.78.0
+  oxlint: 1.93.0
   pino: 10.4.0
-  nodemailer: 10.2.1
-  openid-client: 6.8.9
-  temporal-polyfill: 1.0.4
-  prisma: 8.0.0-rc.27
+  nodemailer: 10.5.0
+  openid-client: 6.9.0
+  temporal-polyfill: 1.0.8
+  prisma: 8.0.0-rc.33
   uuidv7: 1.2.1
-  redis: 6.3.0
+  redis: 6.3.1
   tsdown: 0.23.2
   tsx: 4.23.15
-  turbo: 2.11.10
+  turbo: 2.11.11
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.14.1
   testcontainers: 12.2.1
@@ -162,14 +139,14 @@ catalog:
   publint: 0.3.25
   "@arethetypeswrong/cli": 0.18.5
   unthrown: 5.12.2
-  "@vitest/coverage-v8": 5.0.3
+  "@vitest/coverage-v8": 5.1.0
   # vitest 5 takes vite as a PEER (4.x shipped its own), and so does the Prisma
   # 8 toolchain; with `autoInstallPeers: false` nothing else provides one, so
   # the root does, and both resolve to it. The docs keep their own 6.4.3 through
   # vitepress and the override below.
-  vite: 8.3.4
+  vite: 8.3.8
   vitepress: 1.6.4
-  vitest: 5.0.3
+  vitest: 5.1.0
   zod: 4.6.7
 
 catalogs:
@@ -208,10 +185,6 @@ overrides:
   "qs@<6.16.0": "6.16.0"
   "smol-toml@<1.9.0": "1.9.0"
   "katex@>=0.11.0 <0.18.2": "0.18.2"
-  # GHSA-7mx3-vvmw-hjmv: Yoga 5.24.1 resolves the vulnerable 11.x line of
-  # @graphql-tools/utils. The patched release is 12.x; the GraphQL suites
-  # verify Yoga against it until Yoga raises its own dependency range.
-  "graphql-yoga>@graphql-tools/utils": "12.0.3"
   # GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3: vite
   # `server.fs.deny` bypasses (dev-server only; the docs ship as static HTML).
   # Reaches us via docs > vitepress > vite. vitepress 1.6.x pins vite ^5.4.14 and
@@ -336,5 +309,3 @@ peerDependencyRules:
     "@effect/sql-sqlite-do>effect": 4.0.0-rc.112
     "@effect/vitest>vitest": "5"
     "capnp-es>typescript": "7"
-patchedDependencies:
-  "@stryker-mutator/vitest-runner@10.0.0": patches/@stryker-mutator__vitest-runner@10.0.0.patch

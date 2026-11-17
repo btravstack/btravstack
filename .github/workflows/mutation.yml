@@ -21,10 +21,6 @@ name: Mutation
 # - core's `concurrency: 1`: `invariants.spec.ts` binds the probe server's
 #   default port 9000 on purpose, and two runners doing it at once would fail
 #   a test for a reason no mutant caused — a kill that is a lie.
-#
-# `patches/@stryker-mutator__vitest-runner@10.0.0.patch` makes the runner name
-# a test the way vitest 5 does (`suite > test`). Without it every test inside
-# a `describe` is filtered out of every mutant run and survives everything.
 
 on:
   schedule:

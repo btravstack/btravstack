@@ -1,4 +1,5 @@
 import {
+  GraphQLError,
   Kind,
   getOperationAST,
   type DocumentNode,
@@ -6,7 +7,6 @@ import {
   type SelectionSetNode,
 } from "graphql";
 import type { Plugin } from "graphql-yoga";
-import { createGraphQLError } from "graphql-yoga";
 
 /** The aliases one operation runs: its own, and each fragment's once per spread. */
 const aliasesOf = (document: DocumentNode, operationName: string | null | undefined): number => {
@@ -55,7 +55,7 @@ export const maxAliases = (limit: number): Plugin => {
     aliasesOf(document, operationName) > limit
       ? {
           errors: [
-            createGraphQLError(`An operation may name at most ${String(limit)} aliases`, {
+            new GraphQLError(`An operation may name at most ${String(limit)} aliases`, {
               extensions: { code: "TOO_MANY_ALIASES" },
             }),
           ],

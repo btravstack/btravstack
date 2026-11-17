@@ -1119,11 +1119,10 @@ in its place.
   `latest` dist-tag is still the **1.x** line while `@unthrown/orpc` peers on
   `^2.0.0-beta`: an unpinned range resolves 1.x and fails
   `strictPeerDependencies`. The exact beta is the contract until v2 goes
-  stable; raise it deliberately, not on a bot bump.
-- **`temporal-contract` is pinned to an exact beta, for the same shape of
-  reason**: its `latest` dist-tag is the **7.x** line, which peers on an older
-  `unthrown` major and ships neither the `test-rig` nor the `workflow-bundle`
-  subpath the Temporal example's specs are built on.
+  stable; raise it deliberately, not on a bot bump. A package's `@orpc/*`
+  peer floor is the oldest beta exporting everything it imports, because
+  betas rename exports: `@btravstack/orpc-server` starts at `beta.46`, where
+  `getAsyncIteratorObjectSchemasDetails` replaced the singular (#746).
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies of `@btravstack/core` — the dual-copy hazard is real for both
   (di's port identity and unthrown's `isResult` each compare across copies) —

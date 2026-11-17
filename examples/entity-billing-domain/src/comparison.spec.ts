@@ -208,7 +208,7 @@ test("assignment through a cast: entity and the frozen plain object throw, Effec
     (entity as unknown as Record<string, unknown>)["seats"] = 9;
   }).toThrow(TypeError);
 
-  // effect 3.22.2: the instance is not frozen; `readonly` is type-level there
+  // effect 3.22.4: the instance is not frozen; `readonly` is type-level there
   const effect = Either.getOrThrow(decodeEffect(raw));
   (effect as unknown as Record<string, unknown>)["seats"] = 9;
   expect(effect.seats).toBe(9);

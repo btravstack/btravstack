@@ -13,8 +13,8 @@ import { defineAuth } from "@btravstack/http-server";
 import { HttpHandler } from "@btravstack/http-server/internal";
 import { HttpRuntime, httpServer } from "@btravstack/http-server/internal";
 import { it } from "@btravstack/internal-http-fixtures";
-import type { GraphQLError } from "graphql";
-import { createGraphQLError, createSchema, type Plugin } from "graphql-yoga";
+import { GraphQLError } from "graphql";
+import { createSchema, type Plugin } from "graphql-yoga";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
@@ -271,11 +271,15 @@ describe("graphql answerer", () => {
       // GIVEN the mount, with the limit pinned off
       const info = (await boot(rootWith(false)).runtimeInfo()).get();
 
-      // WHEN a document over the default limit is sent
-      const body = await post(info?.port, `{ ${"hello ".repeat(1000)}}`);
+      // WHEN a document of 1202 tokens, each field under its own alias, is sent
+      const aliases = Array.from({ length: 400 }, (_, index) => `a${String(index)}`);
+      const body = await post(
+        info?.port,
+        `{ ${aliases.map((alias) => `${alias}: hello`).join(" ")} }`,
+      );
 
       // THEN it was parsed and answered
-      expect(body).toEqual({ data: { hello: "world" } });
+      expect(body).toEqual({ data: Object.fromEntries(aliases.map((alias) => [alias, "world"])) });
     });
   });
 
@@ -787,10 +791,10 @@ describe("fieldResult", () => {
   });
   const lookup = (id: string): AsyncResult<string, GraphQLError> =>
     id === "refused"
-      ? ErrAsync(createGraphQLError("not yours", { extensions: { code: "FORBIDDEN" } }))
+      ? ErrAsync(new GraphQLError("not yours", { extensions: { code: "FORBIDDEN" } }))
       : id === "caused"
         ? ErrAsync(
-            createGraphQLError("not yours either", {
+            new GraphQLError("not yours either", {
               extensions: { code: "FORBIDDEN" },
               originalError: new Error("the service's own reason"),
             }),
@@ -798,7 +802,7 @@ describe("fieldResult", () => {
         : id === "broken"
           ? fromSafePromise(Promise.reject(new Error("database password in this message")))
           : id === "leaky"
-            ? fromSafePromise(Promise.reject(createGraphQLError("internal hostname db-7")))
+            ? fromSafePromise(Promise.reject(new GraphQLError("internal hostname db-7")))
             : OkAsync(`order ${id}`);
   const appWith = (seen: Settled[], plugins: readonly Plugin[] = []) =>
     Module("FieldResultApp")({

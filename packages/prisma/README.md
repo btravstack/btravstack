@@ -9,7 +9,7 @@
 
 ```sh
 pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @prisma/orm-postgres@8.0.0-rc.20 temporal-polyfill@1.0.4
+  @prisma/orm-postgres@8.0.0-rc.23 temporal-polyfill@1.0.8
 ```
 
 Install the required peers, so the application holds a single copy of each;
