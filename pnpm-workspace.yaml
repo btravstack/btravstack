@@ -297,6 +297,14 @@ auditConfig:
     # `.markdownlint-cli2.jsonc` — no untrusted pattern ever reaches it. Drop
     # this when braces ships a fix.
     - GHSA-vfj7-8cjw-p6xm
+    # picomatch ReDoS through single-branch repeated extglobs. Every release is
+    # affected (`<=4.0.7`, and 4.0.7 is the latest), so there is no version to
+    # lift to. Production reaches it only through Prisma 8's own runtime
+    # (`@prisma/orm-*` > tinyglobby), which globs Prisma's config and contract
+    # paths, never request data; the rest is tooling over this repository's
+    # own globs (markdownlint-cli2, vite, the Prisma CLI). Drop this when
+    # picomatch ships a fix.
+    - GHSA-fc5q-39xc-vjpf
 
 allowBuilds:
   # Both reach us through the Prisma 8 CLI's deploy half — `prisma` >
