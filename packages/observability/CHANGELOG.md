@@ -1,5 +1,16 @@
 # @btravstack/observability
 
+## 0.61.0
+
+### Patch Changes
+
+- d535f0a: Accept `@opentelemetry/sdk-node` 0.301 beside 0.222. The 0.301 line takes
+  metric readers only as `metricReaders`, a list; `otel()` passes SDK options
+  through unchanged.
+- @btravstack/config@0.61.0
+  - @btravstack/core@0.61.0
+  - @btravstack/di@0.61.0
+
 ## 0.60.0
 
 ### Patch Changes
