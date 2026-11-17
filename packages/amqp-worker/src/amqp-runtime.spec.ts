@@ -1,6 +1,7 @@
 import { describe, expect, vi } from "vitest";
 
 import { it, untilServing } from "./__tests__/test-fixtures.js";
+import { withHandshakeTimeout } from "./amqp-runtime.js";
 
 describe("amqp", () => {
   it("keeps logical handler providers when deployment resources differ in one vhost", async ({
@@ -96,6 +97,40 @@ describe("amqp", () => {
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "amqp" }),
     );
+  });
+
+  it("fails start-up within its connect timeout when the broker never answers", async ({
+    serveSilent,
+  }) => {
+    // GIVEN a broker that accepts the connection and never speaks AMQP
+    const started = performance.now();
+
+    // WHEN the application is started with a half-second connect timeout
+    const exited = await serveSilent().exited;
+
+    // THEN start-up fails with the timed-out handshake as its cause, well before
+    // a reconnect interval
+    expect({
+      error: exited.isErr() && exited.error,
+      withinBudget: performance.now() - started < 2_000,
+    }).toEqual({
+      error: expect.objectContaining({
+        _tag: "RuntimeStartFailed",
+        cause: expect.objectContaining({ message: expect.stringContaining("connect ETIMEDOUT") }),
+      }),
+      withinBudget: true,
+    });
+  });
+
+  it("keeps a caller's own handshake timeout", () => {
+    // GIVEN connection tuning that already sets amqplib's socket timeout
+    const tuning = { heartbeatIntervalInSeconds: 30, connectionOptions: { timeout: 50 } };
+
+    // WHEN the starter defaults the handshake timeout from its connect timeout
+    const merged = withHandshakeTimeout(5_000, tuning);
+
+    // THEN the caller's value stands beside the rest of its tuning
+    expect(merged).toEqual(tuning);
   });
 
   it("binds the broker and its connect timeout from the environment", async ({

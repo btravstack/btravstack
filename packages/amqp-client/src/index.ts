@@ -24,11 +24,14 @@ export const amqpClient = <
 ) =>
   Provider(port)({
     inject: { settings },
-    acquire: ({ settings: { url, connectTimeoutMs } }) =>
+    acquire: ({ settings: { url, connectTimeoutMs = 5_000 } }) =>
       TypedAmqpClient.create({
         contract,
         urls: [url],
-        connectTimeoutMs: connectTimeoutMs ?? 5_000,
+        connectTimeoutMs,
+        // The handshake's socket timeout must fire before `connectTimeoutMs`:
+        // equal, `create` waits out a reconnect interval and loses the reason.
+        connectionOptions: { connectionOptions: { timeout: Math.ceil(connectTimeoutMs / 2) } },
       }) as AsyncResult<ServiceOf<typeof port>, ConnectionError>,
     release: (client) => client.close().get(),
   });

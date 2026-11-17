@@ -87,6 +87,20 @@ export type AmqpConnectionOptions = NonNullable<
 >;
 
 /**
+ * Defaults amqplib's handshake socket timeout to half the connect timeout,
+ * keeping a caller's own. amqplib clears it once the connection opens. It
+ * must fire before `connectTimeoutMs`: equal, `create` waits out a reconnect
+ * interval and loses the reason.
+ */
+export const withHandshakeTimeout = (
+  connectTimeoutMs: number,
+  options: AmqpConnectionOptions = {},
+): AmqpConnectionOptions => ({
+  ...options,
+  connectionOptions: { timeout: Math.ceil(connectTimeoutMs / 2), ...options.connectionOptions },
+});
+
+/**
  * The handlers' port — one id, the starter's own, which an application never
  * names. Generic at the value level (one `Port(...)` call, so no duplicate-id
  * warning however many contracts instantiate it) and fixed per contract at the
@@ -346,9 +360,7 @@ const createWorker = <TContract extends AnyAmqpContract, Unit extends AnyUnitMod
     // discarded every one of them.
     logger: brokerLog(observers),
     urls: [config.url],
-    ...(options.connectionOptions === undefined
-      ? {}
-      : { connectionOptions: options.connectionOptions }),
+    connectionOptions: withHandshakeTimeout(config.connectTimeoutMs, options.connectionOptions),
     ...(options.defaultConsumerOptions === undefined
       ? {}
       : { defaultConsumerOptions: options.defaultConsumerOptions }),

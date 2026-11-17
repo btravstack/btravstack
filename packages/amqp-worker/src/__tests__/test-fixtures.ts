@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createServer, type AddressInfo, type Socket } from "node:net";
 
 import {
   defineContract,
@@ -484,6 +485,10 @@ export type AmqpFixtures = {
   /** Boots the starter over `handlers` — a record that acks everything when none is given. */
   readonly serve: (handlers?: EchoProvider, options?: ServeOptions) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
+  /** A broker URL whose listener accepts TCP and never answers the AMQP handshake. */
+  readonly silentBroker: string;
+  /** Boots the starter against `silentBroker` with a half-second connect timeout. */
+  readonly serveSilent: () => App;
   /** The `AmqpConfig` a graph binds from `env` alone, nothing pinned. */
   readonly boundFrom: (env: Environment) => Promise<ServiceOf<AmqpConfig> | undefined>;
   readonly seam: ReturnType<typeof seamOf>;
@@ -598,6 +603,18 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     // `connectTimeoutMs` gives up — set short, rather than waiting out the
     // library's 30s default.
     await use(() => Promise.resolve(boot(consuming("amqp://127.0.0.1:1", plainHandlers, 2_000))));
+  },
+  // oxlint-disable-next-line no-empty-pattern -- a TCP listener needs no other fixture
+  silentBroker: async ({}, use) => {
+    const sockets = new Set<Socket>();
+    const server = createServer((socket) => sockets.add(socket));
+    await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+    await use(`amqp://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    for (const socket of sockets) socket.destroy();
+    await new Promise((closed) => server.close(closed));
+  },
+  serveSilent: async ({ boot, silentBroker }, use) => {
+    await use(() => boot(consuming(silentBroker, plainHandlers, 500)));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   seam: async ({}, use) => {

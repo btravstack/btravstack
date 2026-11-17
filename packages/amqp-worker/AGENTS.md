@@ -29,6 +29,17 @@ page, never this file.
   `AMQP_CONNECT_TIMEOUT_MS` for that initialization cost; the starter defaults to
   5s.
 
+- **`connectTimeoutMs` alone does not bound a silent broker.** Upstream
+  (btravstack/amqp-contract#796), `close()` on the failure path awaits the
+  in-flight connect, which amqplib bounds only with a socket timeout. So the
+  runtime and `amqpSubscription` both pass `withHandshakeTimeout`: half the
+  connect timeout, a caller's own `connectionOptions.connectionOptions.timeout`
+  kept. amqplib clears it once the connection opens (`lib/connect.js`,
+  `sock.setTimeout(0)` in the open callback). Half, not equal: measured on
+  amqplib 2.2.0, an equal timeout loses the race to `waitForConnect`, `close()`
+  waits out the 5 s reconnect interval and the cause loses `connect ETIMEDOUT`.
+  `@btravstack/amqp-client` holds its own copy of the rule.
+
 - **`AmqpModule`'s return type is di's own `Module(name)({...})` over the
   augmented tuples, never a named alias.** A named generic alias was tried and
   removed: declaration emit keeps it unreduced and cannot name imported

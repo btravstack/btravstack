@@ -102,6 +102,42 @@ describe("amqpSubscription", () => {
     expect(health).toBeErrTagged("HealthCheckFailed");
   });
 
+  it("fails start-up within its connect timeout when the broker never answers", async ({
+    silentBroker,
+    subscriptionContract,
+  }) => {
+    // GIVEN a broker that accepts the connection and never speaks AMQP
+    const root = Module("SilentSubscription")({
+      imports: [
+        amqpSubscription("silent", {
+          contract: subscriptionContract(),
+          settings: Settings,
+          sync: () => ({ changed: () => {} }),
+        }),
+      ],
+      provides: [
+        Provider(Settings)({ inject: {}, value: { url: silentBroker, connectTimeoutMs: 500 } }),
+      ],
+      exports: [HealthChecks],
+    });
+    const started = performance.now();
+
+    // WHEN the application scope opens
+    const result = await Module.scoped(root, () => OkAsync());
+
+    // THEN the modeled error names the timed-out handshake, well before a reconnect interval
+    expect({
+      error: result.isErr() && result.error,
+      withinBudget: performance.now() - started < 2_000,
+    }).toEqual({
+      error: expect.objectContaining({
+        _tag: "@amqp-contract/ConnectionError",
+        message: expect.stringContaining("connect ETIMEDOUT"),
+      }),
+      withinBudget: true,
+    });
+  });
+
   it("refuses durable worker queues before opening a connection", async ({
     amqpConnectionUrl,
     subscriptionContract,
@@ -130,5 +166,8 @@ describe("amqpSubscription", () => {
 });
 
 class Label extends Port("SubscriptionTestLabel")<string> {}
-class Settings extends Port("SubscriptionTestSettings")<{ readonly url: string }> {}
+class Settings extends Port("SubscriptionTestSettings")<{
+  readonly url: string;
+  readonly connectTimeoutMs?: number;
+}> {}
 class EvictionFailed extends TaggedError("EvictionFailed") {}

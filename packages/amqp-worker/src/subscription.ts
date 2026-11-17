@@ -29,7 +29,7 @@ import {
   type Result,
 } from "unthrown";
 
-import type { AnyAmqpContract } from "./amqp-runtime.js";
+import { withHandshakeTimeout, type AnyAmqpContract } from "./amqp-runtime.js";
 import { brokerLog } from "./broker-log.js";
 
 /** A subscription requires explicitly ephemeral queues with no retry or dead-letter routing. */
@@ -137,11 +137,13 @@ export const amqpSubscription = <
               },
             ]),
           );
+          const connectTimeoutMs = services.settings.connectTimeoutMs ?? 5_000;
           return TypedAmqpWorker.create({
             contract: options.contract,
             handlers: wrapped as never,
             urls: [services.settings.url],
-            connectTimeoutMs: services.settings.connectTimeoutMs ?? 5_000,
+            connectTimeoutMs,
+            connectionOptions: withHandshakeTimeout(connectTimeoutMs),
             logger: brokerLog(observers),
           });
         },
