@@ -742,7 +742,7 @@ describe("order-api", () => {
     expect(response.status).toBe(400);
   });
 
-  it("pins — does not endorse — the wire status INVALID_QUANTITY gets today: 500", async ({
+  it("answers INVALID_QUANTITY, a custom code, with oRPC's client-error default: 400", async ({
     serve,
     originFor,
     api,
@@ -762,9 +762,8 @@ describe("order-api", () => {
     });
 
     // THEN a custom error code outside oRPC's COMMON_ERROR_STATUS_MAP falls back
-    // to DEFAULT_ERROR_STATUS — see packages/http-server/AGENTS.md for why this
-    // is a documented defect, not the intended status
-    expect(response.status).toBe(500);
+    // to DEFAULT_ERROR_STATUS, a 4xx — see packages/http-server/AGENTS.md
+    expect(response.status).toBe(400);
   });
 
   it("refuses a malformed input before the use case is reached", async ({

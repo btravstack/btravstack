@@ -1,6 +1,6 @@
 import { ConnectionError } from "@amqp-contract/client";
 import { HealthChecks } from "@btravstack/core";
-import { ErrAsync, OkAsync } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { Client, contract, it } from "./__tests__/test-fixtures.js";
@@ -128,20 +128,27 @@ describe("amqpClient", () => {
       upstream,
       scoped,
     }) => {
-      // GIVEN the client's health check, read out of a scope over a connected client
-      const [health] = (await scoped({}, (ctx) => OkAsync(ctx.get(HealthChecks)))).getOrThrow();
-      const connected = await health?.check();
+      // GIVEN a scope over a connected client
 
-      // WHEN the connection drops
-      upstream.connected = false;
-      const dropped = await health?.check();
+      // WHEN its health check runs while the scope is open, then again once the connection drops
+      const outcome = await scoped({}, (ctx) =>
+        fromSafePromise(
+          (async () => {
+            const [health] = ctx.get(HealthChecks);
+            const connected = await health?.check();
+            upstream.connected = false;
+            const dropped = await health?.check();
+            return {
+              name: health?.name,
+              connected: connected?.isOk(),
+              dropped: dropped?.isErr() && dropped.error,
+            };
+          })(),
+        ),
+      );
 
       // THEN the check names the client's port, and fails only once disconnected
-      expect({
-        name: health?.name,
-        connected: connected?.isOk(),
-        dropped: dropped?.isErr() && dropped.error,
-      }).toEqual({
+      expect(outcome).toBeOkWith({
         name: `amqp-client:${Client.portId}`,
         connected: true,
         dropped: expect.objectContaining({ _tag: "HealthCheckFailed", reason: expect.any(String) }),

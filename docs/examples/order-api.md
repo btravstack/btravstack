@@ -51,7 +51,7 @@ import { z } from "zod";
 const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
-const orderRef = z.object({ id: z.uuidv7() });
+const orderRef = z.object({ id: z.uuidv7().brand("OrderId") });
 export type OrderRef = z.infer<typeof orderRef>;
 
 // The one ref whose `id` is a bare string. It names the id **as received**,

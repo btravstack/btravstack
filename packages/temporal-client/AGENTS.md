@@ -31,8 +31,9 @@ both, and composes `noObserverMember`. The caller binds its contract through
   `Proxy` when files rotate — so it reaches the current connection. It is not
   a readiness gate. Temporal's retry interceptor keeps an `UNAVAILABLE` call
   alive with its own backoff, past the kernel's health timeout: the call
-  carries a deadline so it ends, and the connection's release waits for calls
-  in flight, since a retry fired on a closed channel throws uncaught from the
+  carries a deadline so it ends, and every close of a physical connection waits
+  for the calls in flight on it — scope release, a rotation closing the
+  replaced connection, and a failed key source closing the current one — since a retry fired on a closed channel throws uncaught from the
   interceptor's timer. `TemporalClientUnreachable` models a failed connection.
 
 This package has no worker dependency and owns no schedule policy. The worked

@@ -122,14 +122,17 @@ const updateEffect = (customer: EffectCustomer, patch: unknown) =>
 // ---------------------------------------------------------------------------
 
 test("all three accept the same payload and reject the same invariant breach", () => {
-  expect(parsePlain(raw).success).toBe(true);
-  expect(parsePlain(tooManySeats).success).toBe(false);
+  // GIVEN a valid payload and one over the free plan's seat cap
 
-  expect(Customer.make(raw).isOk()).toBe(true);
-  expect(Customer.make(tooManySeats).isErr()).toBe(true);
+  // WHEN each implementation reads both
+  const accepted = {
+    plain: [parsePlain(raw).success, parsePlain(tooManySeats).success],
+    entity: [Customer.make(raw).isOk(), Customer.make(tooManySeats).isOk()],
+    effect: [Result.isSuccess(decodeEffect(raw)), Result.isSuccess(decodeEffect(tooManySeats))],
+  };
 
-  expect(Result.isSuccess(decodeEffect(raw))).toBe(true);
-  expect(Result.isFailure(decodeEffect(tooManySeats))).toBe(true);
+  // THEN all three accept the first and refuse the second
+  expect(accepted).toEqual({ plain: [true, false], entity: [true, false], effect: [true, false] });
 });
 
 test("all three can generate the id rather than take it from the caller", () => {

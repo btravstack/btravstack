@@ -54,7 +54,9 @@ const streams = (segments: readonly string[]): boolean => {
   const procedure = getContractRouter(contract, segments);
   return (
     isProcedure(procedure) &&
-    getAsyncIteratorObjectSchemasDetails(procedure["~orpc"].outputSchemas) !== undefined
+    (procedure["~orpc"].outputSchemas ?? []).some(
+      (schema) => getAsyncIteratorObjectSchemasDetails([schema]) !== undefined,
+    )
   );
 };
 

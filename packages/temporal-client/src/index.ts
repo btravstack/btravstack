@@ -176,9 +176,8 @@ export const temporalClient = <
                 : connection,
             ),
           ),
-        // A probe Temporal's retry interceptor still holds would retry on a closed channel, uncaught.
         release: (connection) =>
-          Promise.allSettled(probes.get(connection) ?? []).then(() => connection.close()),
+          physicalOf(connection) === connection ? drained(connection) : connection.close(),
       }),
       Provider(port as PortClassOf<string, TypedClient>)({
         inject: {
@@ -233,11 +232,12 @@ type Injected<O, K extends keyof TemporalClientOptions> = O extends unknown
  */
 const serving = (connection: Connection, address: string): AsyncResult<void, HealthCheckFailed> => {
   // Temporal's retry interceptor keeps an unanswered call alive; this ends it once the kernel stops waiting.
-  const call = connection.withDeadline(Date.now() + HEALTH_DEADLINE_MS, () =>
-    connection.healthService.check({ service: WORKFLOW_SERVICE }),
+  const target = physicalOf(connection);
+  const call = target.withDeadline(Date.now() + HEALTH_DEADLINE_MS, () =>
+    target.healthService.check({ service: WORKFLOW_SERVICE }),
   );
-  const pending = probes.get(connection) ?? new Set<Promise<unknown>>();
-  probes.set(connection, pending);
+  const pending = probes.get(target) ?? new Set<Promise<unknown>>();
+  probes.set(target, pending);
   pending.add(call);
   const settled = (): void => {
     pending.delete(call);
@@ -253,8 +253,18 @@ const serving = (connection: Connection, address: string): AsyncResult<void, Hea
   );
 };
 
-/** The health calls in flight on each connection, which its release waits for. */
+/** The health calls in flight on each physical connection, which closing it waits for. */
 const probes = new WeakMap<Connection, Set<Promise<unknown>>>();
+
+const PHYSICAL = Symbol("physical");
+
+/** The connection a rotating proxy currently forwards to, or the connection itself. */
+const physicalOf = (connection: Connection): Connection =>
+  (Reflect.get(connection, PHYSICAL) as Connection | undefined) ?? connection;
+
+/** A probe Temporal's retry interceptor still holds would retry on a closed channel, uncaught. */
+const drained = (connection: Connection): Promise<void> =>
+  Promise.allSettled([...(probes.get(connection) ?? [])]).then(() => connection.close());
 
 type PrivatePorts = {
   readonly settings: PortClassOf<string, Settings>;
@@ -300,7 +310,7 @@ const rotating = (
             current = opened;
             const previousClosed = closed;
             closed = false;
-            return previousClosed ? OkAsync() : fromSafePromise(previous.close());
+            return previousClosed ? OkAsync() : fromSafePromise(drained(previous));
           })
         : OkAsync(current.setApiKey(change.apiKey)),
     (failure) => {
@@ -310,17 +320,18 @@ const rotating = (
     () => {
       if (closed) return OkAsync();
       closed = true;
-      return fromSafePromise(current.close());
+      return fromSafePromise(drained(current));
     },
   );
   const close = async (): Promise<void> => {
     await stop();
     if (!closed) {
       closed = true;
-      await current.close();
+      await drained(current);
     }
   };
   return new Proxy(first, {
-    get: (_target, key) => (key === "close" ? close : Reflect.get(current, key, current)),
+    get: (_target, key) =>
+      key === "close" ? close : key === PHYSICAL ? current : Reflect.get(current, key, current),
   });
 };

@@ -710,20 +710,18 @@ This does not change ordinary di module visibility.
   package pins no map for it.** `orpc()` builds its `RPCHandler` with no
   `errorStatusMap`, so `@orpc/server` falls back to its own
   `COMMON_ERROR_STATUS_MAP` — a fixed dictionary of the standard codes — and a
-  **custom** code outside it resolves to `DEFAULT_ERROR_STATUS`, `500`. The
+  **custom** code outside it resolves to `DEFAULT_ERROR_STATUS`: `400` since
+  `@orpc/server@2.0.0-beta.45`, inside the peer floor, where it was `500`. The
   contract's own `status` field is read by the OpenAPI answerer and document
-  generator (see `../orpc-server/AGENTS.md`), never by this RPC handler. `INVALID_QUANTITY` is the code in the running examples that
-  hits this today, a declared client-input error that therefore answers `500`
-  rather than a `4xx`, tripping any 5xx-keyed retry or circuit breaker a
-  caller has — and `examples/order-api/src/api.spec.ts`'s
-  `"pins — does not endorse — the wire status INVALID_QUANTITY gets today: 500"`
-  test holds the current behaviour in place rather than the intended one. The
-  fix is an `errorStatusMap` passed to `orpc()`'s `RPCHandler`: a
-  starter-level decision, since it changes the status of every already-shipped
-  custom code for every consumer, and has not been taken. Until then, a
-  refusal that must reach the wire as a `4xx` rides a standard code and says
-  which refusal it is in its payload — `orders.list`'s cursor refusals are one
-  `BAD_REQUEST` with a `reason`, `"malformed"` or `"sort-mismatch"`.
+  generator (see `../orpc-server/AGENTS.md`), never by this RPC handler. So a
+  declared client-input refusal such as the examples' `INVALID_QUANTITY`
+  answers a `4xx` and no longer trips a caller's 5xx-keyed retry or circuit
+  breaker; `examples/order-api/src/api.spec.ts` pins it. A refusal needing a
+  more precise `4xx` on this handler still rides a standard code and says which
+  refusal it is in its payload — `orders.list`'s cursor refusals are one
+  `BAD_REQUEST` with a `reason`, `"malformed"` or `"sort-mismatch"`. The
+  defect report reads the same default, so an undeclared custom code is a
+  client error there too, not a defect.
 - **The guarantee**: the unit's lifetime **is** the response's — it does not
   close until the response's `'close'` event fires, and closes at once if that
   event already fired before the work ran — so

@@ -235,7 +235,9 @@ const RPC_METHODS: ReadonlySet<string> = new Set(RPC_DEFAULT_ALLOW_METHODS);
 
 /** Whether a procedure's declared output is an event iterator — the shape `EventSource` consumes. */
 const streamsOutput = (procedure: AnyProcedure): boolean =>
-  getAsyncIteratorObjectSchemasDetails(procedure["~orpc"].outputSchemas) !== undefined;
+  (procedure["~orpc"].outputSchemas ?? []).some(
+    (schema) => getAsyncIteratorObjectSchemasDetails([schema]) !== undefined,
+  );
 
 /** Whether a procedure's OpenAPI route declares a body read or answered as a stream. */
 const streamsBody = (procedure: AnyProcedureContract): boolean => {
