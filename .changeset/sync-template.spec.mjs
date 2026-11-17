@@ -19,7 +19,7 @@ describe("template release pins", () => {
     ["patch", "0.29.1"],
     ["minor", "0.30.0"],
   ]) {
-    it(`should follow a ${bump} release without changing third-party pins`, (test) => {
+    it(`should follow a ${bump} release, moving oRPC to the answerer's floor and no other third-party pin`, (test) => {
       // GIVEN
       const root = fileURLToPath(new URL("../", import.meta.url));
       const work = mkdtempSync(join(tmpdir(), "btravstack-version-"));
@@ -83,12 +83,19 @@ describe("template release pins", () => {
       const template = JSON.parse(
         readFileSync(join(work, "templates", "http-app", "package.json"), "utf8"),
       );
+      const orpcFloor = JSON.parse(
+        readFileSync(join(root, "packages", "orpc-server", "package.json"), "utf8"),
+      ).peerDependencies["@orpc/server"].replace(/^\^/, "");
       assert.deepEqual(
         template.dependencies,
         Object.fromEntries(
           Object.entries(original.dependencies).map(([name, version]) => [
             name,
-            name.startsWith("@btravstack/") ? expected : version,
+            name.startsWith("@btravstack/")
+              ? expected
+              : name.startsWith("@orpc/")
+                ? orpcFloor
+                : version,
           ]),
         ),
       );
