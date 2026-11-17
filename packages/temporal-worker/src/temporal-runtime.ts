@@ -82,8 +82,8 @@ export type WorkflowSource =
  * unless pinned, and anything else in the graph may read it. The connection's
  * security is read from `TEMPORAL_TLS`, `TEMPORAL_TLS_*`, `TEMPORAL_API_KEY`,
  * `TEMPORAL_API_KEY_PATH` and `TEMPORAL_CREDENTIALS_RELOAD_MS`, and is never
- * pinned. `@btravstack/temporal-client`'s `temporalConnection` accepts this
- * port as its settings, so a client in the worker's process connects alike.
+ * pinned. `@btravstack/temporal-client`'s `temporalClient` reads the same
+ * variables, so a client in the worker's process connects alike.
  */
 export class TemporalConfig extends Port("TemporalConfig")<
   {

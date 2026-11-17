@@ -702,25 +702,23 @@ holds only ciphertext, and erasing a key makes what it encrypted unreadable.
 `dataConverter` takes a **port the application declares**,
 `class OrderConverter extends Port("OrderConverter")<DataConverter> {}`, not
 the converter itself: a codec usually needs a service to construct — a key
-store — so its provider injects one like any other. `temporalClient`'s fourth
-argument takes the same port, so the worker and every client that starts or
-queries its workflows resolve one provider and cannot drift apart; a side
-without it reads the other's payloads as ciphertext.
+store — so its provider injects one like any other. `temporalClient`'s
+`dataConverter` option takes the same port, so the worker and every client
+that starts or queries its workflows resolve one provider and cannot drift
+apart; a side without it reads the other's payloads as ciphertext.
 
 <!-- doctest: isolate
 import { TemporalModule, type ActivitiesInstanceOf } from "@btravstack/temporal-worker";
-import { temporalClient, type TemporalClientSettings } from "@btravstack/temporal-client";
+import { temporalClient } from "@btravstack/temporal-client";
 import { Port, Provider, type Module, type ServiceOf } from "@btravstack/di";
 import type { TypedClient } from "@temporal-contract/client";
-import type { Connection, DataConverter } from "@temporalio/client";
+import type { DataConverter } from "@temporalio/client";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 class KeyStore extends Port("KeyStore")<{ readonly keyFor: (tenantId: string) => Uint8Array }> {}
 declare const KeyStoreModule: Module<KeyStore, never, never>;
 declare const encryptingCodecs: (keys: ServiceOf<KeyStore>) => NonNullable<DataConverter["payloadCodecs"]>;
 declare const orderActivities: Provider<ActivitiesInstanceOf<typeof orderContract>, never, never>;
 class OrderClient extends Port("OrderClient")<TypedClient> {}
-class OrderConnection extends Port("OrderConnection")<Connection> {}
-class OrderSettings extends Port("OrderSettings")<TemporalClientSettings> {}
 -->
 
 ```ts
@@ -741,12 +739,7 @@ export const OrderWorker = TemporalModule("OrderWorker")({
 });
 
 // Beside it, in every process that starts or queries those workflows:
-export const orderClient = temporalClient(
-  OrderClient,
-  OrderConnection,
-  OrderSettings,
-  OrderConverter,
-);
+export const orderClient = temporalClient(OrderClient, { dataConverter: OrderConverter });
 ```
 
 `payloadConverterPath` and `failureConverterPath` run inside the workflow

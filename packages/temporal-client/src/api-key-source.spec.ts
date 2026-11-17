@@ -11,14 +11,18 @@ describe("renewable client credentials", () => {
     open,
   }) => {
     // GIVEN
-    const { apiKeyPath: _file, ...settings } = secured.apiKey;
-    const connection = (await open(settings, renewable.source)).getOrThrow();
+    const { TEMPORAL_API_KEY_PATH: _file, ...env } = secured.apiKey;
+    const connection = (await open(env, { source: renewable.source })).getOrThrow().connection;
 
     // WHEN
-    const answer = connection.workflowService.describeNamespace({ namespace: settings.namespace });
+    const answer = connection.workflowService.describeNamespace({
+      namespace: env.TEMPORAL_NAMESPACE,
+    });
 
     // THEN
-    await expect(answer).resolves.toMatchObject({ namespaceInfo: { name: settings.namespace } });
+    await expect(answer).resolves.toMatchObject({
+      namespaceInfo: { name: env.TEMPORAL_NAMESPACE },
+    });
   });
 
   it("refuses an unavailable source before opening the connection", async ({
@@ -27,11 +31,11 @@ describe("renewable client credentials", () => {
     open,
   }) => {
     // GIVEN
-    const { apiKeyPath: _file, ...settings } = secured.apiKey;
+    const { TEMPORAL_API_KEY_PATH: _file, ...env } = secured.apiKey;
     renewable.set(undefined);
 
     // WHEN
-    const answer = await open(settings, renewable.source);
+    const answer = await open(env, { source: renewable.source });
 
     // THEN
     expect(answer).toBeErrWith(new TemporalApiKeyUnavailable());
@@ -43,12 +47,12 @@ describe("renewable client credentials", () => {
     open,
   }) => {
     // GIVEN
-    const { apiKeyPath: _file, ...settings } = secured.apiKey;
-    const connection = (await open(settings, renewable.source)).getOrThrow();
+    const { TEMPORAL_API_KEY_PATH: _file, ...env } = secured.apiKey;
+    const connection = (await open(env, { source: renewable.source })).getOrThrow().connection;
     const service = connection.workflowService;
     renewable.set("revoked");
     await vi.waitUntil(() =>
-      connection.workflowService.describeNamespace({ namespace: settings.namespace }).then(
+      connection.workflowService.describeNamespace({ namespace: env.TEMPORAL_NAMESPACE }).then(
         () => false,
         () => true,
       ),
@@ -56,7 +60,7 @@ describe("renewable client credentials", () => {
 
     // WHEN
     const code = await connection.workflowService
-      .describeNamespace({ namespace: settings.namespace })
+      .describeNamespace({ namespace: env.TEMPORAL_NAMESPACE })
       .then(
         () => undefined,
         (failure: { code: number }) => failure.code,
@@ -75,12 +79,12 @@ describe("renewable client credentials", () => {
     open,
   }) => {
     // GIVEN
-    const { apiKeyPath: _file, ...settings } = secured.apiKey;
-    const connection = (await open(settings, renewable.source)).getOrThrow();
+    const { TEMPORAL_API_KEY_PATH: _file, ...env } = secured.apiKey;
+    const connection = (await open(env, { source: renewable.source })).getOrThrow().connection;
     const service = connection.workflowService;
     renewable.set(undefined);
     await vi.waitUntil(() =>
-      connection.workflowService.describeNamespace({ namespace: settings.namespace }).then(
+      connection.workflowService.describeNamespace({ namespace: env.TEMPORAL_NAMESPACE }).then(
         () => false,
         () => true,
       ),
@@ -90,11 +94,11 @@ describe("renewable client credentials", () => {
     renewable.set("temporal-test-first");
     await vi.waitUntil(() => connection.workflowService !== service);
     const answer = await connection.workflowService.describeNamespace({
-      namespace: settings.namespace,
+      namespace: env.TEMPORAL_NAMESPACE,
     });
 
     // THEN
-    expect(answer).toMatchObject({ namespaceInfo: { name: settings.namespace } });
+    expect(answer).toMatchObject({ namespaceInfo: { name: env.TEMPORAL_NAMESPACE } });
   });
 
   it("waits for an in-flight source read and never reopens after close", async ({
@@ -103,8 +107,8 @@ describe("renewable client credentials", () => {
     open,
   }) => {
     // GIVEN
-    const { apiKeyPath: _file, ...settings } = secured.apiKey;
-    const connection = (await open(settings, heldSource.source)).getOrThrow();
+    const { TEMPORAL_API_KEY_PATH: _file, ...env } = secured.apiKey;
+    const connection = (await open(env, { source: heldSource.source })).getOrThrow().connection;
     const service = connection.workflowService;
     await heldSource.entered;
 
@@ -113,7 +117,7 @@ describe("renewable client credentials", () => {
     heldSource.release();
     await closing;
     const refused = await connection.workflowService
-      .describeNamespace({ namespace: settings.namespace })
+      .describeNamespace({ namespace: env.TEMPORAL_NAMESPACE })
       .then(
         () => false,
         () => true,

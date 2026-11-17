@@ -37,17 +37,17 @@ describe("the client's connection security", () => {
     open,
   }) => {
     // GIVEN a connection presenting the mounted certificate to the proxy requiring one
-    const connection = (await open(secured.mtls)).getOrThrow();
+    const connection = (await open(secured.mtls)).getOrThrow().connection;
 
     // WHEN it describes its namespace
     const described = connection.workflowService.describeNamespace({
-      namespace: secured.mtls.namespace,
+      namespace: secured.mtls.TEMPORAL_NAMESPACE,
     });
 
     // THEN the server answered through the proxy
     await expect(described).resolves.toEqual(
       expect.objectContaining({
-        namespaceInfo: expect.objectContaining({ name: secured.mtls.namespace }),
+        namespaceInfo: expect.objectContaining({ name: secured.mtls.TEMPORAL_NAMESPACE }),
       }),
     );
   });
@@ -57,7 +57,11 @@ describe("the client's connection security", () => {
     open,
   }) => {
     // GIVEN TLS to the mTLS proxy, without a client certificate
-    const { clientCertPath: _cert, clientKeyPath: _key, ...withoutCertificate } = secured.mtls;
+    const {
+      TEMPORAL_TLS_CLIENT_CERT_PATH: _cert,
+      TEMPORAL_TLS_CLIENT_KEY_PATH: _key,
+      ...withoutCertificate
+    } = secured.mtls;
 
     // WHEN the connection is opened
     const opened = await open(withoutCertificate);
@@ -65,30 +69,29 @@ describe("the client's connection security", () => {
     // THEN it is the starter's modeled refusal
     expect(opened).toBeErrTagged(
       "TemporalClientUnreachable",
-      expect.objectContaining({ address: secured.mtls.address }),
+      expect.objectContaining({ address: secured.mtls.TEMPORAL_ADDRESS }),
     );
   });
 
-  it("refuses settings it cannot connect with as ConfigInvalid against the settings port", async ({
+  it("refuses an environment it cannot connect with as ConfigInvalid against the client port", async ({
     temporal,
     open,
   }) => {
     // GIVEN a server name with TLS off, and a certificate without its key
-    const settings = {
-      address: temporal.TEMPORAL_ADDRESS,
-      namespace: temporal.TEMPORAL_NAMESPACE,
-      serverName: "temporal.test",
-      clientCertPath: TEMPORAL_TLS_FILES.client.cert,
+    const env = {
+      ...temporal,
+      TEMPORAL_TLS_SERVER_NAME: "temporal.test",
+      TEMPORAL_TLS_CLIENT_CERT_PATH: TEMPORAL_TLS_FILES.client.cert,
     };
 
     // WHEN the connection is opened
-    const opened = await open(settings);
+    const opened = await open(env);
 
     // THEN one ConfigInvalid names every variable to fix
     expect(opened).toBeErrTagged(
       "ConfigInvalid",
       expect.objectContaining({
-        port: "SecuredSettings",
+        port: "SecuredClient",
         issues: [
           { message: "requires TEMPORAL_TLS=true", path: ["TEMPORAL_TLS_SERVER_NAME"] },
           { message: "requires TEMPORAL_TLS=true", path: ["TEMPORAL_TLS_CLIENT_CERT_PATH"] },
@@ -106,27 +109,27 @@ describe("the client's connection security", () => {
     open,
   }) => {
     // GIVEN an open connection whose mounted certificate rotates
-    const connection = (await open(secured.mtls)).getOrThrow();
+    const connection = (await open(secured.mtls)).getOrThrow().connection;
     const before = connection.workflowService;
     await secured.install(TEMPORAL_TLS_FILES.rotated);
     await vi.waitUntil(() => connection.workflowService !== before, { timeout: 10_000 });
 
     // WHEN it describes its namespace
     const described = connection.workflowService.describeNamespace({
-      namespace: secured.mtls.namespace,
+      namespace: secured.mtls.TEMPORAL_NAMESPACE,
     });
 
     // THEN the new connection, opened with the rotated certificate, answered
     await expect(described).resolves.toEqual(
       expect.objectContaining({
-        namespaceInfo: expect.objectContaining({ name: secured.mtls.namespace }),
+        namespaceInfo: expect.objectContaining({ name: secured.mtls.TEMPORAL_NAMESPACE }),
       }),
     );
   });
 
   it("sends a rotated API key on the open connection", async ({ secured, open }) => {
     // GIVEN an open connection whose mounted API key is replaced by one the server refuses
-    const connection = (await open(secured.apiKey)).getOrThrow();
+    const connection = (await open(secured.apiKey)).getOrThrow().connection;
     await secured.writeApiKey("revoked");
     await vi.waitUntil(
       () =>
@@ -223,7 +226,7 @@ describe("the client's connection security", () => {
     const security = {
       tls: true,
       serverCaCertPath: "/nonexistent/ca.pem",
-      apiKeyPath: secured.apiKey.apiKeyPath,
+      apiKeyPath: secured.apiKey["TEMPORAL_API_KEY_PATH"],
     };
 
     // WHEN the credentials are read

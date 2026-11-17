@@ -19,7 +19,7 @@ dependency**.
 | `TemporalServerOptions` | type  | `{ readonly startupTimeoutMs?: number; readonly reuse?: boolean }` — the container's health-check start period, retry count and `testcontainers` wait (default `60_000`), and reuse (default `true`)                                      |
 | `temporalEnvironment`   | value | `temporalEnvironment(prefix = "spec")` — a file-scoped `test.extend` fixture registering `<prefix>-<uuid>` and answering a `TemporalEnvironment` once every Temporal service can use it                                                   |
 | `temporalNamespace`     | value | `temporalNamespace(address, prefix = "spec")` — registers `<prefix>-<uuid>` on the server at `address` and resolves to its name once every Temporal service can use it, with no test context, so a `globalSetup` can register one per run |
-| `TemporalEnvironment`   | type  | `{ readonly TEMPORAL_ADDRESS: string; readonly TEMPORAL_NAMESPACE: string }` — spread into `start`'s or `boot`'s `env`, or read by a client's settings                                                                                    |
+| `TemporalEnvironment`   | type  | `{ readonly TEMPORAL_ADDRESS: string; readonly TEMPORAL_NAMESPACE: string }` — spread into `start`'s or `boot`'s `env`, which `temporal()` and `temporalClient` both read                                                                 |
 
 ## The server
 
