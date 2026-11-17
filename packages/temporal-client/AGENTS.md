@@ -115,7 +115,9 @@ TLS and excludes inline/file API keys and mTLS. Configuration refusals precede
 source reads, and an empty answer is unavailable. Successful changes use
 `setApiKey`; credential values never enter diagnostics.
 
-A failed read or apply closes the client connection immediately. The next
+A failed read or apply fails closed immediately: the key is cleared, so no new
+call carries it, and the connection closes once its in-flight health probes
+settle (a retry on a closed channel throws uncaught). The next
 successful reading opens a fresh connection even if the credential is unchanged.
 Scope teardown stops the polling and waits for an in-flight read before closing.
 

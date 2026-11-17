@@ -320,6 +320,8 @@ const rotating = (
     () => {
       if (closed) return OkAsync();
       closed = true;
+      // Fail closed at once: no new call carries the removed key while probes settle.
+      current.setApiKey(() => "");
       return fromSafePromise(drained(current));
     },
   );
