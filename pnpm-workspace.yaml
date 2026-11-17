@@ -138,7 +138,7 @@ catalog:
   nodemailer: 10.5.0
   openid-client: 6.9.0
   temporal-polyfill: 1.0.8
-  prisma: 8.0.0-rc.34
+  prisma: 8.0.0-rc.33
   uuidv7: 1.2.1
   redis: 6.3.1
   tsdown: 0.23.2
