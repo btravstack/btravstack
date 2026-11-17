@@ -57,7 +57,7 @@
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@opentelemetry/api": "^1",
-    "unthrown": "^5.12.0"
+    "unthrown": "^5.12.2"
   },
   "engines": {
     "node": ">=22.22"

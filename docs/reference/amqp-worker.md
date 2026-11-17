@@ -538,7 +538,7 @@ It keeps private infrastructure hidden and business exports explicit.
 
 ## Broadcast subscriptions beside another runtime
 
-Subscriptions require `@amqp-contract/worker >=3.0.1`, the worker's peer floor, for its public connectivity check and a bounded start-up against a silent broker, and `unthrown >=5.11.0` for that train's dependency closure.
+Subscriptions require `@amqp-contract/worker >=3.0.1`, the worker's peer floor, for its public connectivity check and a bounded start-up against a silent broker, and `unthrown >=5.12.2` for that train's dependency closure.
 
 `amqpSubscription(name, { contract, settings, inject?, sync })` imports a
 scoped consumer resource without exporting a runtime. Compose it in an HTTP
