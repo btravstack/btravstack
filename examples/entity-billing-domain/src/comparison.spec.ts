@@ -1,7 +1,7 @@
 /**
  * One small model, three ways: plain zod plus functions, this package, and
- * Effect's `Schema.Class` (effect 3.x). The docs page
- * `docs/explanation/compared.md` quotes these declarations, and every row of
+ * Effect's `Schema.Class` (effect 4.x). The docs page
+ * `docs/entity/explanation/compared.md` quotes these declarations, and every row of
  * its comparison table is a test below, so the page states measured behaviour.
  *
  * The model: a customer with a generated, immutable id, an email, a plan and a
@@ -14,7 +14,7 @@
 import { isDeepStrictEqual } from "node:util";
 
 import { Entity } from "@btravstack/entity";
-import { Either, Equal, JSONSchema, Schema } from "effect";
+import { Equal, Result, Schema, SchemaIssue, Struct } from "effect";
 import { expect, test } from "vitest";
 import { z } from "zod";
 
@@ -97,24 +97,24 @@ const createCustomer = Customer.factory({ id: () => CustomerId.parse(nextId()) }
 
 class EffectCustomer extends Schema.Class<EffectCustomer>("Customer")(
   Schema.Struct({
-    id: Schema.UUID.pipe(Schema.brand("CustomerId")),
-    email: Schema.String.pipe(Schema.pattern(/^[^@\s]+@[^@\s]+$/), Schema.brand("Email")),
-    plan: Schema.Literal("free", "pro"),
-    seats: Schema.Int.pipe(Schema.positive(), Schema.brand("Seats")),
-  }).pipe(Schema.filter((d) => withinFreeCap(d) || FREE_SEAT_CAP)),
+    id: Schema.String.check(Schema.isUUID()).pipe(Schema.brand("CustomerId")),
+    email: Schema.String.check(Schema.isPattern(/^[^@\s]+@[^@\s]+$/)).pipe(Schema.brand("Email")),
+    plan: Schema.Literals(["free", "pro"]),
+    seats: Schema.Int.check(Schema.isGreaterThan(0)).pipe(Schema.brand("Seats")),
+  }).check(Schema.makeFilter((d) => withinFreeCap(d) || FREE_SEAT_CAP)),
 ) {}
 
-const EffectCreateInput = Schema.Struct(EffectCustomer.fields).pipe(Schema.omit("id"));
-const EffectUpdateInput = Schema.partial(EffectCreateInput);
+const EffectCreateInput = EffectCustomer.mapFields(Struct.omit(["id"]));
+const EffectUpdateInput = EffectCreateInput.mapFields(Struct.map(Schema.optionalKey));
 
-const decodeEffect = Schema.decodeUnknownEither(EffectCustomer);
+const decodeEffect = Schema.decodeUnknownResult(EffectCustomer);
 const createEffect = (input: unknown) =>
-  Schema.decodeUnknownEither(EffectCreateInput)(input).pipe(
-    Either.flatMap((fields) => decodeEffect({ ...fields, id: nextId() })),
+  Schema.decodeUnknownResult(EffectCreateInput)(input).pipe(
+    Result.flatMap((fields) => decodeEffect({ ...fields, id: nextId() })),
   );
 const updateEffect = (customer: EffectCustomer, patch: unknown) =>
-  Schema.decodeUnknownEither(EffectUpdateInput, { onExcessProperty: "error" })(patch).pipe(
-    Either.flatMap((fields) => decodeEffect({ ...customer, ...fields })),
+  Schema.decodeUnknownResult(EffectUpdateInput, { onExcessProperty: "error" })(patch).pipe(
+    Result.flatMap((fields) => decodeEffect({ ...customer, ...fields })),
   );
 
 // ---------------------------------------------------------------------------
@@ -128,8 +128,8 @@ test("all three accept the same payload and reject the same invariant breach", (
   expect(Customer.make(raw).isOk()).toBe(true);
   expect(Customer.make(tooManySeats).isErr()).toBe(true);
 
-  expect(Either.isRight(decodeEffect(raw))).toBe(true);
-  expect(Either.isLeft(decodeEffect(tooManySeats))).toBe(true);
+  expect(Result.isSuccess(decodeEffect(raw))).toBe(true);
+  expect(Result.isFailure(decodeEffect(tooManySeats))).toBe(true);
 });
 
 test("all three can generate the id rather than take it from the caller", () => {
@@ -141,7 +141,7 @@ test("all three can generate the id rather than take it from the caller", () => 
   // the factory spreads generated fields last, so a smuggled id loses
   expect(createCustomer({ ...input, id: raw.id } as never).getOrThrow().id).toBe(nextId());
 
-  expect(Either.getOrThrow(createEffect(input)).id).toBe(nextId());
+  expect(Result.getOrThrow(createEffect(input)).id).toBe(nextId());
 });
 
 test("all three refuse a patch to the id, at runtime", () => {
@@ -152,8 +152,8 @@ test("all three refuse a patch to the id, at runtime", () => {
   // a compile error first; the cast is how an untyped adapter would reach it
   expect(entity.update({ id: nextId() } as never).isErr()).toBe(true);
 
-  const effect = Either.getOrThrow(decodeEffect(raw));
-  expect(Either.isLeft(updateEffect(effect, { id: nextId() }))).toBe(true);
+  const effect = Result.getOrThrow(decodeEffect(raw));
+  expect(Result.isFailure(updateEffect(effect, { id: nextId() }))).toBe(true);
 });
 
 test("all three re-check the invariant on update", () => {
@@ -163,8 +163,8 @@ test("all three re-check the invariant on update", () => {
   const entity = Customer.make(raw).getOrThrow();
   expect(entity.update({ seats: Seats.parse(9) }).isErr()).toBe(true);
 
-  const effect = Either.getOrThrow(decodeEffect(raw));
-  expect(Either.isLeft(updateEffect(effect, { seats: 9 }))).toBe(true);
+  const effect = Result.getOrThrow(decodeEffect(raw));
+  expect(Result.isFailure(updateEffect(effect, { seats: 9 }))).toBe(true);
 });
 
 test("all three yield the same create-request JSON Schema properties", () => {
@@ -174,7 +174,7 @@ test("all three yield the same create-request JSON Schema properties", () => {
 
   expect(props(z.toJSONSchema(PlainCreateInput, { io: "input" }))).toEqual(expected);
   expect(props(z.toJSONSchema(Customer.createInput, { io: "input" }))).toEqual(expected);
-  expect(props(JSONSchema.make(EffectCreateInput))).toEqual(expected);
+  expect(props(Schema.toJsonSchemaDocument(EffectCreateInput).schema)).toEqual(expected);
 });
 
 test("all three compare by value, each through its own function", () => {
@@ -188,8 +188,8 @@ test("all three compare by value, each through its own function", () => {
     ),
   ).toBe(true);
 
-  const effectA = Either.getOrThrow(decodeEffect(raw));
-  const effectB = Either.getOrThrow(decodeEffect(raw));
+  const effectA = Result.getOrThrow(decodeEffect(raw));
+  const effectB = Result.getOrThrow(decodeEffect(raw));
   expect(Equal.equals(effectA, effectB)).toBe(true);
 });
 
@@ -208,15 +208,20 @@ test("assignment through a cast: entity and the frozen plain object throw, Effec
     (entity as unknown as Record<string, unknown>)["seats"] = 9;
   }).toThrow(TypeError);
 
-  // effect 3.22.4: the instance is not frozen; `readonly` is type-level there
-  const effect = Either.getOrThrow(decodeEffect(raw));
+  // effect 4.1.4: the instance is not frozen; `readonly` is type-level there
+  const effect = Result.getOrThrow(decodeEffect(raw));
   (effect as unknown as Record<string, unknown>)["seats"] = 9;
   expect(effect.seats).toBe(9);
 });
 
 test("the constructor: Effect validates at runtime, entity seals at the type level only", () => {
-  // Effect's constructor is public and validates: invalid data throws
-  expect(() => new EffectCustomer(tooManySeats as never)).toThrow();
+  // Effect's constructor is public and validates: invalid data throws, the issue as its cause
+  expect(() => new EffectCustomer(tooManySeats as never)).toThrow(
+    expect.objectContaining({
+      message: "Schema validation failed",
+      cause: expect.toSatisfy(SchemaIssue.isIssue),
+    }),
+  );
 
   // @ts-expect-error -- `new` on an entity is a compile error (the seal)
   expect(() => new Customer(raw)).not.toThrow();
@@ -230,7 +235,7 @@ test("the constructor: Effect validates at runtime, entity seals at the type lev
 });
 
 test("the class as a schema: Effect's converts to JSON Schema, entity's does not", () => {
-  expect(() => JSONSchema.make(EffectCustomer)).not.toThrow();
+  expect(() => Schema.toJsonSchemaDocument(EffectCustomer)).not.toThrow();
   // entity's class carries a transform; contracts use the four ZodObjects
   expect(() => z.toJSONSchema(Customer as never, { io: "output" })).toThrow();
   expect(() => z.toJSONSchema(Customer.output, { io: "output" })).not.toThrow();

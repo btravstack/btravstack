@@ -6,9 +6,9 @@ description: One small domain model written three ways, with plain zod and funct
 # Compared with zod and Effect
 
 The same small model, written three ways: plain zod plus functions, this
-package, and [Effect's `Schema.Class`](https://effect.website/docs/v3/schema/classes)
-(effect 3.22.4). All three run in
-[`examples/billing-domain/src/comparison.spec.ts`](https://github.com/btravstack/btravstack/blob/main/examples/entity-billing-domain/src/comparison.spec.ts),
+package, and [Effect's `Schema.Class`](https://effect.website/docs/v4/schema/classes)
+(effect 4.1.4). All three run in
+[`examples/entity-billing-domain/src/comparison.spec.ts`](https://github.com/btravstack/btravstack/blob/main/examples/entity-billing-domain/src/comparison.spec.ts),
 and every behaviour this page states is a test there.
 
 This is not a benchmark, and nothing here claims the other two cannot do
@@ -23,7 +23,7 @@ seats. Callers create customers without an id and update everything but the id.
 
 <!-- doctest: prelude
 import { Entity } from "@btravstack/entity";
-import { Either, Schema } from "effect";
+import { Result, Schema, Struct } from "effect";
 import { z } from "zod";
 declare const nextId: () => string;
 -->
@@ -114,30 +114,29 @@ fields everywhere. See [Guarantees and compatibility](/entity/reference/guarante
 ```ts
 class EffectCustomer extends Schema.Class<EffectCustomer>("Customer")(
   Schema.Struct({
-    id: Schema.UUID.pipe(Schema.brand("CustomerId")),
-    email: Schema.String.pipe(
-      Schema.pattern(/^[^@\s]+@[^@\s]+$/),
+    id: Schema.String.check(Schema.isUUID()).pipe(Schema.brand("CustomerId")),
+    email: Schema.String.check(Schema.isPattern(/^[^@\s]+@[^@\s]+$/)).pipe(
       Schema.brand("Email"),
     ),
-    plan: Schema.Literal("free", "pro"),
-    seats: Schema.Int.pipe(Schema.positive(), Schema.brand("Seats")),
-  }).pipe(Schema.filter((d) => withinFreeCap(d) || FREE_SEAT_CAP)),
+    plan: Schema.Literals(["free", "pro"]),
+    seats: Schema.Int.check(Schema.isGreaterThan(0)).pipe(Schema.brand("Seats")),
+  }).check(Schema.makeFilter((d) => withinFreeCap(d) || FREE_SEAT_CAP)),
 ) {}
 
-const EffectCreateInput = Schema.Struct(EffectCustomer.fields).pipe(
-  Schema.omit("id"),
+const EffectCreateInput = EffectCustomer.mapFields(Struct.omit(["id"]));
+const EffectUpdateInput = EffectCreateInput.mapFields(
+  Struct.map(Schema.optionalKey),
 );
-const EffectUpdateInput = Schema.partial(EffectCreateInput);
 
-const decodeEffect = Schema.decodeUnknownEither(EffectCustomer);
+const decodeEffect = Schema.decodeUnknownResult(EffectCustomer);
 const createEffect = (input: unknown) =>
-  Schema.decodeUnknownEither(EffectCreateInput)(input).pipe(
-    Either.flatMap((fields) => decodeEffect({ ...fields, id: nextId() })),
+  Schema.decodeUnknownResult(EffectCreateInput)(input).pipe(
+    Result.flatMap((fields) => decodeEffect({ ...fields, id: nextId() })),
   );
 const updateEffect = (customer: EffectCustomer, patch: unknown) =>
-  Schema.decodeUnknownEither(EffectUpdateInput, { onExcessProperty: "error" })(
+  Schema.decodeUnknownResult(EffectUpdateInput, { onExcessProperty: "error" })(
     patch,
-  ).pipe(Either.flatMap((fields) => decodeEffect({ ...customer, ...fields })));
+  ).pipe(Result.flatMap((fields) => decodeEffect({ ...customer, ...fields })));
 ```
 
 The class gives a type, a validator, methods and structural equality in one
@@ -147,34 +146,35 @@ brings its own schema language rather than zod, and a wider ecosystem with it.
 
 ## What each leaves you to write
 
-| Job                                 | Plain zod                          | entity                                      | Effect `Schema.Class`                          |
-| ----------------------------------- | ---------------------------------- | ------------------------------------------- | ---------------------------------------------- |
-| create and update request schemas   | hand-written `omit` / `partial`    | derived from the field flags                | hand-written `omit` / `partial`                |
-| create with a generated id          | a function you write               | `factory(generators)`                       | a function you write                           |
-| refuse a patch to the id at runtime | `.strict()` on your update schema  | `update` rejects it with the key's path     | `onExcessProperty: "error"` on your decode     |
-| re-check the rule on update         | your update function re-parses     | `update` re-runs every invariant            | your update function re-decodes                |
-| failures as values                  | `safeParse` result                 | `Result<T, InvalidEntity>`                  | `Either` from `decodeUnknownEither`            |
-| value equality                      | `isDeepStrictEqual` yourself       | `isDeepStrictEqual` over `toJSON()`         | `Equal.equals(a, b)`                           |
-| identity equality                   | compare the ids yourself           | `sameIdentityAs`, from `identity` flags     | compare the ids yourself                       |
-| runtime-immutable instance          | `Object.freeze`, shallow, yourself | non-writable fields, plain data deep-frozen | not frozen in 3.22.4; `readonly` is type-level |
+| Job                                 | Plain zod                          | entity                                      | Effect `Schema.Class`                         |
+| ----------------------------------- | ---------------------------------- | ------------------------------------------- | --------------------------------------------- |
+| create and update request schemas   | hand-written `omit` / `partial`    | derived from the field flags                | hand-written `mapFields`                      |
+| create with a generated id          | a function you write               | `factory(generators)`                       | a function you write                          |
+| refuse a patch to the id at runtime | `.strict()` on your update schema  | `update` rejects it with the key's path     | `onExcessProperty: "error"` on your decode    |
+| re-check the rule on update         | your update function re-parses     | `update` re-runs every invariant            | your update function re-decodes               |
+| failures as values                  | `safeParse` result                 | `Result<T, InvalidEntity>`                  | Effect's `Result` from `decodeUnknownResult`  |
+| value equality                      | `isDeepStrictEqual` yourself       | `isDeepStrictEqual` over `toJSON()`         | `Equal.equals(a, b)`                          |
+| identity equality                   | compare the ids yourself           | `sameIdentityAs`, from `identity` flags     | compare the ids yourself                      |
+| runtime-immutable instance          | `Object.freeze`, shallow, yourself | non-writable fields, plain data deep-frozen | not frozen in 4.1.4; `readonly` is type-level |
 
 Each row is exercised for all three columns by the spec.
 
 ## Where they differ, measured
 
 **The constructor.** Effect's constructor is public and validates:
-`new EffectCustomer(invalid)` throws a `ParseError`. This package's
+`new EffectCustomer(invalid)` throws an `Error` whose `cause` is the schema
+issue. This package's
 constructor is sealed at the type level instead: `new Customer(...)` does not
 compile, and a cast that gets past the seal builds an instance with **no**
 validation and no invariant. The seal steers code to `make`; it is not a
 runtime trust boundary. See [Sealed construction](/entity/explanation/sealed-construction).
 
 **Assignment through a cast.** On the frozen plain object and on an entity,
-assigning `seats` through a cast throws a `TypeError`. On the Effect 3.22.4
+assigning `seats` through a cast throws a `TypeError`. On the Effect 4.1.4
 instance the same assignment succeeds.
 
-**The class as JSON Schema.** `JSONSchema.make(EffectCustomer)` produces a
-schema. `z.toJSONSchema(Customer, { io: "output" })` throws, because the class
+**The class as JSON Schema.** `Schema.toJsonSchemaDocument(EffectCustomer)`
+produces a schema. `z.toJSONSchema(Customer, { io: "output" })` throws, because the class
 parses to an instance through a transform; contracts here use
 `Customer.output` and the other three plain `ZodObject`s instead. See
 [Schema members](/entity/reference/schemas).
