@@ -1,7 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
 import { it, untilServing } from "./__tests__/test-fixtures.js";
-import { withHandshakeTimeout } from "./amqp-runtime.js";
 
 describe("amqp", () => {
   it("keeps logical handler providers when deployment resources differ in one vhost", async ({
@@ -120,17 +119,6 @@ describe("amqp", () => {
       }),
       withinBudget: true,
     });
-  });
-
-  it("keeps a caller's own handshake timeout", () => {
-    // GIVEN connection tuning that already sets amqplib's socket timeout
-    const tuning = { heartbeatIntervalInSeconds: 30, connectionOptions: { timeout: 50 } };
-
-    // WHEN the starter defaults the handshake timeout from its connect timeout
-    const merged = withHandshakeTimeout(5_000, tuning);
-
-    // THEN the caller's value stands beside the rest of its tuning
-    expect(merged).toEqual(tuning);
   });
 
   it("binds the broker and its connect timeout from the environment", async ({

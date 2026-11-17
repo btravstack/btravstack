@@ -179,7 +179,7 @@ pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravs
 
 ```sh [AMQP worker]
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@3.0.0 @opentelemetry/api
+  @amqp-contract/worker@3.0.1 @opentelemetry/api
 ```
 
 ```sh [Temporal client]
@@ -190,7 +190,7 @@ pnpm add @btravstack/temporal-client @btravstack/config @btravstack/core @btravs
 
 ```sh [AMQP client]
 pnpm add @btravstack/amqp-client @btravstack/config @btravstack/core @btravstack/di unthrown \
-  @amqp-contract/client@3.0.0 @opentelemetry/api
+  @amqp-contract/client@3.0.1 @opentelemetry/api
 ```
 
 ```sh [Calling as a service]

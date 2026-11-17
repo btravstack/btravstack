@@ -165,17 +165,17 @@ settings:
 catalogs:
   default:
     '@amqp-contract/client':
-      specifier: 3.0.0
-      version: 3.0.0
+      specifier: 3.0.1
+      version: 3.0.1
     '@amqp-contract/contract':
-      specifier: 3.0.0
-      version: 3.0.0
+      specifier: 3.0.1
+      version: 3.0.1
     '@amqp-contract/testing':
-      specifier: 3.0.0
-      version: 3.0.0
+      specifier: 3.0.1
+      version: 3.0.1
     '@amqp-contract/worker':
-      specifier: 3.0.0
-      version: 3.0.0
+      specifier: 3.0.1
+      version: 3.0.1
     '@arethetypeswrong/cli':
       specifier: 0.18.5
       version: 0.18.5
@@ -726,7 +726,7 @@ importers:
     dependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
-        version: 3.0.0
+        version: 3.0.1
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -757,10 +757,10 @@ importers:
     dependencies:
       '@amqp-contract/client':
         specifier: 'catalog:'
-        version: 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+        version: 3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+        version: 3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
       '@aws-sdk/client-s3':
         specifier: 'catalog:'
         version: 3.1169.0
@@ -821,10 +821,10 @@ importers:
     devDependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
-        version: 3.0.0
+        version: 3.0.1
       '@amqp-contract/testing':
         specifier: 'catalog:'
-        version: 3.0.0(supports-color@8.1.1)(vitest@5.1.0)
+        version: 3.0.1(supports-color@8.1.1)(vitest@5.1.0)
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -1617,7 +1617,7 @@ importers:
     devDependencies:
       '@amqp-contract/client':
         specifier: 'catalog:'
-        version: 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+        version: 3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
       '@btravstack/config':
         specifier: workspace:*
         version: link:../config
@@ -1659,13 +1659,13 @@ importers:
     devDependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
-        version: 3.0.0
+        version: 3.0.1
       '@amqp-contract/testing':
         specifier: 'catalog:'
-        version: 3.0.0(supports-color@8.1.1)(vitest@5.1.0)
+        version: 3.0.1(supports-color@8.1.1)(vitest@5.1.0)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+        version: 3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
       '@btravstack/config':
         specifier: workspace:*
         version: link:../config
@@ -3039,18 +3039,18 @@ packages:
     resolution: {integrity: sha512-YYHLEs5rC6oRTFwT7bJaKBR9NSFzikeVHGAT1ffATmUQzR8XqyhHXjoieAUoR7fBU6I5cfy1FVeh5GoRgriuzA==}
     engines: {node: '>= 14.0.0'}
 
-  '@amqp-contract/client@3.0.0':
-    resolution: {integrity: sha512-sAu0PeY83t+50/jM1EgAar0lF2Wb++E4CStWgAfH+NuHNnw5efQWmTXz8/RUijcfr2O2lUvtyL5BsJHTR/haWg==}
+  '@amqp-contract/client@3.0.1':
+    resolution: {integrity: sha512-2pbCj7Gg4FWtIzsUU2ws8BMzlf9biOHCjNKMCkFG1GZheg/13ci8qYbM00cGR4LMeM4A40KKFMGyxoMCYmxwZg==}
     engines: {node: '>=22.22'}
     peerDependencies:
       unthrown: ^5.3.0
 
-  '@amqp-contract/contract@3.0.0':
-    resolution: {integrity: sha512-iCdEioXC3p4Kpa6+Usppx61hhKqTOlo5n/6afYAwFU6dWCaN2zk3AWoiAGWpGWjZzewPMjjI8SRV9sXciWMuTw==}
+  '@amqp-contract/contract@3.0.1':
+    resolution: {integrity: sha512-K8EYm85rDhRIGE+4CtDU11hRLoryC0bXZizx4Sq/GCghCxxZ9BPz4PpF6nWy7dpkAE86NypyIw2WiWq+D6Re3A==}
     engines: {node: '>=22.22'}
 
-  '@amqp-contract/core@3.0.0':
-    resolution: {integrity: sha512-58XmS/jxCUB0RCRK7LE7rHgo4AddhApyVwOn2VfG4uWoy7zmciVr4XT/8RAu7+1rn9Tk33b3C6qZes6DSADkjw==}
+  '@amqp-contract/core@3.0.1':
+    resolution: {integrity: sha512-Gd0NO9ZGFM4NRPv+n3r8NYHUTPDY15MI5X3k9/Qu5KzH8FD8w8cXSYo9QQZKgd55ZAioPtplHqgtyGkB3irRTA==}
     engines: {node: '>=22.22'}
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
@@ -3059,14 +3059,14 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@amqp-contract/testing@3.0.0':
-    resolution: {integrity: sha512-QdsBVZWNn8MHA8W/8SOiythTVkVp5tnAjlrqt6MK3DWGKXZLEbtlW2GF4hWi1jq8wO/vYb2Y2NKGSR/x5zsdZA==}
+  '@amqp-contract/testing@3.0.1':
+    resolution: {integrity: sha512-mdf2EijOSjkYvza+zP7msUbSSMYGeXVmDRMmU31FCChAc/Pndv3yUlEAK1Ew7OtQrEX4C7bKcLFe8MZM/Ao5Cg==}
     engines: {node: '>=22.22'}
     peerDependencies:
       vitest: ^4 || ^5
 
-  '@amqp-contract/worker@3.0.0':
-    resolution: {integrity: sha512-iYXgSnp6ceQoSiOCBL4vgk4DksRZFxTaSAQ+ebbGifb5O4yLS6NOdI094lztINH1Y6Qh2k0Byx/g8RSJJKkoAw==}
+  '@amqp-contract/worker@3.0.1':
+    resolution: {integrity: sha512-NDwjzgjaED/S2SzyIDMAt2n6vllZbtqEczrLlQ7s6Save6i+Grix585HpE1FfqFXP2kfG4S7iXDZabfcq2B25w==}
     engines: {node: '>=22.22'}
     peerDependencies:
       unthrown: ^5.3.0
@@ -6986,12 +6986,6 @@ packages:
     peerDependencies:
       unthrown: ^5.11.0
 
-  '@unthrown/standard-schema@5.12.1':
-    resolution: {integrity: sha512-srIZKDVtq28+gjYV3xtB61Ljl0CRsgR2BuiK2cEruwG6EtNkuKcTuSlya+bjfulVkHJ4p1wIdiiugxsq8N0jJw==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      unthrown: ^5.12.1
-
   '@unthrown/standard-schema@5.12.2':
     resolution: {integrity: sha512-4S24SdC35xwSWgbNJT+NjbxhYR0E0NXfbuzucbjxwkuLDCq+JA6f+f+itAwVsg4I7o42orflQbaAXpShAMpCbQ==}
     engines: {node: '>=20'}
@@ -7400,8 +7394,8 @@ packages:
     peerDependencies:
       amqplib: '*'
 
-  amqplib@2.2.1:
-    resolution: {integrity: sha512-J3JjAydC2vJ/AgkgVAE0kVH5M4RNfm51zUaspHpwSai3W35lD3hKryvYY/xqMnYcNfR66NYL06Eik+Adn293dQ==}
+  amqplib@2.3.1:
+    resolution: {integrity: sha512-0njHPLSE/xJUBeLWGgzniMuzTeyUt3o7WmAJobBlbSnvOTe9l5PxrlA+5iZW8spKteijDnkIZI81zAFV2Wzulw==}
     engines: {node: '>=18'}
 
   angular-html-parser@10.11.0:
@@ -10836,32 +10830,32 @@ snapshots:
     dependencies:
       '@algolia/client-common': 5.59.0
 
-  '@amqp-contract/client@3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)':
+  '@amqp-contract/client@3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)':
     dependencies:
-      '@amqp-contract/contract': 3.0.0
-      '@amqp-contract/core': 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+      '@amqp-contract/contract': 3.0.1
+      '@amqp-contract/core': 3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
       '@standard-schema/spec': 1.1.0
-      '@unthrown/standard-schema': 5.12.1(unthrown@5.12.2)
+      '@unthrown/standard-schema': 5.12.2(unthrown@5.12.2)
       unthrown: 5.12.2
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@amqp-contract/contract@3.0.0':
+  '@amqp-contract/contract@3.0.1':
     dependencies:
       '@standard-schema/spec': 1.1.0
 
-  '@amqp-contract/core@3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)':
+  '@amqp-contract/core@3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)':
     dependencies:
-      '@amqp-contract/contract': 3.0.0
-      amqp-connection-manager: 5.0.1(amqplib@2.2.1)
-      amqplib: 2.2.1
+      '@amqp-contract/contract': 3.0.1
+      amqp-connection-manager: 5.0.1(amqplib@2.3.1)
+      amqplib: 2.3.1
       unthrown: 5.12.2
     optionalDependencies:
       '@opentelemetry/api': 1.10.0
 
-  '@amqp-contract/testing@3.0.0(supports-color@8.1.1)(vitest@5.1.0)':
+  '@amqp-contract/testing@3.0.1(supports-color@8.1.1)(vitest@5.1.0)':
     dependencies:
-      amqplib: 2.2.1
+      amqplib: 2.3.1
       testcontainers: 12.2.1(supports-color@8.1.1)
       vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
     transitivePeerDependencies:
@@ -10870,12 +10864,12 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@amqp-contract/worker@3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)':
+  '@amqp-contract/worker@3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)':
     dependencies:
-      '@amqp-contract/contract': 3.0.0
-      '@amqp-contract/core': 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+      '@amqp-contract/contract': 3.0.1
+      '@amqp-contract/core': 3.0.1(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
       '@standard-schema/spec': 1.1.0
-      '@unthrown/standard-schema': 5.12.1(unthrown@5.12.2)
+      '@unthrown/standard-schema': 5.12.2(unthrown@5.12.2)
       unthrown: 5.12.2
     transitivePeerDependencies:
       - '@opentelemetry/api'
@@ -14791,11 +14785,6 @@ snapshots:
     dependencies:
       unthrown: 5.12.2
 
-  '@unthrown/standard-schema@5.12.1(unthrown@5.12.2)':
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      unthrown: 5.12.2
-
   '@unthrown/standard-schema@5.12.2(unthrown@5.12.2)':
     dependencies:
       '@standard-schema/spec': 1.1.0
@@ -15237,14 +15226,14 @@ snapshots:
       '@algolia/requester-fetch': 5.59.0
       '@algolia/requester-node-http': 5.59.0
 
-  amqp-connection-manager@5.0.1(amqplib@2.2.1):
+  amqp-connection-manager@5.0.1(amqplib@2.3.1):
     dependencies:
       '@types/chai-as-promised': 8.0.2
-      amqplib: 2.2.1
+      amqplib: 2.3.1
       promise-breaker: 7.0.0
       typed-emitter: 2.1.0
 
-  amqplib@2.2.1: {}
+  amqplib@2.3.1: {}
 
   angular-html-parser@10.11.0: {}
 

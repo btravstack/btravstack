@@ -103,11 +103,6 @@ export const amqpClient = <
                 urls: [url],
                 connectTimeoutMs,
                 logger: brokerLog(observers),
-                // The handshake's socket timeout must fire before `connectTimeoutMs`:
-                // equal, `create` waits out a reconnect interval and loses the reason.
-                connectionOptions: {
-                  connectionOptions: { timeout: Math.ceil(connectTimeoutMs / 2) },
-                },
               }) as AsyncResult<ServiceOf<typeof port>, ConnectionError>,
           ),
         release: (client) => client.close().get(),

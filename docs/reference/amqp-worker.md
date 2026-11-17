@@ -345,7 +345,7 @@ topology and the deployment's startup budget; an expired deadline is a
 `RuntimeStartFailed`.
 
 A broker that accepts TCP but never answers the AMQP handshake is bounded the
-same way. The starter sets amqplib's socket timeout to half the connect
+same way. `@amqp-contract` sets amqplib's socket timeout to half the connect
 timeout unless `connectionOptions.connectionOptions.timeout` is set; amqplib
 clears it once the connection opens, so an idle connection is unaffected. The
 `RuntimeStartFailed` cause then reads `connect ETIMEDOUT`. A caller's own

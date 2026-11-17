@@ -29,15 +29,15 @@ page, never this file.
   `AMQP_CONNECT_TIMEOUT_MS` for that initialization cost; the starter defaults to
   5s.
 
-- **`connectTimeoutMs` alone does not bound a silent broker.** Upstream
-  (btravstack/amqp-contract#796), `close()` on the failure path awaits the
-  in-flight connect, which amqplib bounds only with a socket timeout. So the
-  runtime and `amqpSubscription` both pass `withHandshakeTimeout`: half the
-  connect timeout, a caller's own `connectionOptions.connectionOptions.timeout`
-  kept. amqplib clears it once the connection opens (`lib/connect.js`,
-  `sock.setTimeout(0)` in the open callback). Half, not equal: measured on
-  amqplib 2.2.0, an equal timeout loses the race to `waitForConnect`, `close()`
-  waits out the 5 s reconnect interval and the cause loses `connect ETIMEDOUT`.
+- **A silent broker is bounded upstream, which is the `^3.0.1` peer floor.**
+  Before `@amqp-contract` 3.0.1 (btravstack/amqp-contract#796), `close()` on
+  the failure path awaited an in-flight connect that amqplib bounds only with
+  a socket timeout, so a broker accepting TCP and never answering hung
+  start-up. 3.0.1 defaults that timeout to half `connectTimeoutMs` and stops
+  `close()` waiting for the dial; a caller's own
+  `connectionOptions.connectionOptions.timeout` is kept and should stay below
+  the connect timeout. `amqp-runtime.spec.ts` and `subscription.spec.ts` keep
+  the silent-broker cases as the floor's regression guard.
   `@btravstack/amqp-client` holds its own copy of the rule.
 - **`broker-log.ts` has a copy in `@btravstack/amqp-client`**, which routes
   the client library's `warn` and `error` lines to `Observers` the same way

@@ -30,24 +30,20 @@ describe("amqpClient", () => {
         url: "amqp://pinned",
         timeout: 1_000,
       },
-    ])(
-      "opens the client from $name, with half the timeout on the handshake",
-      async ({ options, url, timeout }, { upstream, scoped }) => {
-        // GIVEN an upstream client with no broker behind it
+    ])("opens the client from $name", async ({ options, url, timeout }, { upstream, scoped }) => {
+      // GIVEN an upstream client with no broker behind it
 
-        // WHEN the scope opens
-        await scoped(options, () => OkAsync());
+      // WHEN the scope opens
+      await scoped(options, () => OkAsync());
 
-        // THEN the upstream client was asked for that broker and those budgets
-        expect(upstream.create.mock.calls[0]?.[0]).toEqual({
-          contract,
-          urls: [url],
-          connectTimeoutMs: timeout,
-          logger: expect.objectContaining({ warn: expect.any(Function) }),
-          connectionOptions: { connectionOptions: { timeout: Math.ceil(timeout / 2) } },
-        });
-      },
-    );
+      // THEN the upstream client was asked for that broker and that budget
+      expect(upstream.create.mock.calls[0]?.[0]).toEqual({
+        contract,
+        urls: [url],
+        connectTimeoutMs: timeout,
+        logger: expect.objectContaining({ warn: expect.any(Function) }),
+      });
+    });
 
     it("refuses a variable it cannot read, naming it", async ({ upstream, scoped }) => {
       // GIVEN a timeout that is not a number

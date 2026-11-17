@@ -29,7 +29,7 @@ import {
   type Result,
 } from "unthrown";
 
-import { withHandshakeTimeout, type AnyAmqpContract } from "./amqp-runtime.js";
+import type { AnyAmqpContract } from "./amqp-runtime.js";
 import { brokerLog } from "./broker-log.js";
 
 /** A subscription requires explicitly ephemeral queues with no retry or dead-letter routing. */
@@ -143,7 +143,6 @@ export const amqpSubscription = <
             handlers: wrapped as never,
             urls: [services.settings.url],
             connectTimeoutMs,
-            connectionOptions: withHandshakeTimeout(connectTimeoutMs),
             logger: brokerLog(observers),
           });
         },

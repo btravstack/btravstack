@@ -25,15 +25,10 @@ client is stricter because its options are inferred as written. The error
 channel is `ConfigInvalid | ConnectionError`; the upstream error stays
 unwrapped.
 
-`connectTimeoutMs` does not bound `create` against a broker that accepts TCP
-and never answers the handshake (btravstack/amqp-contract#796): `close()`
-awaits the in-flight connect, which amqplib bounds only with a socket timeout.
-The provider sets that timeout to half the connect timeout. amqplib clears it
-once the connection opens (`lib/connect.js`, `sock.setTimeout(0)` in the open
-callback), so idle connections are unaffected. Half, not equal: measured on
-amqplib 2.2.0, an equal timeout loses the race to `waitForConnect`, `close()`
-then waits out the 5 s reconnect interval, and the error loses
-`connect ETIMEDOUT`. Remove it once btravstack/amqp-contract#797 ships.
+`connectTimeoutMs` bounds `create` against a broker that accepts TCP and never
+answers the handshake because `@amqp-contract` 3.0.1 does
+(btravstack/amqp-contract#796), which is why the peer floor is `^3.0.1`. The
+silent-broker case in `index.spec.ts` guards that floor.
 
 The health check reads `client.isConnected()`, which is `false` while the
 library reconnects and after `close()`. It is a `/healthz` member only; it

@@ -61,7 +61,7 @@ The client is acquired as the scope opens and closed as it ends. An upstream
 `diagnosticPolicy({ codes })` lists to keep it named.
 
 The timeout also bounds a broker that accepts TCP but never answers the AMQP
-handshake: the module sets amqplib's socket timeout to half of it, so the
+handshake: `@amqp-contract/client` 3.0.1 sets amqplib's socket timeout to half of it, so the
 error arrives within the timeout and reads `connect ETIMEDOUT`. amqplib clears
 that socket timeout once the connection opens.
 
