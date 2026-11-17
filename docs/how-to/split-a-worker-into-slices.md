@@ -200,8 +200,9 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     observability(),
     otel(),
     outbox(),
+    orderAmqpClient,
   ],
-  provides: [orderAmqpClient, orderPublisher],
+  provides: [orderPublisher],
   // Forked per delivery, after the message is validated: where the envelope's
   // `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },

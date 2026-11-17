@@ -132,9 +132,11 @@ releases it when the application scope closes. It contributes an `outbox`
 health check, unhealthy once a tenant's oldest pending row is older than
 `OUTBOX_MAX_LAG_MS`, and reports every claim and publish to `Observers`.
 What this deployment writes is the half the package cannot: the
-`OrderAmqpClient` port bound through `@btravstack/amqp-client`, and
+`OrderAmqpClient` port bound through `@btravstack/amqp-client`'s module, and
 `orderPublisher`, which turns an outbox row into the contract's envelope.
-The publisher and consumer use the same broker URL and separate connections.
+The client module reads `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS` itself, as the
+worker does, so the publisher and consumer use the same broker over separate
+connections; it contributes an `amqp-client:OrderAmqpClient` health check.
 
 That ordering is worth stating. The relay now starts **before** the consumer —
 as the graph builds, where a broker it cannot reach fails startup, as it
@@ -161,16 +163,16 @@ them.
 
 ## The environment
 
-| Variable             | Default                 | What it is                                                 |
-| -------------------- | ----------------------- | ---------------------------------------------------------- |
-| `AMQP_URL`           | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay              |
-| `PROBE_PORT`         | `9000`                  | `/livez` / `/readyz`                                       |
-| `OUTBOX_POLL_MS`     | `200`                   | the relay's idle sleep (`outbox()`)                        |
-| `OUTBOX_TENANTS`     | _(required)_            | the tenants the relay sweeps, comma-separated              |
-| `OUTBOX_MAX_LAG_MS`  | `60000`                 | the oldest pending age the `outbox` health check tolerates |
-| `OUTBOX_CONCURRENCY` | `4`                     | how many tenants the relay claims at once                  |
-| `DATABASE_URL`       | _(required)_            | the orders database (`DatabaseConfig`)                     |
-| `LOG_LEVEL`          | `info`                  | the `Logger`'s floor (`LoggerConfig`)                      |
+| Variable             | Default                 | What it is                                                     |
+| -------------------- | ----------------------- | -------------------------------------------------------------- |
+| `AMQP_URL`           | `amqp://127.0.0.1:5672` | the broker: the consumer (`AmqpConfig`) and the relay's client |
+| `PROBE_PORT`         | `9000`                  | `/livez` / `/readyz`                                           |
+| `OUTBOX_POLL_MS`     | `200`                   | the relay's idle sleep (`outbox()`)                            |
+| `OUTBOX_TENANTS`     | _(required)_            | the tenants the relay sweeps, comma-separated                  |
+| `OUTBOX_MAX_LAG_MS`  | `60000`                 | the oldest pending age the `outbox` health check tolerates     |
+| `OUTBOX_CONCURRENCY` | `4`                     | how many tenants the relay claims at once                      |
+| `DATABASE_URL`       | _(required)_            | the orders database (`DatabaseConfig`)                         |
+| `LOG_LEVEL`          | `info`                  | the `Logger`'s floor (`LoggerConfig`)                          |
 
 `pnpm deploy:invoice-retention` is the release step beside the worker: it
 reads the same `STORAGE_S3_*` variables and installs the bucket's lifecycle

@@ -76,8 +76,9 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     observability({ sink: logSink }),
     otel(),
     outbox(),
+    orderAmqpClient,
   ],
-  provides: [orderAmqpClient, orderPublisher],
+  provides: [orderPublisher],
   // The worker forks this once per delivery, after the message is validated —
   // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },

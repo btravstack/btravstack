@@ -6,7 +6,7 @@ description: The broadcast deployment — two subscriber slices composed by Amqp
 <!-- doctest: prelude
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { amqpClient } from "@btravstack/amqp-client";
-import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
+import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { RetryableError } from "@amqp-contract/worker";
 import { currentUnit, Logger, Tracer } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
@@ -184,22 +184,24 @@ table — `prismaOutboxStore(db, { schema: "orders" })` — and `outbox()` reads
 the one thing the package cannot know, so it is this deployment's: a client of
 its own contract, and an `OutboxPublisher` over it.
 
-The [AMQP client provider](/reference/amqp-client) keeps the upstream
+The [AMQP client module](/reference/amqp-client) keeps the upstream
 `ConnectionError` on the modeled startup channel, so `runMain` exits `1` if
-the broker does not answer. It closes the client with the application scope:
+the broker does not answer. It closes the client with the application scope,
+contributes an `amqp-client:OrderAmqpClient` health check, and reports the
+library's warnings to `Observers`:
 
 ```ts
 class OrderAmqpClient extends Port("OrderAmqpClient")<
   TypedAmqpClient<typeof orderContract>
 > {}
 
-export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract, AmqpConfig);
+export const orderAmqpClient = amqpClient(OrderAmqpClient, orderContract);
 ```
 
-It depends on `AmqpConfig` — the broker the starter bound — so the publisher and
-the consumer read one `AMQP_URL`. The upstream client and worker hold separate
-connections. The
-publisher turns an outbox row into the contract's envelope:
+It reads `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`, the variables the worker
+starter reads, so the publisher and the consumer share one broker. The upstream
+client and worker hold separate connections. The root imports it beside the
+other starters. The publisher turns an outbox row into the contract's envelope:
 
 ```ts
 export const orderPublisher = Provider(OutboxPublisher)({
@@ -269,8 +271,9 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     observability(),
     otel(),
     outbox(),
+    orderAmqpClient,
   ],
-  provides: [orderAmqpClient, orderPublisher],
+  provides: [orderPublisher],
   // The worker forks this once per delivery, after the message is validated —
   // which is where the envelope's `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },

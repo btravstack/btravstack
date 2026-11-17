@@ -39,6 +39,10 @@ page, never this file.
   amqplib 2.2.0, an equal timeout loses the race to `waitForConnect`, `close()`
   waits out the 5 s reconnect interval and the cause loses `connect ETIMEDOUT`.
   `@btravstack/amqp-client` holds its own copy of the rule.
+- **`broker-log.ts` has a copy in `@btravstack/amqp-client`**, which routes
+  the client library's `warn` and `error` lines to `Observers` the same way
+  under `component: "amqp-client"`. Neither package depends on the other;
+  change both copies together.
 
 - **`AmqpModule`'s return type is di's own `Module(name)({...})` over the
   augmented tuples, never a named alias.** A named generic alias was tried and

@@ -114,8 +114,9 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     observability(),
     otel(),
     outbox(),
+    orderAmqpClient,
   ],
-  provides: [orderAmqpClient, orderPublisher],
+  provides: [orderPublisher],
   // Forked per delivery, after the message is validated: where the envelope's
   // `tenantId` becomes the fork's `Tenant`.
   unit: { message: MessageUnitModule },
@@ -505,8 +506,9 @@ type its own tests. Node `>=22.22`.
   `retry: { mode: "ttl-backoff", maxRetries: 3 }` means **four** total
   attempts, not the three Temporal's `maximumAttempts: 3` names.
 - **A publisher.** The starter runs a consumer; publishing is
-  `@amqp-contract/client`'s job (the worked example's outbox publisher creates
-  its own client from the same `AmqpConfig`, and
+  `@amqp-contract/client`'s job (the worked example's outbox publisher binds
+  its own client through [`@btravstack/amqp-client`](/reference/amqp-client),
+  from the same `AMQP_URL`, and
   [`@btravstack/outbox`](/reference/outbox) relays through it).
 - **A context channel.** A handler reads nothing out of a context; what it
   needs, its provider declares.

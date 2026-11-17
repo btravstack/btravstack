@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/amqp-client",
   "version": "0.60.0",
-  "description": "Scoped DI binding for @amqp-contract/client",
+  "description": "Scoped typed AMQP client module for @amqp-contract/client",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "repository": {
@@ -34,10 +34,12 @@
     "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
     "@amqp-contract/client": "catalog:",
+    "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@opentelemetry/api": "catalog:",
@@ -51,6 +53,8 @@
   },
   "peerDependencies": {
     "@amqp-contract/client": "^3.0.0-beta.12",
+    "@btravstack/config": "workspace:^",
+    "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@opentelemetry/api": "^1",
     "unthrown": "^5.12.0"

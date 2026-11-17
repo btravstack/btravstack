@@ -1618,6 +1618,12 @@ importers:
       '@amqp-contract/client':
         specifier: 'catalog:'
         version: 3.0.0(@opentelemetry/api@1.10.0)(unthrown@5.12.2)
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
       '@btravstack/di':
         specifier: workspace:*
         version: link:../di
