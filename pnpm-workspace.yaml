@@ -6,9 +6,27 @@ engineStrict: true
 # everything listed there, so what this actually guards is `pnpm add` and
 # `pnpm dlx` — the two commands that reach for `latest` without a review.
 minimumReleaseAge: 4320
-# First-party releases taken inside the window on purpose, each pinned to the
-# exact version reviewed. Drop an entry once it is older than three days.
-minimumReleaseAgeExclude: []
+# Releases taken inside the window on purpose, each pinned to the exact version
+# reviewed: first-party ones, and the oRPC beta and Prisma RC trains the catalog
+# pins exactly (with the transitive packages of the same train). Drop an entry
+# once it is older than three days.
+minimumReleaseAgeExclude:
+  - "@orpc/client@2.0.0-beta.51"
+  - "@orpc/contract@2.0.0-beta.51"
+  - "@orpc/json-schema@2.0.0-beta.51"
+  - "@orpc/openapi@2.0.0-beta.51"
+  - "@orpc/server@2.0.0-beta.51"
+  - "@orpc/shared@2.0.0-beta.51"
+  - "@orpc/tanstack-query@2.0.0-beta.51"
+  - "@orpc/zod@2.0.0-beta.51"
+  - prisma@8.0.0-rc.34
+  - "@prisma/composer-cli@0.39.0"
+  - "@prisma/composer@0.39.0"
+  - "@prisma/orm-family-sql@8.0.0-rc.24"
+  - "@prisma/orm-framework@8.0.0-rc.24"
+  - "@prisma/orm-postgres@8.0.0-rc.24"
+  - "@prisma/orm-target-postgres@8.0.0-rc.24"
+  - "@prisma/orm-toolchain@8.0.0-rc.24"
 saveExact: true
 strictPeerDependencies: true
 
@@ -53,13 +71,13 @@ catalog:
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
-  "@orpc/client": 2.0.0-beta.50
-  "@orpc/contract": 2.0.0-beta.50
-  "@orpc/json-schema": 2.0.0-beta.50
-  "@orpc/openapi": 2.0.0-beta.50
-  "@orpc/server": 2.0.0-beta.50
-  "@orpc/zod": 2.0.0-beta.50
-  "@orpc/tanstack-query": 2.0.0-beta.50
+  "@orpc/client": 2.0.0-beta.51
+  "@orpc/contract": 2.0.0-beta.51
+  "@orpc/json-schema": 2.0.0-beta.51
+  "@orpc/openapi": 2.0.0-beta.51
+  "@orpc/server": 2.0.0-beta.51
+  "@orpc/zod": 2.0.0-beta.51
+  "@orpc/tanstack-query": 2.0.0-beta.51
   # Prisma 8 is a different package family, not a version bump: the runtime is
   # `@prisma/orm-postgres` ("the one package a Postgres application installs")
   # and `@prisma/client` / `@prisma/adapter-pg` / `@prisma/instrumentation` have
@@ -68,13 +86,13 @@ catalog:
   # the surface moves between release candidates.
   #
   # The three numbers do not match because upstream ships three release trains
-  # and pins across them exactly: `prisma@8.0.0-rc.33` depends on
-  # `@prisma/cli-engine@0.9.0` and `@prisma/orm-toolchain@8.0.0-rc.23`.
+  # and pins across them exactly: `prisma@8.0.0-rc.34` depends on
+  # `@prisma/cli-engine@0.10.0` and `@prisma/orm-toolchain@8.0.0-rc.24`.
   # The Postgres facade must use that same ORM train for contract emission.
   # Each entry here is the head of its own train, and aligning them by hand
   # would mean naming a version one of these packages has never published.
-  "@prisma/cli-engine": 0.9.0
-  "@prisma/orm-postgres": 8.0.0-rc.23
+  "@prisma/cli-engine": 0.10.0
+  "@prisma/orm-postgres": 8.0.0-rc.24
   "@tanstack/query-core": 5.107.1
   "@temporal-contract/client": 8.0.0
   "@temporal-contract/contract": 8.0.0
@@ -115,7 +133,7 @@ catalog:
   nodemailer: 10.5.0
   openid-client: 6.9.0
   temporal-polyfill: 1.0.8
-  prisma: 8.0.0-rc.33
+  prisma: 8.0.0-rc.34
   uuidv7: 1.2.1
   redis: 6.3.1
   tsdown: 0.23.2

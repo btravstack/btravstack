@@ -63,12 +63,12 @@ const malformedRef = z.object({ id: z.string() });
 // because a caller's identity establishes it there.
 const tenanted = z.object({ tenantId: z.uuidv7() });
 
-const customerView = z.object({ id: z.uuidv7(), name: z.string() });
+const customerView = z.object({ id: z.uuidv7().brand("CustomerId"), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 // Same shape as `orderRef`, deliberately not the same schema: reusing it would
 // type a customer id as "which order it was about".
-const customerRef = z.object({ id: z.uuidv7() });
+const customerRef = z.object({ id: z.uuidv7().brand("CustomerId") });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 // The group default: every procedure beneath needs the `user` scheme.

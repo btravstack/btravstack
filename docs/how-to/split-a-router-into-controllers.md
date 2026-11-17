@@ -60,12 +60,12 @@ export type OrderRef = z.infer<typeof orderRef>;
 // not a UUIDv7: `orderRef` would reject the only payload it ever carries.
 const malformedRef = z.object({ id: z.string() });
 
-const customerView = z.object({ id: z.uuidv7(), name: z.string() });
+const customerView = z.object({ id: z.uuidv7().brand("CustomerId"), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 // The same shape as `orderRef` and deliberately its own schema: sharing that
 // one would type a customer id as "which order it was about".
-const customerRef = z.object({ id: z.uuidv7() });
+const customerRef = z.object({ id: z.uuidv7().brand("CustomerId") });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 const ordersContract = {
