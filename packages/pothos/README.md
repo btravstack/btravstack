@@ -29,7 +29,7 @@ Install `@btravstack/contract` alongside them; `contractInput` reuses its
 ```sh
 pnpm add @btravstack/pothos @btravstack/contract @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
   @unthrown/pothos@^0.1.2 graphql unthrown zod \
-  @orpc/client@2.0.0-beta.51 @orpc/contract@2.0.0-beta.51
+  @orpc/client@2.0.0-beta.53 @orpc/contract@2.0.0-beta.53
 ```
 
 See

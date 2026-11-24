@@ -1,3 +1,3 @@
 import { defineConfig } from "tsdown";
 
-export default defineConfig({ deps: { neverBundle: [/./] } });
+export default defineConfig({ deps: { neverBundle: true } });

@@ -382,13 +382,12 @@ export const oauthClient = <const O extends OAuthClientOptions = Record<never, n
 /** The selected environment namespace, including the default when a prefix may be absent. */
 type PrefixOf<O> = O extends unknown
   ? "variablePrefix" extends keyof O
-    ?
-        | (NonNullable<O["variablePrefix"]> & string)
-        | (Record<never, never> extends Pick<O, "variablePrefix">
+    ? | (NonNullable<O["variablePrefix"]> & string)
+      | (Record<never, never> extends Pick<O, "variablePrefix">
+          ? "OAUTH"
+          : undefined extends O["variablePrefix"]
             ? "OAUTH"
-            : undefined extends O["variablePrefix"]
-              ? "OAUTH"
-              : never)
+            : never)
     : "OAUTH"
   : never;
 

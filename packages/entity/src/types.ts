@@ -789,12 +789,11 @@ export interface AggregateInstance<
     // without `ends`, the plain array alone, so a refusal does not name a `never` tuple
     ...events: [End] extends [never]
       ? readonly EventInput<Ev, Exclude<z.output<Ev>["type"], O>>[]
-      :
-          | readonly EventInput<Ev, Exclude<z.output<Ev>["type"], O | End>>[]
-          | readonly [
-              ...EventInput<Ev, Exclude<z.output<Ev>["type"], O | End>>[],
-              EventInput<Ev, End>,
-            ]
+      : | readonly EventInput<Ev, Exclude<z.output<Ev>["type"], O | End>>[]
+        | readonly [
+            ...EventInput<Ev, Exclude<z.output<Ev>["type"], O | End>>[],
+            EventInput<Ev, End>,
+          ]
   ): Result<Decision<this, z.output<Ev>>, never>;
 }
 

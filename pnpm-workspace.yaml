@@ -11,27 +11,24 @@ minimumReleaseAge: 4320
 # pins exactly (with the transitive packages of the same train). Drop an entry
 # once it is older than three days.
 minimumReleaseAgeExclude:
-  - "@amqp-contract/client@3.0.1"
-  - "@amqp-contract/contract@3.0.1"
-  - "@amqp-contract/core@3.0.1"
-  - "@amqp-contract/testing@3.0.1"
-  - "@amqp-contract/worker@3.0.1"
-  - "@orpc/client@2.0.0-beta.51"
-  - "@orpc/contract@2.0.0-beta.51"
-  - "@orpc/json-schema@2.0.0-beta.51"
-  - "@orpc/openapi@2.0.0-beta.51"
-  - "@orpc/server@2.0.0-beta.51"
-  - "@orpc/shared@2.0.0-beta.51"
-  - "@orpc/tanstack-query@2.0.0-beta.51"
-  - "@orpc/zod@2.0.0-beta.51"
-  - prisma@8.0.0-rc.34
-  - "@prisma/composer-cli@0.39.0"
-  - "@prisma/composer@0.39.0"
-  - "@prisma/orm-family-sql@8.0.0-rc.24"
-  - "@prisma/orm-framework@8.0.0-rc.24"
-  - "@prisma/orm-postgres@8.0.0-rc.24"
-  - "@prisma/orm-target-postgres@8.0.0-rc.24"
-  - "@prisma/orm-toolchain@8.0.0-rc.24"
+  - "@orpc/client@2.0.0-beta.53"
+  - "@orpc/contract@2.0.0-beta.53"
+  - "@orpc/json-schema@2.0.0-beta.53"
+  - "@orpc/openapi@2.0.0-beta.53"
+  - "@orpc/server@2.0.0-beta.53"
+  - "@orpc/shared@2.0.0-beta.53"
+  - "@orpc/tanstack-query@2.0.0-beta.53"
+  - "@orpc/zod@2.0.0-beta.53"
+  - prisma@8.0.0-rc.35
+  - "@prisma/cli-engine@0.10.4"
+  - "@prisma/composer-cli@0.40.0"
+  - "@prisma/composer@0.40.0"
+  - "@prisma/management-api-sdk@1.101.0"
+  - "@prisma/orm-family-sql@8.0.0-rc.25"
+  - "@prisma/orm-framework@8.0.0-rc.25"
+  - "@prisma/orm-postgres@8.0.0-rc.25"
+  - "@prisma/orm-target-postgres@8.0.0-rc.25"
+  - "@prisma/orm-toolchain@8.0.0-rc.25"
 saveExact: true
 strictPeerDependencies: true
 
@@ -46,13 +43,13 @@ catalog:
   "@amqp-contract/contract": 3.0.1
   "@amqp-contract/testing": 3.0.1
   "@amqp-contract/worker": 3.0.1
-  "@aws-sdk/client-kms": 3.1169.0
-  "@aws-sdk/client-s3": 3.1169.0
-  "@electric-sql/pglite": 0.5.16
-  "@pothos/core": 4.17.0
+  "@aws-sdk/client-kms": 3.1175.0
+  "@aws-sdk/client-s3": 3.1175.0
+  "@electric-sql/pglite": 0.5.17
+  "@pothos/core": 4.18.1
   "@pothos/plugin-errors": 4.9.4
-  "@pothos/plugin-relay": 4.8.2
-  "@aws-sdk/s3-request-presigner": 3.1169.0
+  "@pothos/plugin-relay": 4.9.0
+  "@aws-sdk/s3-request-presigner": 3.1175.0
   "@btravstack/commitlint": 0.1.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
@@ -76,13 +73,13 @@ catalog:
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
-  "@orpc/client": 2.0.0-beta.51
-  "@orpc/contract": 2.0.0-beta.51
-  "@orpc/json-schema": 2.0.0-beta.51
-  "@orpc/openapi": 2.0.0-beta.51
-  "@orpc/server": 2.0.0-beta.51
-  "@orpc/zod": 2.0.0-beta.51
-  "@orpc/tanstack-query": 2.0.0-beta.51
+  "@orpc/client": 2.0.0-beta.53
+  "@orpc/contract": 2.0.0-beta.53
+  "@orpc/json-schema": 2.0.0-beta.53
+  "@orpc/openapi": 2.0.0-beta.53
+  "@orpc/server": 2.0.0-beta.53
+  "@orpc/zod": 2.0.0-beta.53
+  "@orpc/tanstack-query": 2.0.0-beta.53
   # Prisma 8 is a different package family, not a version bump: the runtime is
   # `@prisma/orm-postgres` ("the one package a Postgres application installs")
   # and `@prisma/client` / `@prisma/adapter-pg` / `@prisma/instrumentation` have
@@ -91,24 +88,24 @@ catalog:
   # the surface moves between release candidates.
   #
   # The three numbers do not match because upstream ships three release trains
-  # and pins across them exactly: `prisma@8.0.0-rc.34` depends on
-  # `@prisma/cli-engine@0.10.0` and `@prisma/orm-toolchain@8.0.0-rc.24`.
+  # and pins across them exactly: `prisma@8.0.0-rc.35` depends on
+  # `@prisma/cli-engine@0.10.4` and `@prisma/orm-toolchain@8.0.0-rc.25`.
   # The Postgres facade must use that same ORM train for contract emission.
   # Each entry here is the head of its own train, and aligning them by hand
   # would mean naming a version one of these packages has never published.
-  "@prisma/cli-engine": 0.10.0
-  "@prisma/orm-postgres": 8.0.0-rc.24
-  "@tanstack/query-core": 5.107.1
+  "@prisma/cli-engine": 0.10.4
+  "@prisma/orm-postgres": 8.0.0-rc.25
+  "@tanstack/query-core": 5.108.2
   "@temporal-contract/client": 8.0.0
   "@temporal-contract/contract": 8.0.0
   "@temporal-contract/testing": 8.0.0
   "@temporal-contract/worker": 8.0.0
-  "@temporalio/activity": 1.25.0
-  "@temporalio/client": 1.25.0
-  "@temporalio/common": 1.25.0
-  "@temporalio/testing": 1.25.0
-  "@temporalio/worker": 1.25.0
-  "@temporalio/workflow": 1.25.0
+  "@temporalio/activity": 1.26.0
+  "@temporalio/client": 1.26.0
+  "@temporalio/common": 1.26.0
+  "@temporalio/testing": 1.26.0
+  "@temporalio/worker": 1.26.0
+  "@temporalio/workflow": 1.26.0
   # The weekly mutation run (`.github/workflows/mutation.yml`) over `core` and
   # `di`. Never on the gate: a pass takes minutes where the suites take a
   # second, so it recomputes the kernel's "mutation-verified" claim once a week
@@ -122,31 +119,31 @@ catalog:
   "@unthrown/pothos": 0.1.2
   "@unthrown/standard-schema": 5.12.2
   "@unthrown/vitest": 5.12.2
-  effect: 4.1.4
+  effect: 4.1.5
   dataloader: 2.2.3
   graphql: 17.1.0
   graphql-yoga: 6.1.0
-  jose: 6.2.17
+  jose: 6.2.18
   kysely: 0.29.9
   kysely-pglite-dialect: 1.4.0
-  knip: 6.45.1
-  markdownlint-cli2: 0.24.1
+  knip: 6.47.0
+  markdownlint-cli2: 0.24.2
   lefthook: 2.2.2
-  oxfmt: 0.78.0
-  oxlint: 1.93.0
+  oxfmt: 0.79.0
+  oxlint: 1.94.0
   pino: 10.4.0
-  nodemailer: 10.5.0
-  openid-client: 6.9.0
+  nodemailer: 10.6.1
+  openid-client: 6.9.1
   temporal-polyfill: 1.0.8
-  prisma: 8.0.0-rc.34
+  prisma: 8.0.0-rc.35
   uuidv7: 1.2.1
   redis: 6.3.1
-  tsdown: 0.23.2
+  tsdown: 0.23.7
   tsx: 4.23.15
-  turbo: 2.11.11
+  turbo: 2.11.13
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.14.1
-  testcontainers: 12.2.1
+  testcontainers: 12.2.2
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
   # declaration-emit pass in `examples/di-hexagonal`
@@ -162,14 +159,14 @@ catalog:
   publint: 0.3.25
   "@arethetypeswrong/cli": 0.18.5
   unthrown: 5.12.2
-  "@vitest/coverage-v8": 5.1.0
+  "@vitest/coverage-v8": 5.1.1
   # vitest 5 takes vite as a PEER (4.x shipped its own), and so does the Prisma
   # 8 toolchain; with `autoInstallPeers: false` nothing else provides one, so
   # the root does, and both resolve to it. The docs keep their own 6.4.3 through
   # vitepress and the override below.
   vite: 8.3.8
   vitepress: 1.6.4
-  vitest: 5.1.0
+  vitest: 5.1.1
   zod: 4.6.7
 
 catalogs:
@@ -193,9 +190,6 @@ catalogs:
 # advisory below reaches us only through dev/build tooling (never a published
 # package's runtime deps). Selectors are version-scoped to the affected releases.
 overrides:
-  # Keep TypeScript 7.0's native declaration emitter. The 0.29 beta needs
-  # TypeScript 7.1's async API; see AGENTS.md, Toolchain & conventions.
-  "tsdown@0.23.2>rolldown-plugin-dts": "0.28.8"
   # GHSA-mrhx-c7xc-m3w5: constrained collection validation can exhaust memory.
   # Stryker and Knip retain older Zod resolutions than the patched catalog.
   "mutation-server-protocol>zod@<4.6.6": "4.6.7"
@@ -205,7 +199,7 @@ overrides:
   "body-parser@>=2.0.0 <2.4.0": "2.4.0"
   # Audited only through Stryker's REST client and markdownlint's config/math
   # parsers; lift affected versions to their patched releases.
-  "qs@<6.16.0": "6.16.0"
+  "qs@<6.16.1": "6.16.2"
   "smol-toml@<1.9.0": "1.9.0"
   "katex@>=0.11.0 <0.18.2": "0.18.2"
   # GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3: vite
@@ -216,8 +210,9 @@ overrides:
   # This also drags esbuild up past GHSA-67mh-4wv8-2f99. Scoped to vitepress
   # because an override rewrites PEER ranges too: unscoped, it turned vitest
   # 5's `vite` peer (`^6.4.0 || ^7 || ^8`) into exactly 6.4.3. GHSA-587h-7wmj-h5pm
-  # (launch-editor, bundled by vite's dev server) then lifted it to 6.4.4.
-  "vitepress>vite@<6.4.4": "6.4.4"
+  # (launch-editor, bundled by vite's dev server) then lifted it to 6.4.4, and
+  # GHSA-8g5g-mxqh-grgj (6.4.4 itself) to 6.4.6.
+  "vitepress>vite@<6.4.6": "6.4.6"
   # GHSA-3f6p-5ww8-9rcr: mysql2 lets a hostile server downgrade authentication to
   # `mysql_clear_password`, which sends the password in plaintext. It used to
   # reach us through the Prisma 7 CLI bundling a driver per datasource; on
@@ -239,20 +234,31 @@ overrides:
   # transitive tree is still moving, and an override whose path has gone is
   # the kind of dead line the v7 `deepmerge-ts` one became.
   #
-  # GHSA (37 advisories): Hono, reached as `@prisma/dev`'s HTTP server —
+  # GHSA: Hono, reached as `@prisma/dev`'s HTTP server and as the MCP SDK's —
   # serveStatic arbitrary file access, body-limit bypasses, JWT NumericDate
-  # validation. 4.13.5 is the first release past all of them; 4.13.7 rather
-  # than the newer 4.13.8 because `minimumReleaseAge` refuses a package
-  # published inside the last three days, and taking the exclusion instead
-  # would waive the supply-chain window for a transitive dev dependency
-  # nothing here loads.
-  "hono@<4.13.5": "4.13.7"
-  # The node adapter's own: an authorization bypass for protected static files
-  # and a middleware bypass via repeated slashes.
-  "@hono/node-server@<1.19.15": "1.19.15"
+  # validation, and the `css` helper's split closing tag. 4.13.16 is the first
+  # release past all of them; 4.13.19 rather than the newest because
+  # `minimumReleaseAge` refuses a package published inside the last three
+  # days, and taking the exclusion instead would waive the supply-chain window
+  # for a transitive dependency.
+  "hono@<4.13.16": "4.13.19"
+  # The node adapter's own: an authorization bypass for protected static files,
+  # a middleware bypass via repeated slashes, and GHSA-jpvv-r467-5p4w.
+  # GHSA-rmxm-3fg6-px4f is fixed only on the 2.x line: the MCP SDK admits it
+  # (`^1.19.9 || ^2.0.5`) and takes it, while `@prisma/dev` pins 1.19.9 exactly
+  # on the never-loaded deploy path and keeps the patched 1.x.
+  "@hono/node-server@<1.19.18": "1.19.19"
+  "@modelcontextprotocol/sdk>@hono/node-server@<2.1.3": "2.1.9"
   # GHSA: lodash `_.template` code injection and prototype pollution via an
   # array path. Reached through `@mrleebo/prisma-ast` > chevrotain.
   "lodash@<4.18.1": "4.18.1"
+  # GHSA-474x-hrwr-fgx4: fast-xml-parser. Via the Prisma 8 CLI's deploy half,
+  # the same never-loaded path.
+  "fast-xml-parser@<5.12.0": "5.12.1"
+  # GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h,
+  # GHSA-333x-w4r6-6crp: fast-uri. Via ajv, in commitlint's config loader and
+  # Stryker, dev only.
+  "fast-uri@>=3.0.0 <3.1.9": "3.1.9"
   # GHSA: valibot's `record()` issue paths make `flatten()` throw.
   "valibot@<1.4.2": "1.5.0"
   # GHSA-pqg4-j6r4-53mv: shell-quote `quote()` command injection. Via

@@ -18,16 +18,15 @@ export type PathsOf<C, Dropped extends string, Fragments extends boolean, P exte
       // whose constraint mentions this type.
       string extends keyof C
       ? string
-      :
-          | (Fragments extends true ? (P extends "" ? never : P) : never)
-          | {
-              [K in Exclude<Exclude<keyof C, PrincipalKey> & string, Dropped>]: PathsOf<
-                C[K],
-                Dropped,
-                Fragments,
-                P extends "" ? K : `${P}.${K}`
-              >;
-            }[Exclude<Exclude<keyof C, PrincipalKey> & string, Dropped>];
+      : | (Fragments extends true ? (P extends "" ? never : P) : never)
+        | {
+            [K in Exclude<Exclude<keyof C, PrincipalKey> & string, Dropped>]: PathsOf<
+              C[K],
+              Dropped,
+              Fragments,
+              P extends "" ? K : `${P}.${K}`
+            >;
+          }[Exclude<Exclude<keyof C, PrincipalKey> & string, Dropped>];
 
 /**
  * Every path into the contract tree — a fragment or a procedure, at any depth —

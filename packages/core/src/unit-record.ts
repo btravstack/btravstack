@@ -27,14 +27,13 @@ export type AnyUnitModule = Module<never, never, unknown>;
  */
 export type UnitNeedsOf<Unit, Seeded = never> =
   Unit extends Module<never, never, infer N>
-    ?
-        | Exclude<N, Scope | Seeded | Env>
-        | ([Extract<N, Env>] extends [never]
-            ? never
-            : PortInstance<
-                "UNIT READS CONFIGURATION — Env is application-scoped: parse it in a root provider and inject the result",
-                never
-              >)
+    ? | Exclude<N, Scope | Seeded | Env>
+      | ([Extract<N, Env>] extends [never]
+          ? never
+          : PortInstance<
+              "UNIT READS CONFIGURATION — Env is application-scoped: parse it in a root provider and inject the result",
+              never
+            >)
     : never;
 
 /** What a bound unit module exports — the port instances a piece of that kind may read. */
