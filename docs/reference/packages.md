@@ -154,9 +154,9 @@ does, the first package alone suffices.
 ```sh [HTTP API]
 pnpm add @btravstack/http-server @btravstack/orpc-server @btravstack/htmx-server \
   @btravstack/core @btravstack/config @btravstack/di @btravstack/contract unthrown \
-  @orpc/server@2.0.0-beta.51 @orpc/contract@2.0.0-beta.51 \
-  @orpc/openapi@2.0.0-beta.51 @orpc/json-schema@2.0.0-beta.51 \
-  @orpc/client@2.0.0-beta.51 @unthrown/orpc@^0.4.2
+  @orpc/server@2.0.0-beta.53 @orpc/contract@2.0.0-beta.53 \
+  @orpc/openapi@2.0.0-beta.53 @orpc/json-schema@2.0.0-beta.53 \
+  @orpc/client@2.0.0-beta.53 @unthrown/orpc@^0.4.2
 ```
 
 ```sh [GraphQL gateway]
@@ -168,7 +168,7 @@ pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
 pnpm add @btravstack/http-server @btravstack/graphql-server @btravstack/core \
   @btravstack/config @btravstack/di @btravstack/contract unthrown graphql@^17.0.0 graphql-yoga@^5.24.1 \
   @btravstack/pothos @pothos/core @pothos/plugin-errors @pothos/plugin-relay \
-  @unthrown/pothos@^0.1.2 zod @orpc/client@2.0.0-beta.51 @orpc/contract@2.0.0-beta.51
+  @unthrown/pothos@^0.1.2 zod @orpc/client@2.0.0-beta.53 @orpc/contract@2.0.0-beta.53
 ```
 
 ```sh [Temporal worker]

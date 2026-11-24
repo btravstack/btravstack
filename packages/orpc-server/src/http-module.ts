@@ -251,9 +251,8 @@ type DivergentKinds<Router, Fragments> = [keyof UnitsOfAnswerer<Router>] extends
   ? never
   : [keyof UnitsOfAnswerer<Fragments>] extends [never]
     ? never
-    :
-        | Exclude<keyof UnitsOfAnswerer<Router>, keyof UnitsOfAnswerer<Fragments>>
-        | Exclude<keyof UnitsOfAnswerer<Fragments>, keyof UnitsOfAnswerer<Router>>;
+    : | Exclude<keyof UnitsOfAnswerer<Router>, keyof UnitsOfAnswerer<Fragments>>
+      | Exclude<keyof UnitsOfAnswerer<Fragments>, keyof UnitsOfAnswerer<Router>>;
 
 type DivergentGate<Router, Fragments> = [DivergentKinds<Router, Fragments>] extends [never]
   ? unknown

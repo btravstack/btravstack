@@ -141,8 +141,8 @@ Then install, from the same directory:
 pnpm add @btravstack/core @btravstack/http-server @btravstack/orpc-server \
   @btravstack/htmx-server @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @unthrown/orpc@^0.4.2 zod \
-  @orpc/server@2.0.0-beta.51 @orpc/contract@2.0.0-beta.51 @orpc/client@2.0.0-beta.51 \
-  @orpc/openapi@2.0.0-beta.51 @orpc/json-schema@2.0.0-beta.51
+  @orpc/server@2.0.0-beta.53 @orpc/contract@2.0.0-beta.53 @orpc/client@2.0.0-beta.53 \
+  @orpc/openapi@2.0.0-beta.53 @orpc/json-schema@2.0.0-beta.53
 pnpm add -D typescript tsx @types/node --allow-build=esbuild
 ```
 
@@ -150,8 +150,8 @@ pnpm add -D typescript tsx @types/node --allow-build=esbuild
 npm install @btravstack/core @btravstack/http-server @btravstack/orpc-server \
   @btravstack/htmx-server @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @unthrown/orpc@^0.4.2 zod \
-  @orpc/server@2.0.0-beta.51 @orpc/contract@2.0.0-beta.51 @orpc/client@2.0.0-beta.51 \
-  @orpc/openapi@2.0.0-beta.51 @orpc/json-schema@2.0.0-beta.51
+  @orpc/server@2.0.0-beta.53 @orpc/contract@2.0.0-beta.53 @orpc/client@2.0.0-beta.53 \
+  @orpc/openapi@2.0.0-beta.53 @orpc/json-schema@2.0.0-beta.53
 npm install -D typescript tsx @types/node
 ```
 
@@ -159,8 +159,8 @@ npm install -D typescript tsx @types/node
 yarn add @btravstack/core @btravstack/http-server @btravstack/orpc-server \
   @btravstack/htmx-server @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @unthrown/orpc@^0.4.2 zod \
-  @orpc/server@2.0.0-beta.51 @orpc/contract@2.0.0-beta.51 @orpc/client@2.0.0-beta.51 \
-  @orpc/openapi@2.0.0-beta.51 @orpc/json-schema@2.0.0-beta.51
+  @orpc/server@2.0.0-beta.53 @orpc/contract@2.0.0-beta.53 @orpc/client@2.0.0-beta.53 \
+  @orpc/openapi@2.0.0-beta.53 @orpc/json-schema@2.0.0-beta.53
 yarn add -D typescript tsx @types/node
 ```
 
