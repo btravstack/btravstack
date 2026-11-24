@@ -1,5 +1,13 @@
 # @btravstack/amqp-worker
 
+## 0.62.0
+
+### Patch Changes
+
+- @btravstack/config@0.62.0
+  - @btravstack/core@0.62.0
+  - @btravstack/di@0.62.0
+
 ## 0.61.0
 
 ### Patch Changes
