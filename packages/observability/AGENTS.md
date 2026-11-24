@@ -41,7 +41,12 @@ argument order and the six differences from NestJS's `Logger`.
 declared in core. The same object is passed explicitly to logging, OTel and the
 Temporal runtime installer; no process-global redaction toggle or new DI port
 is introduced. Unknown messages and errors retain static identities, fields use
-finite vocabularies or numeric bounds, and reflection never invokes getters.
+finite vocabularies, numeric bounds or the `"uuid"` rule, and reflection never
+invokes getters. The `"uuid"` rule is a bare literal rather than a `{ kind }`
+object because the other two rules are told apart by shape, not by a tag: a
+string, an array and a `{ min, max }` record cannot be confused. It reuses the
+correlation fields' UUID pattern and deliberately not their trace-ID one, so
+an entity identifier field never admits a 32-hex value that is not a UUID.
 Canonical `unitId`, `traceId` and `tenantId` pass through that same attributes
 projection before custom sinks, JSON/Pino output and starter-owned unit/operation
 spans. The production policy retains UUIDs and nonzero W3C trace IDs; rejected
@@ -54,7 +59,8 @@ The default renderer remains backward compatible. `sensitiveDiagnostics` is an
 explicit separate disclosure choice; log level does not select it.
 
 `diagnostics.spec.ts` guards direct sinks, custom sinks, static identity,
-bounded fields, hostile reflection and explicit sensitive debugging.
+bounded fields, `"uuid"` fields on attributes and causes, hostile reflection
+and explicit sensitive debugging.
 `docs-examples.test-d.ts` compiles policy construction and logger, sink, starter
 and OTel composition under both the repository and consumer TypeScript versions.
 The OTel policy protects starter-owned observations, not application-created
