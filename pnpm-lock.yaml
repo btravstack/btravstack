@@ -258,8 +258,8 @@ catalogs:
       specifier: 4.9.4
       version: 4.9.4
     '@pothos/plugin-relay':
-      specifier: 4.8.2
-      version: 4.8.2
+      specifier: 4.9.0
+      version: 4.9.0
     '@prisma/cli-engine':
       specifier: 0.10.0
       version: 0.10.0
@@ -990,7 +990,7 @@ importers:
         version: 4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
       '@pothos/plugin-relay':
         specifier: 'catalog:'
-        version: 4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
+        version: 4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
       '@prisma/orm-postgres':
         specifier: 'catalog:'
         version: 8.0.0-rc.24(@prisma/cli-engine@0.10.0(magicast@0.5.5))(magicast@0.5.5)(temporal-polyfill@1.0.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1002,7 +1002,7 @@ importers:
         version: 26.6.6
       '@unthrown/pothos':
         specifier: 'catalog:'
-        version: 0.1.2(@pothos/core@4.17.0(graphql@17.1.0))(@pothos/plugin-errors@4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(@pothos/plugin-relay@4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(graphql@17.1.0)(unthrown@5.12.2)
+        version: 0.1.2(@pothos/core@4.17.0(graphql@17.1.0))(@pothos/plugin-errors@4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(@pothos/plugin-relay@4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(graphql@17.1.0)(unthrown@5.12.2)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.2(unthrown@5.12.2)(vitest@5.1.0)
@@ -2562,13 +2562,13 @@ importers:
         version: 4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
       '@pothos/plugin-relay':
         specifier: 'catalog:'
-        version: 4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
+        version: 4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
       '@unthrown/pothos':
         specifier: 'catalog:'
-        version: 0.1.2(@pothos/core@4.17.0(graphql@17.1.0))(@pothos/plugin-errors@4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(@pothos/plugin-relay@4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(graphql@17.1.0)(unthrown@5.12.2)
+        version: 0.1.2(@pothos/core@4.17.0(graphql@17.1.0))(@pothos/plugin-errors@4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(@pothos/plugin-relay@4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(graphql@17.1.0)(unthrown@5.12.2)
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.12.2(unthrown@5.12.2)(vitest@5.1.0)
@@ -5616,8 +5616,8 @@ packages:
       '@pothos/core': '*'
       graphql: ^16.10.0 || ^17.0.0
 
-  '@pothos/plugin-relay@4.8.2':
-    resolution: {integrity: sha512-a/WAGfIyOZfsktUpWXqkYOT3h+Rhv14N/DItVAWXWf6tW+MGIc+XSU8C/GUxSa08sPpwE7F2lbprJT+R1whQRQ==}
+  '@pothos/plugin-relay@4.9.0':
+    resolution: {integrity: sha512-bGF/T5Fx7woKsg7NyzLaDqNDvJLHFaHZbDr0zJczk8GfnwjJyx8VwsKNLSgBvJVR3xo/rDGfD+/yH56GouENdg==}
     peerDependencies:
       '@pothos/core': '*'
       graphql: ^16.10.0 || ^17.0.0
@@ -10647,18 +10647,22 @@ packages:
   yuku-ast@0.19.0:
     resolution: {integrity: sha512-PyCsiScaelhxBGzL8dyeJkLqvRZycoh78R31Vrt/WqYrm0hMFoKwIw/X7Dx5mBKLWAMlV9I9HEyBOHnj2gZVyw==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-codegen@0.19.0:
     resolution: {integrity: sha512-uymAKHjDuaP4BEpkXC/BSLz4DUEF5oArZ5AuD3888nb2miChjWSgpPdojEJxm3pjpXkgUaCRJQyNAbnMN33wHg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-core@0.19.0:
     resolution: {integrity: sha512-kYK9e1XdfirNhkipzW0wmMcSWcVF/CWnuugodfVYRCUwvoBefweL9HzB96OiKEhsx78V5WbUxbJqlizMX869Qg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-parser@0.19.0:
     resolution: {integrity: sha512-XrBh9ZiQK5mJVRxZBAvD6LwRyAYrK3MFtH3+onyuxFL5hFD44EC3QOmIC1FjTj6H2MMwq46/NAI+NZxLZPZgxg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zeptomatch@2.1.0:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
@@ -13340,7 +13344,7 @@ snapshots:
       '@pothos/core': 4.17.0(graphql@17.1.0)
       graphql: 17.1.0
 
-  '@pothos/plugin-relay@4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)':
+  '@pothos/plugin-relay@4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)':
     dependencies:
       '@pothos/core': 4.17.0(graphql@17.1.0)
       graphql: 17.1.0
@@ -14772,14 +14776,14 @@ snapshots:
       '@oxlint/plugins': 1.92.0
       oxlint: 1.93.0
 
-  '@unthrown/pothos@0.1.2(@pothos/core@4.17.0(graphql@17.1.0))(@pothos/plugin-errors@4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(@pothos/plugin-relay@4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(graphql@17.1.0)(unthrown@5.12.2)':
+  '@unthrown/pothos@0.1.2(@pothos/core@4.17.0(graphql@17.1.0))(@pothos/plugin-errors@4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(@pothos/plugin-relay@4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0))(graphql@17.1.0)(unthrown@5.12.2)':
     dependencies:
       '@pothos/core': 4.17.0(graphql@17.1.0)
       '@pothos/plugin-errors': 4.9.4(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
       graphql: 17.1.0
       unthrown: 5.12.2
     optionalDependencies:
-      '@pothos/plugin-relay': 4.8.2(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
+      '@pothos/plugin-relay': 4.9.0(@pothos/core@4.17.0(graphql@17.1.0))(graphql@17.1.0)
 
   '@unthrown/saga@5.11.0(unthrown@5.12.2)':
     dependencies:
