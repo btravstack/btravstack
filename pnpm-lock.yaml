@@ -213,8 +213,8 @@ catalogs:
       specifier: 21.2.4
       version: 21.2.4
     '@electric-sql/pglite':
-      specifier: 0.5.16
-      version: 0.5.16
+      specifier: 0.5.17
+      version: 0.5.17
     '@modelcontextprotocol/sdk':
       specifier: 1.32.2
       version: 1.32.2
@@ -705,7 +705,7 @@ importers:
         version: 0.4.0
       '@electric-sql/pglite':
         specifier: 'catalog:'
-        version: 0.5.16
+        version: 0.5.17
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -714,7 +714,7 @@ importers:
         version: 5.12.2(unthrown@5.12.2)(vitest@5.1.0)
       kysely-pglite-dialect:
         specifier: 'catalog:'
-        version: 1.4.0(@electric-sql/pglite@0.5.16)(kysely@0.29.9)
+        version: 1.4.0(@electric-sql/pglite@0.5.17)(kysely@0.29.9)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -3771,8 +3771,8 @@ packages:
   '@electric-sql/pglite@0.3.15':
     resolution: {integrity: sha512-Cj++n1Mekf9ETfdc16TlDi+cDDQF0W7EcbyRHYOAeZdsAe8M/FJg18itDTSwyHfar2WIezawM9o0EKaRGVKygQ==}
 
-  '@electric-sql/pglite@0.5.16':
-    resolution: {integrity: sha512-Nj8KcIsJL748W408U2N8q4+9IlONdpRIU8MJypIAAINMJ5nqKyqpX7Mgg/5XKkXiAib3AoZGR6hnJFlrlLBrcg==}
+  '@electric-sql/pglite@0.5.17':
+    resolution: {integrity: sha512-8SvKjiUjaU+0O0dbxjOfN+jXz14TEqDWbwDkYOW1aQ11y/ph2JvFVI27ABBo5nfw+ZfSqy4hKCNlbnbB1TDE+g==}
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -10647,18 +10647,22 @@ packages:
   yuku-ast@0.19.0:
     resolution: {integrity: sha512-PyCsiScaelhxBGzL8dyeJkLqvRZycoh78R31Vrt/WqYrm0hMFoKwIw/X7Dx5mBKLWAMlV9I9HEyBOHnj2gZVyw==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-codegen@0.19.0:
     resolution: {integrity: sha512-uymAKHjDuaP4BEpkXC/BSLz4DUEF5oArZ5AuD3888nb2miChjWSgpPdojEJxm3pjpXkgUaCRJQyNAbnMN33wHg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-core@0.19.0:
     resolution: {integrity: sha512-kYK9e1XdfirNhkipzW0wmMcSWcVF/CWnuugodfVYRCUwvoBefweL9HzB96OiKEhsx78V5WbUxbJqlizMX869Qg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-parser@0.19.0:
     resolution: {integrity: sha512-XrBh9ZiQK5mJVRxZBAvD6LwRyAYrK3MFtH3+onyuxFL5hFD44EC3QOmIC1FjTj6H2MMwq46/NAI+NZxLZPZgxg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zeptomatch@2.1.0:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
@@ -11802,7 +11806,7 @@ snapshots:
 
   '@electric-sql/pglite@0.3.15': {}
 
-  '@electric-sql/pglite@0.5.16': {}
+  '@electric-sql/pglite@0.5.17': {}
 
   '@emnapi/core@1.11.1':
     dependencies:
@@ -16470,9 +16474,9 @@ snapshots:
       unbash: 6.0.4
       yaml: 2.9.1
 
-  kysely-pglite-dialect@1.4.0(@electric-sql/pglite@0.5.16)(kysely@0.29.9):
+  kysely-pglite-dialect@1.4.0(@electric-sql/pglite@0.5.17)(kysely@0.29.9):
     dependencies:
-      '@electric-sql/pglite': 0.5.16
+      '@electric-sql/pglite': 0.5.17
       kysely: 0.29.9
 
   kysely@0.29.9: {}
