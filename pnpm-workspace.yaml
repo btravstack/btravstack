@@ -130,7 +130,7 @@ catalog:
   kysely: 0.29.9
   kysely-pglite-dialect: 1.4.0
   knip: 6.45.1
-  markdownlint-cli2: 0.24.1
+  markdownlint-cli2: 0.24.2
   lefthook: 2.2.2
   oxfmt: 0.78.0
   oxlint: 1.93.0
