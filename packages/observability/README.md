@@ -140,7 +140,9 @@ error payloads. Pino's error serializer is installed on a child logger at
 
 A configured production policy also projects ambient unit, trace and tenant
 correlation before custom sinks and starter-owned spans see it. UUIDs and
-nonzero W3C trace IDs survive; free text does not. Unconfigured legacy rendering
+nonzero W3C trace IDs survive; free text does not. Other attributes survive only
+when their field is declared: a finite vocabulary, numeric bounds, or `"uuid"`
+for an opaque entity identifier such as an `accountId`. Unconfigured legacy rendering
 and explicitly sensitive debugging keep their existing disclosure behavior.
 
 For production data minimization, pass a shared `diagnosticPolicy()` through

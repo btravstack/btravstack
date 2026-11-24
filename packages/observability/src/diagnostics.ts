@@ -1,14 +1,22 @@
 import type { Attributes, DiagnosticPolicy } from "@btravstack/core";
 
-/** Finite vocabularies for strings/booleans, inclusive finite bounds for numbers. */
+/**
+ * Finite vocabularies for strings/booleans, inclusive finite bounds for
+ * numbers, or `"uuid"` for an opaque canonical UUID string and nothing else.
+ */
 export type DiagnosticField =
+  | "uuid"
   | readonly (string | boolean)[]
   | {
       readonly min: number;
       readonly max: number;
     };
 
-/** Only deployment-owned static vocabulary belongs in these allowlists. */
+/**
+ * Only deployment-owned static vocabulary belongs in these allowlists. A field
+ * rule is a vocabulary, `{ min, max }` bounds, or `"uuid"`; the same rules
+ * project log attributes and `cause` attributes.
+ */
 export type DiagnosticOptions = {
   readonly messages?: readonly string[];
   readonly codes?: readonly string[];
@@ -33,7 +41,8 @@ const own = (value: unknown, key: string): unknown => {
  * A production policy that never traverses causes, stacks, payloads or error
  * messages. Unknown messages and failures retain a static diagnostic identity.
  * Correlation retains UUIDs and nonzero W3C trace IDs. Other field values must
- * match an explicit vocabulary or finite numeric bounds.
+ * match an explicit vocabulary, finite numeric bounds or, for a `"uuid"` field,
+ * the canonical UUID form.
  */
 export const diagnosticPolicy = (options: DiagnosticOptions = {}): DiagnosticPolicy => {
   const messages = new Set(options.messages);
@@ -49,14 +58,17 @@ export const diagnosticPolicy = (options: DiagnosticOptions = {}): DiagnosticPol
       }),
       ...fields.flatMap(([key, rule]) => {
         const value = own(values, key);
-        const accepted = Array.isArray(rule)
-          ? rule.includes(value as string | boolean)
-          : typeof value === "number" &&
-            Number.isFinite(value) &&
-            Number.isFinite((rule as { min: number }).min) &&
-            Number.isFinite((rule as { max: number }).max) &&
-            value >= (rule as { min: number }).min &&
-            value <= (rule as { max: number }).max;
+        const accepted =
+          rule === "uuid"
+            ? typeof value === "string" && UUID.test(value)
+            : Array.isArray(rule)
+              ? rule.includes(value as string | boolean)
+              : typeof value === "number" &&
+                Number.isFinite(value) &&
+                Number.isFinite((rule as { min: number }).min) &&
+                Number.isFinite((rule as { max: number }).max) &&
+                value >= (rule as { min: number }).min &&
+                value <= (rule as { max: number }).max;
         return accepted ? [[key, value]] : [];
       }),
     ]) as Attributes;

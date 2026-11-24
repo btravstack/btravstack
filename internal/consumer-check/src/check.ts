@@ -92,10 +92,7 @@ const BUDGET = 1.5;
  * one this run never packed, fails as stale, so an exemption cannot outlive
  * the growth it was for.
  */
-const accepted: Readonly<Record<string, string>> = {
-  "@btravstack/amqp-client":
-    "a Module over core now: its configuration, a health check and the client log routed to Observers",
-};
+const accepted: Readonly<Record<string, string>> = {};
 
 const staleAcceptance = (name: string): string =>
   `size: ${name} is in \`accepted\` but no longer over budget, or no longer packed — drop the entry`;

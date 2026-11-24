@@ -24,6 +24,7 @@ const operationalFields = {
   method: ["GET", "POST"],
   status: { min: 100, max: 599 },
   retryable: [true, false],
+  accountId: "uuid",
 } satisfies Readonly<Record<string, DiagnosticField>>;
 const disclosure: DiagnosticOptions = {
   messages: ["http.request", "http.request failed"],

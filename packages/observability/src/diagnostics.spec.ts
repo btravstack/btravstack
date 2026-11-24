@@ -121,6 +121,71 @@ describe("diagnostic disclosure", () => {
     // THEN
     expect(rendered).toEqual({});
   });
+  test("keeps a canonical UUID in a uuid field of the attributes", () => {
+    // GIVEN
+    const accountId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const diagnostics = diagnosticPolicy({
+      fields: { accountId: "uuid", kind: ["platform"], count: { min: 0, max: 10 } },
+    });
+    // WHEN
+    const rendered = diagnostics.attributes({
+      accountId,
+      invoiceId: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      kind: "platform",
+      count: 3,
+    });
+    // THEN
+    expect(rendered).toEqual({ accountId, kind: "platform", count: 3 });
+  });
+
+  test("keeps a canonical UUID in a uuid field of a cause", () => {
+    // GIVEN
+    const accountId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const diagnostics = diagnosticPolicy({ codes: ["Unavailable"], fields: { accountId: "uuid" } });
+    // WHEN
+    const rendered = diagnostics.cause({ code: "Unavailable", accountId });
+    // THEN
+    expect(rendered).toEqual({ code: "Unavailable", accountId });
+  });
+
+  test("keeps an uppercase UUID in a uuid field", () => {
+    // GIVEN
+    const accountId = "0F8FAD5B-D9CB-469F-A165-70867728950E";
+    const diagnostics = diagnosticPolicy({ fields: { accountId: "uuid" } });
+    // WHEN
+    const rendered = diagnostics.attributes({ accountId });
+    // THEN
+    expect(rendered).toEqual({ accountId });
+  });
+
+  const notUuids = [
+    ["another string", "account-42"],
+    ["an email", "person@example.invalid"],
+    ["an empty string", ""],
+    ["a trace id", "4bf92f3577b34da6a3ce929d0e0e4736"],
+    ["a uuid with surrounding text", " 0f8fad5b-d9cb-469f-a165-70867728950e"],
+    ["a number", 42],
+    ["an object", { id: "0f8fad5b-d9cb-469f-a165-70867728950e" }],
+  ] as const;
+
+  test.each(notUuids)("drops a uuid field holding %s from the attributes", (_, accountId) => {
+    // GIVEN
+    const diagnostics = diagnosticPolicy({ fields: { accountId: "uuid" } });
+    // WHEN
+    const rendered = diagnostics.attributes({ accountId });
+    // THEN
+    expect(rendered).toEqual({});
+  });
+
+  test.each(notUuids)("drops a uuid field holding %s from a cause", (_, accountId) => {
+    // GIVEN
+    const diagnostics = diagnosticPolicy({ fields: { accountId: "uuid" } });
+    // WHEN
+    const rendered = diagnostics.cause({ accountId });
+    // THEN
+    expect(rendered).toEqual({ code: "unknown" });
+  });
+
   test("keeps only static vocabulary and bounded numeric fields without reading accessors", () => {
     // GIVEN
     const diagnostics = diagnosticPolicy({

@@ -660,7 +660,7 @@ collapses into another.
 | `kernelEvents`                         | value — the kernel's `EventSink` over a logger       |
 | `diagnosticPolicy`                     | value — a production disclosure policy factory       |
 | `sensitiveDiagnostics`                 | value — explicit raw diagnostic disclosure           |
-| `DiagnosticField`, `DiagnosticOptions` | types — finite field vocabularies and policy options |
+| `DiagnosticField`, `DiagnosticOptions` | types — vocabulary, bounds and `uuid` rules; options |
 | `OtelOptions`                          | type — `@btravstack/observability/otel` only         |
 | `pinoSink`                             | value — `@btravstack/observability/pino` only        |
 | `otel`                                 | value — `@btravstack/observability/otel` only        |
@@ -687,6 +687,7 @@ const productionDiagnostics = diagnosticPolicy({
   fields: {
     method: ["GET", "POST"],
     status: { min: 100, max: 599 },
+    accountId: "uuid",
     sdkComponent: ["activity", "workflow", "worker", "core"],
   },
 });
@@ -699,9 +700,19 @@ const onEvent = kernelEvents(startupLogger);
 Pass `{ onEvent }` to `start` or `runMain` as well. Composing observability alone
 does not replace the kernel's default stderr event sink.
 
-Allowlist deployment-owned static strings and operational numeric bounds, never
-request values. `observability({ diagnostics })` and `createLogger` apply the
-policy before any custom sink sees a line. Direct sinks also accept it as their
+Each entry in `fields` names one attribute and the only values it may carry:
+a finite vocabulary of strings or booleans, inclusive finite `{ min, max }`
+bounds for a number, or `"uuid"` for an opaque entity identifier such as an
+`accountId`. A `"uuid"` field keeps a string in the canonical `8-4-4-4-12`
+hexadecimal UUID form, in either letter case, and drops anything else — free
+text, an email, another reference format, a W3C trace ID, a number or an
+object — exactly as an unmatched vocabulary does. The same rules apply to a
+line's attributes and to the own properties of its `cause`. Undeclared fields
+are always dropped.
+
+Allowlist deployment-owned static strings, operational numeric bounds and
+opaque UUID identifiers, never request values.
+`observability({ diagnostics })` and `createLogger` apply the policy before any custom sink sees a line. Direct sinks also accept it as their
 second argument: `jsonSink(stream, diagnostics)` and
 `pinoSink(logger, diagnostics)`. The same policy projects ambient correlation
 using canonical `unitId`, `traceId` and `tenantId` fields. `diagnosticPolicy()`
