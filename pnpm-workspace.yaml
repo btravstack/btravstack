@@ -136,7 +136,7 @@ catalog:
   oxlint: 1.93.0
   pino: 10.4.0
   nodemailer: 10.5.0
-  openid-client: 6.9.0
+  openid-client: 6.9.1
   temporal-polyfill: 1.0.8
   prisma: 8.0.0-rc.34
   uuidv7: 1.2.1
