@@ -342,8 +342,8 @@ catalogs:
       specifier: 6.1.0
       version: 6.1.0
     jose:
-      specifier: 6.2.17
-      version: 6.2.17
+      specifier: 6.2.18
+      version: 6.2.18
     knip:
       specifier: 6.45.1
       version: 6.45.1
@@ -923,7 +923,7 @@ importers:
         version: 0.4.2(@orpc/client@2.0.0-beta.51)(@orpc/contract@2.0.0-beta.51)(@orpc/server@2.0.0-beta.44)(unthrown@5.12.2)
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       openid-client:
         specifier: 'catalog:'
         version: 6.9.0
@@ -1507,7 +1507,7 @@ importers:
         version: 2.0.0-beta.51
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       openid-client:
         specifier: 'catalog:'
         version: 6.9.0
@@ -1586,7 +1586,7 @@ importers:
         version: 3.1169.0
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       openid-client:
         specifier: 'catalog:'
         version: 6.9.0
@@ -2136,7 +2136,7 @@ importers:
         version: 5.1.0(vitest@5.1.0)
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       openid-client:
         specifier: 'catalog:'
         version: 6.9.0
@@ -2901,7 +2901,7 @@ importers:
         version: 5.1.0(vitest@5.1.0)
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       tsdown:
         specifier: 'catalog:'
         version: 0.23.2(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.24.2)(publint@0.3.25)(tsx@4.23.15)(typescript@7.0.2)
@@ -8576,8 +8576,8 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  jose@6.2.17:
-    resolution: {integrity: sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg==}
+  jose@6.2.18:
+    resolution: {integrity: sha512-doV4thUwgkrycJH4yLeqwTGIIZphHl+pk7CPReuMIhYhncmgzdko85MaCG4YQFTxqMFr1/oEH32tZuKKovcDEg==}
 
   js-base64@3.9.4:
     resolution: {integrity: sha512-PtOMXpEGuP0RRiRXsjzHzl44dMHxSu2CPvAhinupR1tBa88me+1DPqsobl7eupn5UukjLkln1ZnAOAOXOrYG0Q==}
@@ -10647,18 +10647,22 @@ packages:
   yuku-ast@0.19.0:
     resolution: {integrity: sha512-PyCsiScaelhxBGzL8dyeJkLqvRZycoh78R31Vrt/WqYrm0hMFoKwIw/X7Dx5mBKLWAMlV9I9HEyBOHnj2gZVyw==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-codegen@0.19.0:
     resolution: {integrity: sha512-uymAKHjDuaP4BEpkXC/BSLz4DUEF5oArZ5AuD3888nb2miChjWSgpPdojEJxm3pjpXkgUaCRJQyNAbnMN33wHg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-core@0.19.0:
     resolution: {integrity: sha512-kYK9e1XdfirNhkipzW0wmMcSWcVF/CWnuugodfVYRCUwvoBefweL9HzB96OiKEhsx78V5WbUxbJqlizMX869Qg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-parser@0.19.0:
     resolution: {integrity: sha512-XrBh9ZiQK5mJVRxZBAvD6LwRyAYrK3MFtH3+onyuxFL5hFD44EC3QOmIC1FjTj6H2MMwq46/NAI+NZxLZPZgxg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zeptomatch@2.1.0:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
@@ -12615,7 +12619,7 @@ snapshots:
       express: 5.3.0(supports-color@8.1.1)
       express-rate-limit: 8.7.1(express@5.3.0(supports-color@8.1.1))(supports-color@8.1.1)
       hono: 4.13.7
-      jose: 6.2.17
+      jose: 6.2.18
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
@@ -16409,7 +16413,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  jose@6.2.17: {}
+  jose@6.2.18: {}
 
   js-base64@3.9.4: {}
 
@@ -17126,7 +17130,7 @@ snapshots:
 
   openid-client@6.9.0:
     dependencies:
-      jose: 6.2.17
+      jose: 6.2.18
       oauth4webapi: 3.8.8
 
   oxc-parser@0.156.0:
