@@ -288,23 +288,23 @@ catalogs:
       specifier: 8.0.0
       version: 8.0.0
     '@temporalio/activity':
-      specifier: 1.25.0
-      version: 1.25.0
+      specifier: 1.26.0
+      version: 1.26.0
     '@temporalio/client':
-      specifier: 1.25.0
-      version: 1.25.0
+      specifier: 1.26.0
+      version: 1.26.0
     '@temporalio/common':
-      specifier: 1.25.0
-      version: 1.25.0
+      specifier: 1.26.0
+      version: 1.26.0
     '@temporalio/testing':
-      specifier: 1.25.0
-      version: 1.25.0
+      specifier: 1.26.0
+      version: 1.26.0
     '@temporalio/worker':
-      specifier: 1.25.0
-      version: 1.25.0
+      specifier: 1.26.0
+      version: 1.26.0
     '@temporalio/workflow':
-      specifier: 1.25.0
-      version: 1.25.0
+      specifier: 1.26.0
+      version: 1.26.0
     '@types/node':
       specifier: 26.6.6
       version: 26.6.6
@@ -1380,22 +1380,22 @@ importers:
         version: 0.301.2(@opentelemetry/api@1.10.0)(supports-color@8.1.1)
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
       '@temporalio/activity':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/client':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/worker':
         specifier: 'catalog:'
-        version: 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+        version: 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
       '@temporalio/workflow':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -1423,10 +1423,10 @@ importers:
         version: 8.0.0(unthrown@5.12.2)
       '@temporal-contract/testing':
         specifier: 'catalog:'
-        version: 8.0.0(892e12065e0847c1d6a91724c4e63545)
+        version: 8.0.0(ae71d99385b08c16070eaf326c4b9d38)
       '@temporalio/testing':
         specifier: 'catalog:'
-        version: 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+        version: 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2730,16 +2730,16 @@ importers:
         version: 0.4.0
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
       '@temporal-contract/contract':
         specifier: 'catalog:'
         version: 8.0.0(unthrown@5.12.2)
       '@temporalio/client':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/common':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2772,10 +2772,10 @@ importers:
         version: 0.4.0
       '@temporalio/client':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/common':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2826,28 +2826,28 @@ importers:
         version: 0.4.0
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
       '@temporal-contract/contract':
         specifier: 'catalog:'
         version: 8.0.0(unthrown@5.12.2)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+        version: 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
       '@temporalio/activity':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/client':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/common':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@temporalio/worker':
         specifier: 'catalog:'
-        version: 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+        version: 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
       '@temporalio/workflow':
         specifier: 'catalog:'
-        version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+        version: 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -6640,61 +6640,61 @@ packages:
       '@temporalio/workflow': ^1.24.0
       unthrown: ^5.11.0
 
-  '@temporalio/activity@1.25.0':
-    resolution: {integrity: sha512-IBz6/pqfwlZpZcw2KBFSQa5iu7B9gH6/RUCI/VCqywP9gfj0KVs6rGVAQj1/48oY63eIU5WcAllWdbaRDWY1+A==}
+  '@temporalio/activity@1.26.0':
+    resolution: {integrity: sha512-j0/yL0PDasvbOuIH571c1rr1n+xsm0BnGX0dl/G+lpWRurxyojCCJmZG9FF472x8xUON6WWequ2qOGquw0gb8A==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
       protobufjs: ^8.7.1
 
-  '@temporalio/client@1.25.0':
-    resolution: {integrity: sha512-IbWlxzQiQg2fuIum+d2PkQWOGPVPyeN294sKdBCylKxVsGc1IoixXjWjEZ0dxVuYNFZq+16Vn9Fh2UNVDfXePA==}
+  '@temporalio/client@1.26.0':
+    resolution: {integrity: sha512-01hNfP6m6bjlut/huL6oCJ8czAMXm3jWKriLnEoLmnh5RzU6AEuqzbw77dmNDF3lQiZaFeY++lCKjSig4IVd9A==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
       protobufjs: ^8.7.1
 
-  '@temporalio/common@1.25.0':
-    resolution: {integrity: sha512-R9q/5wJZLi47kktJ3GfGh+eMO2HleRxKQGDysCvoObdVjK7Q+F+Vq0M1EeMu4EMHQZdT9A4vgN5rQ9L8cTgU8w==}
+  '@temporalio/common@1.26.0':
+    resolution: {integrity: sha512-mHpfPAm6IThHUreLmH9iE7G0ekURbj6jDqJZuG8kfg2unMVx33fQ1cx05TkRuzG8U6IPjIMheyVDnVrBid/TBg==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
       protobufjs: ^8.7.1
 
-  '@temporalio/core-bridge@1.25.0':
-    resolution: {integrity: sha512-4C7lOpBXo9nTTwuEZwlPWGEZy3dchSbEgp+HeX87EbovC4QlPf1Th9iWz7jcce0C9l/O3kaXfA34uPMGRu15DA==}
+  '@temporalio/core-bridge@1.26.0':
+    resolution: {integrity: sha512-O2vtTOtFkHyl4YQwmUZni63HGlTUxOVoiZNRTZezaygMXG3LJw0dMap4+qCMponkBOiV8Z6qkrGNnShslqYC5g==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
       protobufjs: ^8.7.1
 
-  '@temporalio/nexus@1.25.0':
-    resolution: {integrity: sha512-uUq7FK0WdCQcwj57Tt1wIeLc51fn8FgAPN6+hiFD1A/o+EDpao7YZ2A/holuJ9cjFZk4c9lswKJaNZYTznE2fw==}
+  '@temporalio/nexus@1.26.0':
+    resolution: {integrity: sha512-Tj44f+H+hNQl3lgrLAduv17Nv3bcPXj4i1hN6wv3C+ZPjFbklD5sroN6gMHK6bzlEqGSR9s5UInjbfE4if8J9w==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
       protobufjs: ^8.7.1
 
-  '@temporalio/proto@1.25.0':
-    resolution: {integrity: sha512-cZF6C1F4ZHWrVwrDNW6hTB7HvBi1sofqPWxQrqJq0b9hPE21y5IU5rTNEUx3Ju6G03xqdpwdH0LECAul0KAi2Q==}
+  '@temporalio/proto@1.26.0':
+    resolution: {integrity: sha512-hrYoXs/b3W7u+PvuK6qB2Cvb/TZv1AxKJn9Rj4YCeQsemWknZ3a4+2FICRuGxwB6bR0qsoVFf5uKQOPtouyDCw==}
     engines: {node: '>= 20.3.0'}
 
-  '@temporalio/testing@1.25.0':
-    resolution: {integrity: sha512-q3bwaWorJsnwskI1fuGcYRxjC22mNUIVWG75lDO0vLZ3eDFp8Um/i9333oUcNMsOpQe7skjt5/1UU0JZZTKISw==}
-    engines: {node: '>= 20.3.0'}
-    peerDependencies:
-      long: ^5.3.2
-      protobufjs: ^8.7.1
-
-  '@temporalio/worker@1.25.0':
-    resolution: {integrity: sha512-I4b/OwhDb/UhyoHLJDCnuKqROSlT95xHACRxOsg0UjH6qgcYCusch+9mLol1IN7ml2cNkSbnm+5hvzpVuywP3Q==}
+  '@temporalio/testing@1.26.0':
+    resolution: {integrity: sha512-eClmpgDEl2xBj7wb2SdLsenAxlA8K42qhINDOnjctBA3NJbq2e85FkMRAe3f+vlzoao9HzT0A4hwcGapMYzeoA==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
       protobufjs: ^8.7.1
 
-  '@temporalio/workflow@1.25.0':
-    resolution: {integrity: sha512-2Z5BvOtsfOHL3Dy+4cewXEHDu9NeseEn4FeaaitNwn704POgEfshz0zxyZB8ofxbna2P0wsC5l3rnYHkOvtX9A==}
+  '@temporalio/worker@1.26.0':
+    resolution: {integrity: sha512-X6xdDzBtPNBfP7wdl2PWaWov4wmMtzBLb6PAQYQmOmupPVBZSTajLUi9wP+Fz0s1sqFvUQamY02QaQ3TJysrRA==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
+
+  '@temporalio/workflow@1.26.0':
+    resolution: {integrity: sha512-wa5SYoxn4qNVOtNaP6D7QPzyifg8KX6rzTkmE9oIqAqF5uxPgCgv1BbIIRq8Iu7Z0AH/mkkUCGwhwirdcmQwhA==}
     engines: {node: '>= 20.3.0'}
     peerDependencies:
       long: ^5.3.2
@@ -10647,18 +10647,22 @@ packages:
   yuku-ast@0.19.0:
     resolution: {integrity: sha512-PyCsiScaelhxBGzL8dyeJkLqvRZycoh78R31Vrt/WqYrm0hMFoKwIw/X7Dx5mBKLWAMlV9I9HEyBOHnj2gZVyw==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-codegen@0.19.0:
     resolution: {integrity: sha512-uymAKHjDuaP4BEpkXC/BSLz4DUEF5oArZ5AuD3888nb2miChjWSgpPdojEJxm3pjpXkgUaCRJQyNAbnMN33wHg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-core@0.19.0:
     resolution: {integrity: sha512-kYK9e1XdfirNhkipzW0wmMcSWcVF/CWnuugodfVYRCUwvoBefweL9HzB96OiKEhsx78V5WbUxbJqlizMX869Qg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-parser@0.19.0:
     resolution: {integrity: sha512-XrBh9ZiQK5mJVRxZBAvD6LwRyAYrK3MFtH3+onyuxFL5hFD44EC3QOmIC1FjTj6H2MMwq46/NAI+NZxLZPZgxg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zeptomatch@2.1.0:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
@@ -14396,12 +14400,12 @@ snapshots:
 
   '@tanstack/query-core@5.107.1': {}
 
-  '@temporal-contract/client@8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)':
+  '@temporal-contract/client@8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@temporal-contract/contract': 8.0.0(unthrown@5.12.2)
-      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/client': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       unthrown: 5.12.2
 
   '@temporal-contract/contract@8.0.0(unthrown@5.12.2)':
@@ -14410,84 +14414,84 @@ snapshots:
     optionalDependencies:
       unthrown: 5.12.2
 
-  '@temporal-contract/testing@8.0.0(892e12065e0847c1d6a91724c4e63545)':
+  '@temporal-contract/testing@8.0.0(ae71d99385b08c16070eaf326c4b9d38)':
     dependencies:
-      '@temporal-contract/client': 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+      '@temporal-contract/client': 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/client@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
       '@temporal-contract/contract': 8.0.0(unthrown@5.12.2)
-      '@temporal-contract/worker': 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
-      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/worker': 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+      '@temporal-contract/worker': 8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)
+      '@temporalio/client': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/worker': 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
       unthrown: 5.12.2
     optionalDependencies:
-      '@temporalio/testing': 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+      '@temporalio/testing': 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
       testcontainers: 12.2.0(supports-color@8.1.1)
       vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
-  '@temporal-contract/worker@8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)':
+  '@temporal-contract/worker@8.0.0(@temporal-contract/contract@8.0.0(unthrown@5.12.2))(@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0))(@temporalio/worker@1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6)))(@temporalio/workflow@1.26.0(long@5.3.2)(protobufjs@8.8.0))(unthrown@5.12.2)':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@temporal-contract/contract': 8.0.0(unthrown@5.12.2)
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/worker': 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
-      '@temporalio/workflow': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/worker': 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+      '@temporalio/workflow': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       '@unthrown/saga': 5.11.0(unthrown@5.12.2)
       unthrown: 5.12.2
 
-  '@temporalio/activity@1.25.0(long@5.3.2)(protobufjs@8.8.0)':
+  '@temporalio/activity@1.26.0(long@5.3.2)(protobufjs@8.8.0)':
     dependencies:
-      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/client': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       long: 5.3.2
       protobufjs: 8.8.0
 
-  '@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.0)':
+  '@temporalio/client@1.26.0(long@5.3.2)(protobufjs@8.8.0)':
     dependencies:
       '@grpc/grpc-js': 1.14.5
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/proto': 1.25.0
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/proto': 1.26.0
       long: 5.3.2
       nexus-rpc: 0.0.3
       protobufjs: 8.8.0
       uuid: 11.1.1
 
-  '@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.0)':
+  '@temporalio/common@1.26.0(long@5.3.2)(protobufjs@8.8.0)':
     dependencies:
-      '@temporalio/proto': 1.25.0
+      '@temporalio/proto': 1.26.0
       long: 5.3.2
       ms: 3.0.0-canary.202508261828
       nexus-rpc: 0.0.3
       protobufjs: 8.8.0
 
-  '@temporalio/core-bridge@1.25.0(long@5.3.2)(protobufjs@8.8.0)':
+  '@temporalio/core-bridge@1.26.0(long@5.3.2)(protobufjs@8.8.0)':
     dependencies:
       '@grpc/grpc-js': 1.14.5
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       long: 5.3.2
       protobufjs: 8.8.0
 
-  '@temporalio/nexus@1.25.0(long@5.3.2)(protobufjs@8.8.0)':
+  '@temporalio/nexus@1.26.0(long@5.3.2)(protobufjs@8.8.0)':
     dependencies:
-      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/proto': 1.25.0
+      '@temporalio/client': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/proto': 1.26.0
       long: 5.3.2
       nexus-rpc: 0.0.3
       protobufjs: 8.8.0
 
-  '@temporalio/proto@1.25.0':
+  '@temporalio/proto@1.26.0':
     dependencies:
       long: 5.3.2
       protobufjs: 8.8.0
 
-  '@temporalio/testing@1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))':
+  '@temporalio/testing@1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))':
     dependencies:
-      '@temporalio/activity': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/core-bridge': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/proto': 1.25.0
-      '@temporalio/worker': 1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
-      '@temporalio/workflow': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/activity': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/client': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/core-bridge': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/proto': 1.26.0
+      '@temporalio/worker': 1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))
+      '@temporalio/workflow': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       long: 5.3.2
       protobufjs: 8.8.0
     transitivePeerDependencies:
@@ -14509,17 +14513,17 @@ snapshots:
       - uglify-js
       - webpack-cli
 
-  '@temporalio/worker@1.25.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))':
+  '@temporalio/worker@1.26.0(esbuild@0.28.2)(lightningcss@1.33.0)(long@5.3.2)(postcss@8.5.28)(protobufjs@8.8.0)(sharp@0.35.5(@types/node@26.6.6))':
     dependencies:
       '@grpc/grpc-js': 1.14.5
       '@swc/core': 1.16.13
-      '@temporalio/activity': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/core-bridge': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/nexus': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/proto': 1.25.0
-      '@temporalio/workflow': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/activity': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/client': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/core-bridge': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/nexus': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/proto': 1.26.0
+      '@temporalio/workflow': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
       heap-js: 2.7.1
       long: 5.3.2
       memfs: 4.80.0
@@ -14551,10 +14555,10 @@ snapshots:
       - uglify-js
       - webpack-cli
 
-  '@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.0)':
+  '@temporalio/workflow@1.26.0(long@5.3.2)(protobufjs@8.8.0)':
     dependencies:
-      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.0)
-      '@temporalio/proto': 1.25.0
+      '@temporalio/common': 1.26.0(long@5.3.2)(protobufjs@8.8.0)
+      '@temporalio/proto': 1.26.0
       long: 5.3.2
       nexus-rpc: 0.0.3
       protobufjs: 8.8.0
